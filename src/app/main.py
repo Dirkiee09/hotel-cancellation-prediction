@@ -2,31 +2,30 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import threading
 
 import gradio as gr
 from fastapi import FastAPI, HTTPException, status
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 from src.app.schemas import BookingRequest, ModelInfoResponse, PredictionResponse
 from src.config import MODEL_SELECTION_POLICY, RISK_TIER_HIGH_THRESHOLD, RISK_TIER_MEDIUM_THRESHOLD
-from src.serving.inference import load_artifacts, predict_proba
+from src.serving.inference import ModelArtifacts, load_artifacts, predict_proba
 
 from .ui import BACKGROUND_CSS, build_ui
 
 app = FastAPI(title="Hotel Booking Cancellation")
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ASSETS_DIR = PROJECT_ROOT / "assets"
-app.mount("/static", StaticFiles(directory=str(ASSETS_DIR), check_dir=False), name="static")
 
-_ARTIFACTS = None
+_ARTIFACTS: ModelArtifacts | None = None
+_ARTIFACTS_LOCK = threading.Lock()
 
 
-def get_artifacts():
+def get_artifacts() -> ModelArtifacts:
     global _ARTIFACTS
-    if _ARTIFACTS is None:
-        _ARTIFACTS = load_artifacts()
+    if _ARTIFACTS is not None:
+        return _ARTIFACTS
+    with _ARTIFACTS_LOCK:
+        if _ARTIFACTS is None:
+            _ARTIFACTS = load_artifacts()
     return _ARTIFACTS
 
 
@@ -45,11 +44,6 @@ def readiness():
             detail=f"Artifacts not ready: {exc}",
         ) from exc
     return {"status": "ok", "service": "ready"}
-
-
-@app.get("/manifest.json")
-def manifest():
-    return FileResponse(ASSETS_DIR / "manifest.json", media_type="application/json")
 
 
 def _resolve_thresholds(
