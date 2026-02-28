@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(done)",
+      "Bash(git rm:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+.git
+.venv
+.idea
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+.gradio
+.jupyter_runtime
+__pycache__
+*.pyc
+notebooks
+data
+artifacts
+reports
+*.egg-info
+.env
