@@ -1,0 +1,124 @@
+"""Project-wide configuration constants."""
+
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+DATA_PATH = PROJECT_ROOT / "data" / "hotel_bookings.csv"
+ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
+REPORTS_DIR = PROJECT_ROOT / "reports"
+
+TARGET_COL = "is_canceled"
+MODEL_SELECTION_POLICY = "champion_challenger_rolling_pr_auc_v1"
+
+BOOKING_TIME_FEATURES = [
+    "hotel",
+    "lead_time",
+    "arrival_date_year",
+    "arrival_date_month",
+    "arrival_date_week_number",
+    "arrival_date_day_of_month",
+    "stays_in_weekend_nights",
+    "stays_in_week_nights",
+    "adults",
+    "children",
+    "babies",
+    "meal",
+    "country",
+    "market_segment",
+    "distribution_channel",
+    "is_repeated_guest",
+    "previous_cancellations",
+    "previous_bookings_not_canceled",
+    "reserved_room_type",
+    "deposit_type",
+    "agent",
+    "customer_type",
+    "adr",
+    "required_car_parking_spaces",
+    "total_of_special_requests",
+    "had_company",
+    "total_stay",
+    "total_guests",
+    "adr_per_person",
+    "is_weekend_heavy",
+    "revenue_at_risk",
+    "month_sin",
+    "month_cos",
+    "is_late_window",
+]
+
+LEAKAGE_COLS = [
+    "reservation_status",
+    "reservation_status_date",
+    "assigned_room_type",
+    "booking_changes",
+    "days_in_waiting_list",
+]
+
+RANDOM_STATE = 42
+TRAIN_RATIO = 0.80
+VAL_RATIO = 0.10
+
+THRESHOLD_STEP = 0.01
+MIN_POSITIVE_RATE = 0.05
+MIN_RECALL_FOR_HIGH_PRECISION = 0.20
+FP_INTERVENTION_COST = 15.0
+FN_RECOVERY_NIGHTS = 1.0
+RISK_TIER_MEDIUM_THRESHOLD = 0.40
+RISK_TIER_HIGH_THRESHOLD = 0.70
+LATE_WINDOW_MAX_LEAD_DAYS = 3
+ADR_MAX_VALID = 1000.0
+
+# Probability calibration controls
+CALIBRATION_METHOD = "isotonic"
+CALIBRATION_ECE_BINS = 10
+
+# Champion/challenger model selection controls
+ROLLING_SELECTION_CUTOFF_FRACS = [0.60, 0.70, 0.80]
+ROLLING_SELECTION_VAL_RATIO = 0.10
+ROLLING_SELECTION_MIN_TRAIN_ROWS = 1500
+ROLLING_SELECTION_MIN_VAL_ROWS = 500
+
+# CI metric quality gates
+METRIC_GATES = {
+    "max_f1": {
+        "roc_auc_min": 0.84,
+        "pr_auc_min": 0.78,
+        "f1_min": 0.70,
+        "recall_min": 0.75,
+    },
+    "high_precision": {
+        "precision_min": 0.98,
+        "recall_min": 0.15,
+    },
+}
+
+# Segment-level gate controls
+SEGMENT_METRIC_GATES = {
+    "policy": "max_f1",
+    "min_rows": 500,
+    "dimensions": {
+        "hotel": 2,
+        "market_segment": 5,
+        "distribution_channel": 5,
+        "arrival_date_month": 6,
+    },
+    "metrics": {
+        "roc_auc_min": 0.75,
+        "pr_auc_min": 0.42,
+        "f1_min": 0.43,
+    },
+}
+
+# Reproducibility controls
+REPRO_TOLERANCE = 1e-10
+
+# Thesis analysis controls
+BOOTSTRAP_N_ITERATIONS = 2000
+BOOTSTRAP_ALPHA = 0.05
+OPTUNA_N_TRIALS = 50
+OPTUNA_TIMEOUT_SECONDS = 600
+EXPANDING_WINDOW_N_SPLITS = 5
+TEMPORAL_STABILITY_BUCKETS = 6
+LEARNING_CURVE_FRACTIONS = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0]

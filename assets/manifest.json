@@ -1,0 +1,8 @@
+{
+  "name": "Hotel Booking Cancellation",
+  "short_name": "Hotel Cancellation",
+  "start_url": "/ui/",
+  "display": "standalone",
+  "background_color": "#111114",
+  "theme_color": "#111114"
+}
