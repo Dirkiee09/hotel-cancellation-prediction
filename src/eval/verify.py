@@ -851,6 +851,19 @@ def _build_report(
     gb_tuning_text = _under_tuning_takeaway(gb_grid_df, gb_baseline)
     xgb_tuning_text = _under_tuning_takeaway(xgb_grid_df, xgb_baseline)
 
+    _models_needed = {"Gradient Boosting", "XGBoost"}
+    for _df_name, _df in [
+        ("holdout_df", holdout_df),
+        ("rolling_summary", rolling_summary),
+        ("tscv_summary", tscv_summary),
+    ]:
+        _missing = _models_needed - set(_df["Model"])
+        if _missing:
+            raise ValueError(
+                f"GB vs XGBoost comparison requires both models in {_df_name}; "
+                f"missing: {sorted(_missing)}"
+            )
+
     holdout_delta = float(
         holdout_df.set_index("Model").loc["Gradient Boosting", "ROC-AUC"]
         - holdout_df.set_index("Model").loc["XGBoost", "ROC-AUC"]

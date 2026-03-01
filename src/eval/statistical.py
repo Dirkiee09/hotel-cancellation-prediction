@@ -58,6 +58,16 @@ def bootstrap_metric(
         scores[i] = metric_fn(y_t, y_p)
 
     valid = scores[~np.isnan(scores)]
+    if len(valid) == 0:
+        # All bootstrap samples produced single-class resamples; CI is undefined.
+        return BootstrapCI(
+            metric="custom",
+            point_estimate=point,
+            ci_lower=float("nan"),
+            ci_upper=float("nan"),
+            alpha=alpha,
+            n_bootstraps=0,
+        )
     lo = float(np.percentile(valid, 100 * alpha / 2))
     hi = float(np.percentile(valid, 100 * (1 - alpha / 2)))
     return BootstrapCI(
@@ -66,7 +76,7 @@ def bootstrap_metric(
         ci_lower=lo,
         ci_upper=hi,
         alpha=alpha,
-        n_bootstraps=n_bootstraps,
+        n_bootstraps=int(len(valid)),
     )
 
 
@@ -135,7 +145,18 @@ def paired_bootstrap_test(
         deltas[i] = metric_fn(yt, probs_a[idx]) - metric_fn(yt, probs_b[idx])
 
     valid = deltas[~np.isnan(deltas)]
-    p_value = float(np.mean(np.abs(valid) >= abs(observed_delta)))
+    if len(valid) == 0:
+        return {
+            "observed_delta": observed_delta,
+            "p_value": float("nan"),
+            "n_bootstraps": 0,
+            "significant_at_05": False,
+        }
+    # Standard two-sided bootstrap p-value: 2 * min tail probability.
+    # Equivalent implementation is used in benchmark.py for consistency.
+    p_left = float(np.mean(valid <= 0.0))
+    p_right = float(np.mean(valid >= 0.0))
+    p_value = float(min(1.0, 2.0 * min(p_left, p_right)))
 
     return {
         "observed_delta": observed_delta,

@@ -20,7 +20,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -e . -r requirements.txt
+          pip check
 
       - name: Ruff lint
         run: ruff check .
@@ -43,6 +44,9 @@ jobs:
       - name: Security scan (bandit)
         run: bandit -q -r src scripts -s B101 -x tests
 
+      - name: Artifact threshold sync check
+        run: python scripts/sync_check.py
+
       - name: Dependency vulnerability scan (pip-audit)
         run: pip-audit -r requirements.txt --no-deps --disable-pip
 
@@ -62,13 +66,20 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -e . -r requirements.txt
+          pip check
 
       - name: Train pipeline
         run: python scripts/train.py
 
       - name: Run thesis analysis
         run: python scripts/thesis.py
+
+      - name: Generate benchmark tables
+        run: python scripts/benchmark.py
+
+      - name: Cross-artifact sync check
+        run: python scripts/sync_check.py
 
       - name: Upload thesis reports
         uses: actions/upload-artifact@v4

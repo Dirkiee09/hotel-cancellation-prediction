@@ -8,7 +8,11 @@
       "Bash(ls:*)",
       "Bash(grep:*)",
       "Bash(find:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(cd:*)",
+      "Bash(cd D:/PythonProject1 && make thesis-analysis 2>&1)",
+      "Bash(py:*)",
+      "Bash(cd D:\\\\PythonProject1:*)"
     ]
   }
 }

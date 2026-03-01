@@ -95,7 +95,10 @@ def train_xgb(
                 verbose=False,
                 early_stopping_rounds=25,
             )
-        except TypeError:
+        except TypeError as exc:
+            if "early_stopping_rounds" not in str(exc):
+                raise
+            # Older XGBoost versions don't support early_stopping_rounds in fit().
             model.fit(
                 X_train,
                 y_train,

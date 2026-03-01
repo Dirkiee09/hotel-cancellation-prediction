@@ -407,12 +407,13 @@ def _bootstrap_metric_ci(
 
     from sklearn.metrics import average_precision_score
 
+    def _f1_at_threshold(yt: np.ndarray, yp: np.ndarray) -> float:
+        return float(f1_score(yt, (yp >= threshold).astype(int), zero_division=0))
+
     metric_map: dict[str, Callable[[np.ndarray, np.ndarray], float]] = {
         "roc_auc": lambda yt, yp: float(roc_auc_score(yt, yp)),
         "pr_auc": lambda yt, yp: float(average_precision_score(yt, yp)),
-        "f1_max_f1_threshold": lambda yt, yp: float(
-            f1_score(yt, (yp >= threshold).astype(int), zero_division=0)
-        ),
+        "f1_max_f1_threshold": _f1_at_threshold,
     }
 
     rows: list[dict[str, Any]] = []

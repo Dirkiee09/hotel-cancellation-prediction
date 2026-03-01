@@ -8,12 +8,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import TimeSeriesSplit
 
 from src.config import (
+    ARTIFACTS_DIR,
     BOOKING_TIME_FEATURES,
     BOOTSTRAP_ALPHA,
     BOOTSTRAP_N_ITERATIONS,
@@ -36,7 +38,7 @@ from src.config import (
 from src.data.load import load_raw_data
 from src.eval.statistical import bootstrap_all_metrics, paired_bootstrap_test
 from src.features.build import add_arrival_date, build_preprocessor, split_time_aware
-from src.models.baselines import train_dummy, train_logistic
+from src.models.baselines import train_decision_tree, train_dummy, train_logistic, train_naive_bayes
 from src.models.metrics import safe_pr_auc, safe_roc_auc
 from src.models.train import is_lightgbm_available, train_gb, train_lgbm, train_xgb
 from src.utils.business import (
@@ -46,7 +48,6 @@ from src.utils.business import (
     safe_threshold_metrics,
 )
 from src.utils.reproducibility import set_global_seed
-from src.utils.thresholds import select_max_f1_threshold, threshold_sweep
 from src.utils.validate_data import assert_no_leakage_columns, clean_raw, validate_raw
 
 logger = logging.getLogger(__name__)
@@ -146,20 +147,42 @@ def _run_baseline_comparison(
     y_test: pd.Series,
     champion_probs: np.ndarray,
     threshold: float,
+    artifacts_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Train baselines and compare to champion via paired bootstrap."""
+    """Train baselines and compare to champion via paired bootstrap.
+
+    Trains four baselines ordered by complexity:
+    - Dummy (most_frequent) — trivial floor
+    - Naive Bayes — independent-feature probabilistic model
+    - Logistic Regression — linear interpretable model
+    - Decision Tree (max_depth=5) — interpretable non-linear model
+
+    The pruned Decision Tree is also saved to ``artifacts_dir`` if provided
+    so that ``plot_thesis_dt()`` in notebook_utils can load and visualise it.
+    """
     dummy = train_dummy(X_train_t, y_train, strategy="most_frequent")
     dummy_probs = dummy.predict_proba(X_test_t)[:, 1]
 
+    nb = train_naive_bayes(X_train_t, y_train)
+    nb_probs = nb.predict_proba(X_test_t)[:, 1]
+
     lr = train_logistic(X_train_t, y_train)
     lr_probs = lr.predict_proba(X_test_t)[:, 1]
+
+    dt = train_decision_tree(X_train_t, y_train)
+    dt_probs = dt.predict_proba(X_test_t)[:, 1]
+    if artifacts_dir is not None:
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        joblib.dump(dt, artifacts_dir / "thesis_baseline_dt.pkl")
 
     y_test_np = y_test.to_numpy().astype(int)
     results: dict[str, Any] = {}
 
     for name, probs in [
         ("dummy_most_frequent", dummy_probs),
+        ("naive_bayes", nb_probs),
         ("logistic_regression", lr_probs),
+        ("decision_tree_depth5", dt_probs),
         ("champion", champion_probs),
     ]:
         results[name] = {
@@ -167,13 +190,19 @@ def _run_baseline_comparison(
             "pr_auc": safe_pr_auc(y_test_np, probs),
         }
 
-    # Paired bootstrap: champion vs LR
-    for metric_name, metric_fn in [
-        ("roc_auc", roc_auc_score),
-        ("pr_auc", average_precision_score),
+    # Paired bootstrap: champion vs each baseline
+    for baseline_name, baseline_probs in [
+        ("lr", lr_probs),
+        ("dt", dt_probs),
     ]:
-        test_result = paired_bootstrap_test(y_test_np, champion_probs, lr_probs, metric_fn)
-        results[f"champion_vs_lr_{metric_name}"] = test_result
+        for metric_name, metric_fn in [
+            ("roc_auc", roc_auc_score),
+            ("pr_auc", average_precision_score),
+        ]:
+            test_result = paired_bootstrap_test(
+                y_test_np, champion_probs, baseline_probs, metric_fn
+            )
+            results[f"champion_vs_{baseline_name}_{metric_name}"] = test_result
 
     return results
 
@@ -602,26 +631,42 @@ def run_thesis_analysis(
     X_val_t = preprocessor.transform(X_val)
     X_test_t = preprocessor.transform(X_test)
 
-    champion_family, family_scores, champion_model = _choose_champion_family(
+    # Run champion/challenger comparison for family_scores (used in H2 hypothesis and summary).
+    # We discard the fresh model object and instead load the saved pipeline artifact so that
+    # champion_probs, val_probs, and threshold are identical to what metrics.json reports.
+    champion_family, family_scores, _ = _choose_champion_family(
         X_train_t,
         y_train,
         X_val_t,
         y_val,
     )
-    champion_probs = champion_model.predict_proba(X_test_t)[:, 1]
 
-    # Derive threshold from validation set
-    val_probs = champion_model.predict_proba(X_val_t)[:, 1]
-    sweep = threshold_sweep(y_val, val_probs, step=THRESHOLD_STEP)
-    max_f1_info = select_max_f1_threshold(sweep)
-    threshold = float(max_f1_info["threshold"])
+    # Load saved pipeline + calibrator to get calibrated probabilities consistent with the
+    # training pipeline (thresholds in artifacts/thresholds.json are computed on calibrated probs).
+    _pipeline = joblib.load(ARTIFACTS_DIR / "best_model.pkl")
+    _calibrator = joblib.load(ARTIFACTS_DIR / "probability_calibrator.pkl")
+    _inner_model = _pipeline.named_steps["model"]
+
+    champion_probs = np.clip(_calibrator.predict(_inner_model.predict_proba(X_test_t)[:, 1]), 0.0, 1.0)
+    val_probs = np.clip(_calibrator.predict(_inner_model.predict_proba(X_val_t)[:, 1]), 0.0, 1.0)
+
+    # Load threshold directly from artifact so model_family_summary matches thresholds.json.
+    _raw_thr: dict[str, Any] = json.loads((ARTIFACTS_DIR / "thresholds.json").read_text())
+    _max_f1_payload = _raw_thr.get("max_f1", {})
+    threshold = float(_max_f1_payload.get("threshold", 0.35)) if isinstance(_max_f1_payload, dict) else 0.35
 
     sections: dict[str, Path] = {}
 
     # 1. Baselines
     logger.info("thesis: running baseline comparison")
     baselines = _run_baseline_comparison(
-        X_train_t, y_train, X_test_t, y_test, champion_probs, threshold
+        X_train_t,
+        y_train,
+        X_test_t,
+        y_test,
+        champion_probs,
+        threshold,
+        artifacts_dir=ARTIFACTS_DIR,
     )
     path = thesis_dir / "baseline_comparison.json"
     _save_json(path, baselines)
@@ -652,7 +697,7 @@ def run_thesis_analysis(
     shap_results: dict[str, Any] | None = None
     if not skip_shap:
         logger.info("thesis: running SHAP analysis")
-        shap_results = _run_shap_analysis(champion_model, X_test_t, thesis_dir)
+        shap_results = _run_shap_analysis(_inner_model, X_test_t, thesis_dir)
         path = thesis_dir / "shap_analysis.json"
         _save_json(path, shap_results)
         sections["shap"] = path

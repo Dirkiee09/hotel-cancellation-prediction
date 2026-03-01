@@ -71,11 +71,13 @@ def clean_raw(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
         adr = pd.to_numeric(df["adr"], errors="coerce")
         neg_mask = adr < 0
         high_mask = adr >= ADR_MAX_VALID
-        zero_guest_mask = pd.to_numeric(df["total_guests"], errors="coerce").fillna(0) <= 0
+        total_guests_num = pd.to_numeric(df["total_guests"], errors="coerce")
+        zero_guest_mask = total_guests_num.fillna(0) <= 0
 
         issues["rows_dropped_negative_adr"] = int(neg_mask.sum())
         issues["rows_dropped_adr_outlier"] = int(high_mask.sum())
-        issues["rows_dropped_zero_guests"] = int(zero_guest_mask.sum())
+        issues["rows_dropped_zero_guests"] = int((total_guests_num == 0).sum())
+        issues["rows_dropped_null_guests"] = int(total_guests_num.isna().sum())
 
         valid_mask = ~(neg_mask | high_mask | zero_guest_mask)
         df = df.loc[valid_mask].copy()

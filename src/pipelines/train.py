@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import subprocess
+import subprocess  # nosec B404 – used only for `git rev-parse HEAD` with a hardcoded list
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -99,8 +99,27 @@ def _ensure_dirs(*paths: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)
 
 
+def _sanitise_for_json(obj: Any) -> Any:
+    """Recursively replace non-finite floats (NaN / ±Inf) with None.
+
+    Python's ``json.dumps`` serialises ``float('nan')`` as the literal token
+    ``NaN``, which is not valid JSON (RFC 8259).  Replacing with ``null``
+    (Python ``None``) preserves the key while producing valid output.
+    """
+    if isinstance(obj, dict):
+        return {k: _sanitise_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitise_for_json(v) for v in obj]
+    if isinstance(obj, float) and not np.isfinite(obj):
+        return None
+    return obj
+
+
 def _save_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    path.write_text(
+        json.dumps(_sanitise_for_json(payload), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
 
 
 def _sha256_file(path: Path) -> str:
@@ -142,7 +161,7 @@ def _source_tree_hash() -> str:
 
 def _git_commit_hash() -> tuple[str | None, str | None]:
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607 – hardcoded list, no user input
             ["git", "rev-parse", "HEAD"],
             cwd=PROJECT_ROOT,
             check=True,
@@ -399,6 +418,8 @@ def _fit_model_family(
     use_early_stopping: bool = False,
 ):
     if model_family == "gradient_boosting":
+        # sklearn GradientBoostingClassifier has no scale_pos_weight parameter;
+        # class imbalance is handled via the deviance loss function.
         return train_gb(X_train, y_train)
     if model_family == "xgboost":
         if use_early_stopping and X_val is not None and y_val is not None:
@@ -601,8 +622,15 @@ def run_training_pipeline(
     set_global_seed(RANDOM_STATE)
     _ensure_dirs(artifacts_dir, reports_dir)
 
+    logger.info("pipeline_start artifacts_dir=%s reports_dir=%s", artifacts_dir, reports_dir)
+
     df = load_raw_data(path=data_path)
     df, cleaning_issues = clean_raw(df)
+    logger.info(
+        "data_loaded rows=%d cleaning_issues=%d",
+        len(df),
+        sum(cleaning_issues.values()),
+    )
     validation = validate_raw(df)
     if not validation.passed:
         raise ValueError(f"Data validation failed: {validation.messages}")
@@ -617,8 +645,16 @@ def run_training_pipeline(
         df = df.head(max_rows).copy()
 
     train_df, val_df, test_df = split_time_aware(df)
+    # split_time_aware raises ValueError on empty partitions; this guard is a
+    # belt-and-suspenders check for unexpected empty DataFrames after splitting.
     if train_df.empty or val_df.empty or test_df.empty:
         raise ValueError("Time-aware split produced an empty partition.")
+    logger.info(
+        "data_split rows_train=%d rows_val=%d rows_test=%d",
+        len(train_df),
+        len(val_df),
+        len(test_df),
+    )
 
     X_train = train_df[feature_cols]
     y_train = train_df[TARGET_COL]
@@ -628,15 +664,29 @@ def run_training_pipeline(
     y_test = test_df[TARGET_COL]
 
     selection_df = pd.concat([train_df, val_df], axis=0, ignore_index=True)
+    logger.info("model_selection_start n_candidates=%d", len(CANDIDATE_MODEL_FAMILIES))
     selection_report = _select_model_family(selection_df, feature_cols)
     selected_model_family = str(selection_report["winner"])
+    logger.info(
+        "model_selection_complete winner=%s fallback=%s",
+        selected_model_family,
+        selection_report.get("fallback_reason"),
+    )
 
     preprocessor = build_preprocessor()
     X_train_t = preprocessor.fit_transform(X_train)
     X_val_t = preprocessor.transform(X_val)
     X_test_t = preprocessor.transform(X_test)
+    logger.info(
+        "preprocessing_complete n_features_raw=%d n_features_encoded=%d",
+        len(feature_cols),
+        X_train_t.shape[1],
+    )
 
     scale_pos_weight = _compute_scale_pos_weight(y_train)
+    logger.info(
+        "model_fit_start family=%s scale_pos_weight=%.3f", selected_model_family, scale_pos_weight
+    )
     model = _fit_model_family(
         selected_model_family,
         X_train_t,
@@ -647,9 +697,12 @@ def run_training_pipeline(
 
     val_probs_raw = model.predict_proba(X_val_t)[:, 1]
     test_probs_raw = model.predict_proba(X_test_t)[:, 1]
+    # NOTE: Calibrator is fit on val data; val calibration metrics are optimistic.
+    # Test-set metrics (computed on held-out test data below) are unbiased.
     calibrator = _fit_probability_calibrator(val_probs_raw, y_val)
     val_probs = np.clip(calibrator.predict(val_probs_raw), 0.0, 1.0)
     test_probs = np.clip(calibrator.predict(test_probs_raw), 0.0, 1.0)
+    logger.info("calibration_complete method=%s", CALIBRATION_METHOD)
     calibration_report = _calibration_metrics(
         y_val=y_val,
         y_test=y_test,
@@ -666,6 +719,11 @@ def run_training_pipeline(
         MIN_RECALL_FOR_HIGH_PRECISION,
     )
     max_f1 = select_max_f1_threshold(sweep_df)
+    logger.info(
+        "threshold_selection_complete max_f1=%.3f high_precision=%.3f",
+        float(max_f1["threshold"]),
+        float(high_precision["threshold"]),
+    )
     cost_summary, cost_sweep_df = compute_cost_threshold_policy(
         y_val.to_numpy().astype(int),
         val_probs,
@@ -802,7 +860,6 @@ def run_training_pipeline(
     _save_json(reports_dir / "cost_threshold_summary.json", cost_summary)
     _save_json(reports_dir / "late_window_metrics.json", late_window)
     _save_json(reports_dir / "hypothesis_summary.json", hypothesis)
-    cost_sweep_df.to_csv(reports_dir / "cost_threshold_sweep.csv", index=False)
     powerbi_export.to_csv(reports_dir / "test_predictions_for_powerbi.csv", index=False)
 
     pd.DataFrame(selection_report["folds"]).to_csv(

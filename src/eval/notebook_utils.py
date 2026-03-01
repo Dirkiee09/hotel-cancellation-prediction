@@ -103,9 +103,10 @@ def setup_plotting() -> dict[str, Any]:
     return {"palette": PALETTE, "fig_dir": fig_dir}
 
 
-def save_thesis_figure(fig: plt.Figure, fig_no: int, stem: str, fig_dir: Path) -> None:
+def save_thesis_figure(fig: plt.Figure, fig_no: int | str, stem: str, fig_dir: Path) -> None:
     """Save figure as PNG and PDF with thesis numbering."""
-    base = f"fig_{fig_no:02d}_{stem}"
+    fig_tag = f"{fig_no:02d}" if isinstance(fig_no, int) else str(fig_no)
+    base = f"fig_{fig_tag}_{stem}"
     for ext in ("png", "pdf"):
         fig.savefig(fig_dir / f"{base}.{ext}", bbox_inches="tight")
 
@@ -833,33 +834,38 @@ def plot_monthly_trend(ctx: dict[str, Any], fig_dir: Path, fig_no: int = 1) -> N
 
 
 def plot_model_dumbbell(ctx: dict[str, Any], fig_dir: Path, fig_no: int = 2) -> None:
-    candidates = pd.DataFrame(ctx["selection_summary"]["candidates"]).copy()
+    # support both load_main_context() (key="model_selection") and load_analysis_context() (key="selection_summary")
+    _sel = ctx.get("selection_summary") or ctx.get("model_selection", {})
+    candidates = pd.DataFrame(_sel.get("candidates", [])).copy()
+    if candidates.empty or "rolling_roc_auc_mean" not in candidates.columns:
+        print("plot_model_dumbbell: no candidate data available — skipping figure.")
+        return
     candidates = candidates.sort_values("rolling_roc_auc_mean", ascending=True).reset_index(
         drop=True
     )
     candidates["label"] = candidates["model_family"].str.replace("_", " ").str.title()
     fig, ax = plt.subplots(figsize=(10.5, 5.5))
     y = np.arange(len(candidates))
-    for i, row in candidates.iterrows():
+    for pos, (_, row) in enumerate(candidates.iterrows()):
         ax.plot(
             [row["rolling_pr_auc_mean"], row["rolling_roc_auc_mean"]],
-            [i, i],
+            [pos, pos],
             color="#9e9e9e",
             linewidth=2.2,
             alpha=0.9,
         )
-        ax.scatter(row["rolling_pr_auc_mean"], i, color=PALETTE["pr"], s=90, zorder=3)
-        ax.scatter(row["rolling_roc_auc_mean"], i, color=PALETTE["roc"], s=90, zorder=3)
+        ax.scatter(row["rolling_pr_auc_mean"], pos, color=PALETTE["pr"], s=90, zorder=3)
+        ax.scatter(row["rolling_roc_auc_mean"], pos, color=PALETTE["roc"], s=90, zorder=3)
         ax.text(
             row["rolling_pr_auc_mean"] - 0.0015,
-            i + 0.12,
+            pos + 0.12,
             f"PR {row['rolling_pr_auc_mean']:.3f}",
             ha="right",
             fontsize=10,
         )
         ax.text(
             row["rolling_roc_auc_mean"] + 0.0015,
-            i + 0.12,
+            pos + 0.12,
             f"ROC {row['rolling_roc_auc_mean']:.3f}",
             ha="left",
             fontsize=10,
@@ -1057,10 +1063,22 @@ def grouped_permutation_stats(
 
     try:
         X_test_t = preprocessor.transform(ctx["X_test"])
-        feature_names = preprocessor.get_feature_names_out()
+        try:
+            feature_names = preprocessor.get_feature_names_out()
+        except AttributeError:
+            ct = preprocessor.named_steps["encode"]
+            _names: list[str] = []
+            for _tname, _trans, _ in ct.transformers_:
+                try:
+                    _out = list(_trans.get_feature_names_out())
+                except AttributeError:
+                    _out = list(_trans.named_steps["onehot"].get_feature_names_out())
+                _names.extend(f"{_tname}__{n}" for n in _out)
+            feature_names = _names
+        X_test_t_named = pd.DataFrame(X_test_t, columns=feature_names)
         perm = permutation_importance(
             model,
-            X_test_t,
+            X_test_t_named,
             ctx["y_test_np"],
             n_repeats=n_repeats,
             random_state=42,
@@ -1078,7 +1096,7 @@ def grouped_permutation_stats(
             return name
 
         group_map = {c: feature_group(c) for c in repeat_df.columns}
-        grouped_repeat = repeat_df.T.groupby(group_map).sum().T
+        grouped_repeat = repeat_df.T.groupby(group_map).sum().T  # type: ignore[arg-type]
     except Exception:
         # Fallback for preprocessors that do not expose transformed feature names.
         # In this mode, importance is already at original feature granularity.
@@ -1250,3 +1268,403 @@ def plot_cv_violin_strip(
     save_thesis_figure(fig, fig_no, "cv_violin_strip_comparison", fig_dir)
     plt.show()
     return cv_compare
+
+
+# ---------------------------------------------------------------------------
+# SHAP & Segment utilities (used by Notebook 05)
+# ---------------------------------------------------------------------------
+
+
+def _feature_group_name(name: str) -> str:
+    """Map a transformed feature name back to its original feature group."""
+    if name.startswith("categorical__"):
+        raw = name.split("categorical__", 1)[1]
+        return raw.split("_", 1)[0]
+    if name.startswith("numeric__"):
+        return name.split("numeric__", 1)[1]
+    return name
+
+
+def load_shap_context(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Compute SHAP values for the champion model on the test set.
+
+    Returns a dict with keys:
+      - shap_values      : np.ndarray shape (n_test, n_features)
+      - X_test_t_named   : pd.DataFrame with transformed feature names
+      - feature_names    : list[str] of 94 transformed feature names
+      - feature_importance_df : pd.DataFrame with mean_abs_shap + group
+      - expected_value   : float baseline (log-odds of mean prediction)
+    """
+    try:
+        import shap
+    except ImportError as exc:
+        raise ImportError("pip install shap to use load_shap_context()") from exc
+
+    preprocessor = ctx["model_pipeline"].named_steps["preprocessor"]
+    model = ctx["model_pipeline"].named_steps.get("model") or ctx["model_pipeline"].named_steps.get(
+        "classifier"
+    )
+    if model is None:
+        raise KeyError("Pipeline must have a step named 'model' or 'classifier'.")
+
+    X_test_t = preprocessor.transform(ctx["X_test"])
+    try:
+        feature_names = list(preprocessor.get_feature_names_out())
+    except AttributeError:
+        # Fallback for artifacts built before FunctionTransformer had feature_names_out="one-to-one".
+        # Navigate past the blocking to_str step by reading OHE and imputer outputs directly.
+        ct = preprocessor.named_steps["encode"]  # ColumnTransformer
+        _names: list[str] = []
+        for _tname, _trans, _ in ct.transformers_:
+            try:
+                _out = list(_trans.get_feature_names_out())
+            except AttributeError:
+                # cat_pipeline blocked by FunctionTransformer — bypass via OHE step
+                _out = list(_trans.named_steps["onehot"].get_feature_names_out())
+            _names.extend(f"{_tname}__{n}" for n in _out)
+        feature_names = _names
+    X_test_t_named = pd.DataFrame(X_test_t, columns=feature_names)
+
+    explainer = shap.TreeExplainer(model)
+    raw = explainer.shap_values(X_test_t_named)
+    # For binary classifiers some backends return list[pos_class, neg_class]
+    shap_values = raw[1] if isinstance(raw, list) and len(raw) == 2 else raw
+
+    mean_abs = np.abs(shap_values).mean(axis=0)
+    groups = [_feature_group_name(f) for f in feature_names]
+    importance_df = (
+        pd.DataFrame({"feature_name": feature_names, "group": groups, "mean_abs_shap": mean_abs})
+        .groupby("group", as_index=False)["mean_abs_shap"]
+        .sum()
+        .sort_values("mean_abs_shap", ascending=False)  # type: ignore[call-overload]
+        .reset_index(drop=True)
+    )
+
+    expected_value = float(
+        explainer.expected_value[1]
+        if isinstance(explainer.expected_value, (list, np.ndarray))
+        else explainer.expected_value
+    )
+
+    return {
+        "shap_values": shap_values,
+        "X_test_t_named": X_test_t_named,
+        "feature_names": feature_names,
+        "feature_importance_df": importance_df,
+        "expected_value": expected_value,
+        "explainer": explainer,
+    }
+
+
+def plot_shap_bar(
+    shap_ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no: int = 13,
+    top_k: int = 20,
+) -> None:
+    """Horizontal bar chart: top-k feature groups by mean |SHAP value|."""
+    importance_df = (
+        shap_ctx["feature_importance_df"].head(top_k).sort_values("mean_abs_shap", ascending=True)
+    )
+    fig, ax = plt.subplots(figsize=(10, max(5, top_k * 0.42)))
+    bars = ax.barh(
+        importance_df["group"],
+        importance_df["mean_abs_shap"],
+        color="#4e79a7",
+        alpha=0.85,
+        edgecolor="black",
+        linewidth=0.4,
+    )
+    for bar, val in zip(bars, importance_df["mean_abs_shap"]):
+        ax.text(
+            bar.get_width() + importance_df["mean_abs_shap"].max() * 0.01,
+            bar.get_y() + bar.get_height() / 2,
+            f"{val:.4f}",
+            va="center",
+            fontsize=9,
+        )
+    ax.set_xlabel("Mean |SHAP value| (impact on model output)")
+    ax.set_title(f"Figure {fig_no}. SHAP Feature Importance — Top {top_k} Groups")
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "shap_feature_importance_bar", fig_dir)
+    plt.show()
+
+
+def plot_shap_beeswarm(
+    shap_ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no: int = 14,
+    top_k: int = 15,
+    sample_cap: int = 2000,
+) -> None:
+    """Beeswarm-style SHAP summary: direction + magnitude per feature group."""
+    shap_values = shap_ctx["shap_values"]
+    feature_names = shap_ctx["feature_names"]
+    X_test_t = shap_ctx["X_test_t_named"].to_numpy()
+
+    importance_df = shap_ctx["feature_importance_df"]
+    top_groups = importance_df.head(top_k)["group"].tolist()
+
+    # Aggregate SHAP values to original feature groups
+    group_shap: dict[str, np.ndarray] = {}
+    group_feat: dict[str, np.ndarray] = {}
+    for i, fname in enumerate(feature_names):
+        g = _feature_group_name(fname)
+        if g not in top_groups:
+            continue
+        if g not in group_shap:
+            group_shap[g] = shap_values[:, i].copy()
+            group_feat[g] = X_test_t[:, i].copy()
+        else:
+            group_shap[g] += shap_values[:, i]
+
+    # Subsample for plotting performance
+    n = min(sample_cap, len(shap_values))
+    idx = np.random.default_rng(42).choice(len(shap_values), size=n, replace=False)
+
+    fig, ax = plt.subplots(figsize=(11, max(6, top_k * 0.52)))
+    y_positions = {g: i for i, g in enumerate(reversed(top_groups))}
+
+    for group in top_groups:
+        if group not in group_shap:
+            continue
+        sv = group_shap[group][idx]
+        fv = group_feat[group][idx]
+        y = y_positions[group]
+        # Normalize feature values to [0, 1] for coloring
+        fv_norm = (fv - fv.min()) / (fv.max() - fv.min() + 1e-9)
+        ax.scatter(
+            sv,
+            np.full_like(sv, y) + np.random.default_rng(42).uniform(-0.25, 0.25, len(sv)),
+            c=fv_norm,
+            cmap="coolwarm",
+            alpha=0.35,
+            s=8,
+            linewidths=0,
+        )
+
+    ax.set_yticks(list(y_positions.values()))
+    ax.set_yticklabels(list(y_positions.keys()))
+    ax.axvline(0, color="black", linewidth=0.9)
+    ax.set_xlabel("SHAP value (impact on model output)")
+    ax.set_title(f"Figure {fig_no}. SHAP Beeswarm — Direction & Magnitude")
+    # Colorbar legend
+    sm = plt.cm.ScalarMappable(cmap="coolwarm", norm=plt.Normalize(0, 1))
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, pad=0.01)
+    cbar.set_label("Feature value (low → high)", fontsize=9)
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "shap_beeswarm", fig_dir)
+    plt.show()
+
+
+def plot_segment_heatmap(
+    fig_dir: Path,
+    fig_no: int = 15,
+    policy: str = "max_f1",
+) -> pd.DataFrame:
+    """Load segment_metrics.csv and render a metric heatmap per dimension."""
+    seg_path = project_root() / "reports" / "segment_metrics.csv"
+    if not seg_path.exists():
+        raise FileNotFoundError("segment_metrics.csv not found. Run `make train` first.")
+    seg = pd.read_csv(seg_path)
+    seg = seg[seg["policy"] == policy].copy()
+
+    metrics = ["roc_auc", "pr_auc", "f1", "precision", "recall"]
+    dimensions = seg["dimension"].unique().tolist()
+
+    n_dims = len(dimensions)
+    fig, axes = plt.subplots(1, n_dims, figsize=(5.5 * n_dims, 7), squeeze=False)
+
+    for ax, dim in zip(axes[0], dimensions):
+        sub = seg[seg["dimension"] == dim].copy()
+        sub = sub.sort_values("roc_auc", ascending=False).reset_index(drop=True)
+        labels = sub.apply(
+            lambda r: f"{r['segment']}\n(n={r['n_rows']:,})" + (" ⚠" if not r["gated"] else ""),
+            axis=1,
+        )
+        heat = sub[metrics].copy()
+        heat.index = labels
+        sns.heatmap(
+            heat,
+            annot=True,
+            fmt=".2f",
+            cmap="YlGnBu",
+            vmin=0.4,
+            vmax=1.0,
+            ax=ax,
+            cbar=False,
+        )
+        ax.set_title(f"{dim.replace('_', ' ').title()}", fontsize=12)
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+
+    fig.suptitle(
+        f"Figure {fig_no}. Segment Performance Heatmap ({policy} policy)\n"
+        "⚠ = segment did not meet quality gates (treat metrics with caution)",
+        fontsize=12,
+        fontweight="bold",
+        y=1.01,
+    )
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "segment_performance_heatmap", fig_dir)
+    plt.show()
+    return seg
+
+
+# ---------------------------------------------------------------------------
+# Thesis baseline comparison helpers
+# ---------------------------------------------------------------------------
+
+_BASELINE_DISPLAY_NAMES: dict[str, str] = {
+    "dummy_most_frequent": "Dummy (Most Frequent)",
+    "naive_bayes": "Naive Bayes",
+    "logistic_regression": "Logistic Regression",
+    "decision_tree_depth5": "Decision Tree (depth≤5)",
+    "champion": "LightGBM Champion",
+}
+
+
+def plot_baseline_comparison(
+    fig_dir: Path,
+    fig_no: str | int,
+    thesis_dir: Path | None = None,
+) -> pd.DataFrame:
+    """Bar chart comparing ROC-AUC and PR-AUC across all baselines vs champion.
+
+    Loads ``reports/thesis/baseline_comparison.json`` (written by thesis.py).
+    Returns the comparison DataFrame for display.
+    """
+    from src.config import REPORTS_DIR
+
+    if thesis_dir is None:
+        thesis_dir = REPORTS_DIR / "thesis"
+
+    baseline_path = thesis_dir / "baseline_comparison.json"
+    if not baseline_path.exists():
+        raise FileNotFoundError(f"{baseline_path} not found — run `make thesis-analysis` first.")
+
+    raw: dict[str, Any] = json.loads(baseline_path.read_text(encoding="utf-8"))
+
+    # Extract only the per-model metric dicts (skip paired-bootstrap sub-keys)
+    metric_keys = [k for k in raw if not k.startswith("champion_vs_")]
+    rows = []
+    for key in metric_keys:
+        val = raw[key]
+        if isinstance(val, dict) and "roc_auc" in val:
+            rows.append(
+                {
+                    "model": _BASELINE_DISPLAY_NAMES.get(key, key),
+                    "ROC-AUC": float(val["roc_auc"]),
+                    "PR-AUC": float(val["pr_auc"]),
+                }
+            )
+
+    df = pd.DataFrame(rows)
+    # Sort by PR-AUC descending so champion is on top
+    df = df.sort_values("PR-AUC", ascending=False).reset_index(drop=True)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    for ax, metric in zip(axes, ["ROC-AUC", "PR-AUC"]):
+        colors = ["#e15759" if m == "LightGBM Champion" else "#76b7b2" for m in df["model"]]
+        bars = ax.barh(df["model"], df[metric], color=colors, edgecolor="white")
+        ax.bar_label(bars, fmt="%.4f", padding=4, fontsize=9)
+        ax.set_xlim(0, 1.05)
+        ax.set_xlabel(metric, fontsize=11)
+        ax.set_title(metric, fontsize=12, fontweight="bold")
+        ax.invert_yaxis()
+        ax.axvline(0.5, color="gray", linestyle="--", linewidth=0.8, label="Chance (0.5)")
+        ax.legend(fontsize=8)
+
+    fig.suptitle(
+        f"Figure {fig_no}. Baseline Comparison — Test-Set Performance",
+        fontsize=13,
+        fontweight="bold",
+    )
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "baseline_comparison", fig_dir)
+    plt.show()
+    return df
+
+
+def plot_thesis_dt(
+    fig_dir: Path,
+    fig_no: str | int,
+    artifacts_dir: Path | None = None,
+    feature_names: list[str] | None = None,
+    class_names: list[str] | None = None,
+    max_display_depth: int = 4,
+) -> Any:
+    """Visualise the pruned Decision Tree baseline saved by thesis analysis.
+
+    Loads ``artifacts/thesis_baseline_dt.pkl`` and renders the tree using
+    sklearn's ``plot_tree``.  The tree is deliberately shallow (max_depth=5)
+    so every decision path is readable.
+
+    Parameters
+    ----------
+    fig_dir:
+        Directory to save the figure.
+    fig_no:
+        Figure number prefix for the filename.
+    artifacts_dir:
+        Override the default ``ARTIFACTS_DIR`` location.
+    feature_names:
+        Post-encoding feature names for the x-axis labels.  If None, loads
+        them from the preprocessor stored inside ``artifacts/best_model.pkl``.
+    class_names:
+        Class labels, default ``["Not Cancelled", "Cancelled"]``.
+    max_display_depth:
+        Depth limit for the plot (independent of the model's max_depth).
+    """
+    from sklearn.tree import plot_tree
+
+    from src.config import ARTIFACTS_DIR as _DEFAULT_ARTIFACTS
+
+    if artifacts_dir is None:
+        artifacts_dir = _DEFAULT_ARTIFACTS
+
+    dt_path = artifacts_dir / "thesis_baseline_dt.pkl"
+    if not dt_path.exists():
+        raise FileNotFoundError(f"{dt_path} not found — run `make thesis-analysis` first.")
+    dt = joblib.load(dt_path)
+
+    # Resolve feature names from the champion pipeline's preprocessor
+    if feature_names is None:
+        pipeline_path = artifacts_dir / "best_model.pkl"
+        if pipeline_path.exists():
+            pipeline = joblib.load(pipeline_path)
+            prep = pipeline.named_steps.get("preprocessor")
+            if prep is not None:
+                try:
+                    feature_names = list(prep.get_feature_names_out())
+                except Exception:
+                    feature_names = None
+
+    if class_names is None:
+        class_names = ["Not Cancelled", "Cancelled"]
+
+    fig, ax = plt.subplots(figsize=(20, 10))
+    plot_tree(
+        dt,
+        feature_names=feature_names,
+        class_names=class_names,
+        filled=True,
+        rounded=True,
+        max_depth=max_display_depth,
+        fontsize=7,
+        ax=ax,
+        impurity=False,
+        precision=3,
+    )
+    ax.set_title(
+        f"Figure {fig_no}. Decision Tree Baseline (max_depth=5, min_samples_leaf=50)\n"
+        "Pruned for interpretability — each leaf shows predicted class and sample count.",
+        fontsize=11,
+        fontweight="bold",
+        pad=12,
+    )
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "decision_tree_baseline", fig_dir)
+    plt.show()
+    return dt
