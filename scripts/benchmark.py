@@ -4,15 +4,9 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
-from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from src.eval.benchmark import run_model_benchmark  # noqa: E402
-from src.utils import configure_logging  # noqa: E402
+from src.eval.benchmark import run_model_benchmark
+from src.utils import configure_logging
 
 logger = logging.getLogger(__name__)
 

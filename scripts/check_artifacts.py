@@ -6,13 +6,8 @@ import argparse
 import hashlib
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import Any
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import ARTIFACTS_DIR, BOOKING_TIME_FEATURES, LEAKAGE_COLS, MODEL_SELECTION_POLICY
 from src.serving.inference import load_artifacts, predict_proba

@@ -45,7 +45,7 @@ NUMERIC_COLS = sorted([col for col in BOOKING_TIME_FEATURES if col not in CATEGO
 NULL_LIKE_REPLACEMENTS: dict[str, Any] = {"NULL": pd.NA, "null": pd.NA, "": pd.NA, " ": pd.NA}
 
 
-def cast_to_str(values):
+def cast_to_str(values: Any) -> Any:
     return values.astype(str)
 
 
@@ -100,10 +100,13 @@ def add_derived_booking_features(df: pd.DataFrame) -> pd.DataFrame:
 
     out["total_stay"] = weekend + week
     out["total_guests"] = adults + children + babies
+    # When total_guests == 0 (data quality issue; schema enforces adults >= 1),
+    # denominator defaults to 1.0, so adr_per_person == adr.
     guests_denom = out["total_guests"].where(out["total_guests"] > 0, 1.0)
     out["adr_per_person"] = adr / guests_denom
     out["is_weekend_heavy"] = (weekend > week).astype(int)
     out["revenue_at_risk"] = adr * out["total_stay"]
+    # NaN lead_time -> fillna(False): unknown lead time is conservatively treated as "not late window"
     out["is_late_window"] = (lead_time <= LATE_WINDOW_MAX_LEAD_DAYS).fillna(False).astype(int)
 
     if "company" in out.columns:
@@ -157,11 +160,29 @@ def split_time_ordered(
     train_ratio: float,
     val_ratio: float,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Split data chronologically into train/validation/test partitions."""
+    """Split data chronologically into train/validation/test partitions.
+
+    Data is sorted by arrival date (ascending) before splitting.  The splits
+    are non-overlapping and contiguous: train comes first, then validation,
+    then test.
+
+    Raises
+    ------
+    ValueError
+        If any resulting partition is empty.  This can happen when the dataset
+        is too small for the configured split ratios.
+    """
     ordered = sort_by_arrival_date(df)
     n = len(ordered)
     train_end = int(n * train_ratio)
     val_end = train_end + int(n * val_ratio)
+
+    if train_end == 0 or val_end <= train_end or val_end >= n:
+        raise ValueError(
+            f"Time-aware split produced an empty partition: "
+            f"n={n}, train_end={train_end}, val_end={val_end}. "
+            f"Dataset is too small for train_ratio={train_ratio}, val_ratio={val_ratio}."
+        )
 
     train_df = ordered.iloc[:train_end].drop(columns=["_arrival_date"])
     val_df = ordered.iloc[train_end:val_end].drop(columns=["_arrival_date"])
@@ -182,7 +203,10 @@ def build_preprocessor() -> Pipeline:
     cat_pipeline = Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="constant", fill_value="UNKNOWN")),
-            ("to_str", FunctionTransformer(cast_to_str, validate=False)),
+            (
+                "to_str",
+                FunctionTransformer(cast_to_str, validate=False, feature_names_out="one-to-one"),
+            ),
             ("onehot", make_onehot_encoder()),
         ]
     )

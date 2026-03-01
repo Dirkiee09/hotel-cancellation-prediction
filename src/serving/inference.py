@@ -124,6 +124,12 @@ def _to_dataframe(records: Any) -> pd.DataFrame:
 
 def _prepare_features(df: pd.DataFrame, feature_columns: list[str]) -> pd.DataFrame:
     engineered = ensure_model_features(df)
+    missing_cols = [
+        col for col in feature_columns
+        if col not in engineered.columns and col not in df.columns
+    ]
+    if missing_cols:
+        logger.warning("Feature columns absent after engineering (NaN-filled): %s", missing_cols)
     for col in feature_columns:
         if col not in engineered.columns:
             engineered[col] = df[col] if col in df.columns else None
@@ -136,6 +142,11 @@ def predict_proba(records: Any, artifacts: ModelArtifacts) -> tuple[list[float],
     if artifacts.is_pipeline:
         probs = artifacts.model.predict_proba(df)[:, 1]
     else:
+        if artifacts.preprocessor is None:
+            raise RuntimeError(
+                "Model artifact is not a sklearn Pipeline but no separate preprocessor "
+                "was found. Re-run `python scripts/train.py` to regenerate artifacts."
+            )
         X = artifacts.preprocessor.transform(df)
         probs = artifacts.model.predict_proba(X)[:, 1]
     if artifacts.calibrator is not None:

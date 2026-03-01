@@ -2,12 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY requirements.txt pyproject.toml /app/
+COPY src/ /app/src/
+RUN pip install --no-cache-dir -e . -r /app/requirements.txt
 
 COPY . /app
-
-ENV PYTHONPATH=/app
 
 EXPOSE 8000
 

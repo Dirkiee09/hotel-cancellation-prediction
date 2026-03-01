@@ -6,26 +6,48 @@ End-to-end, reproducible ML pipeline for hotel booking cancellation prediction w
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e . -r requirements.txt
 ```
 
+## Quick Start
+```bash
+make train          # Train model end-to-end
+make eval           # Post-training verification
+make artifact-check # Validate artifacts
+make sync-check     # Verify threshold consistency
+make full-pipeline  # All of the above in one command
+```
+
+Use `make help` to see all available targets.
+
 ## Project Entry Points
-- Training: `python scripts/train.py`
-- Multi-model benchmark tables: `python scripts/benchmark.py`
-- Reproducibility check: `python scripts/repro.py --max-rows 5000`
-- Model verification report: `python scripts/verify.py`
-- Artifact/serving consistency check: `python scripts/check_artifacts.py`
-- Serving API + UI: `python -m uvicorn src.app.main:app --host 0.0.0.0 --port 8000`
-- Local server helper (PowerShell): `powershell -File scripts/server.ps1`
+
+| Command | Purpose |
+|---------|---------|
+| `make train` | Full training pipeline |
+| `make train DATA_PATH=path/to/data.csv` | Train on a different CSV |
+| `make train MAX_ROWS=10000` | Fast smoke-train (10k rows) |
+| `make eval` | Post-training verification report |
+| `make benchmark` | Generate 16 benchmark CSV tables |
+| `make full-pipeline` | train → eval → benchmark → artifact-check → sync-check |
+| `make run-notebooks` | Execute all 8 notebooks headlessly |
+| `make fairness-check` | Hyperparameter fairness audit |
+| `uvicorn src.app.main:app --host 0.0.0.0 --port 8000` | Start API + Gradio UI |
 
 ## Data
 - Raw dataset: `data/hotel_bookings.csv`
 - Target: `is_canceled`
 - Training uses booking-time features only (`src/config.py`), with explicit leakage exclusion for post-outcome fields.
 
+## Navigation
+See `PROJECT_MAP.md` for a full guide to folders, files, and "where to edit" for each common task.
+See `notebooks/README.md` for notebook purposes, run order, and required artifacts.
+
 ## Reproducible Training
 ```bash
-python scripts/train.py
+make train
+# or with a custom dataset:
+make train DATA_PATH=data/new_export.csv
 ```
 Generated outputs:
 - `artifacts/best_model.pkl`
@@ -34,59 +56,39 @@ Generated outputs:
 - `artifacts/thresholds.json`
 - `artifacts/model_metadata.json`
 - `artifacts/hashes.json`
-- `artifacts/threshold_sweep.csv`
-- `reports/metrics.json`
-- `reports/calibration_metrics.json`
-- `reports/segment_metrics.json`
-- `reports/segment_metrics.csv`
-- `reports/model_selection_summary.json`
-- `reports/model_selection_rolling.csv`
-- `reports/confusion_matrix_*.csv`
-- `reports/threshold_summary.json`
-- `reports/benchmarks/*.csv` and `reports/benchmarks/*.md` (model comparison tables)
 
 Determinism controls:
-- Central seed utility: `src/utils/reproducibility.py`
-- Fixed random seed in config (`RANDOM_STATE`)
-- Time-aware split (`split_time_aware`) for train/val/test
-- Deterministic champion/challenger selection (Gradient Boosting vs XGBoost) on rolling time splits
-- Deterministic model selection policy tag in metadata: `MODEL_SELECTION_POLICY`
-- Persisted probability calibration artifact applied during serving (`probability_calibrator.pkl`)
-- Artifact/data/source hashes persisted in metadata and `artifacts/hashes.json`
+- Fixed random seed (`RANDOM_STATE = 42` in `src/config.py`)
+- Time-aware 80/10/10 chronological split
+- Rolling-origin champion selection (LightGBM vs XGBoost vs GradientBoosting)
+- Isotonic calibration fitted on val set only
+- SHA-256 artifact hashes persisted in `artifacts/hashes.json`
+- Git commit SHA embedded in `artifacts/model_metadata.json`
 
 ## Serving
-Artifacts must exist before predicting.
+Artifacts must exist before predicting (run `make train` first).
 
 Endpoints:
 - `GET /` liveness
-- `GET /healthz` readiness (artifact load)
+- `GET /healthz` readiness (checks artifacts loaded)
 - `POST /predict` prediction API
 - `GET /ui` Gradio interface
 
 ## Quality Gates
-Run locally:
 ```bash
-python -m ruff check .
-python -m ruff format --check .
-python -m mypy
-python -m pytest
-python scripts/check_metrics.py  # global + segment-level gates
-python -m bandit -q -r src scripts -s B101 -x scripts/test_*.py,tests
-python -m pip_audit -r requirements.txt --no-deps --disable-pip
+make lint typecheck test    # ruff + mypy + pytest (≥80% coverage)
+make security deps-audit    # bandit + pip-audit
+make metrics-gate           # ROC-AUC ≥ 0.84, PR-AUC ≥ 0.74, F1 ≥ 0.70
+make sync-check             # thresholds consistent across artifacts and reports
 ```
 
-Pre-commit:
+Pre-commit hooks:
 ```bash
 pre-commit install
 pre-commit run --all-files
 ```
 
-CI runs the same checks in `.github/workflows/ci.yml`.
-
-## Model Governance
-- Model card: `MODEL_CARD.md`
-- Reproducibility check module: `src/eval/repro.py`
-- Artifact consistency check script: `scripts/check_artifacts.py`
+CI runs all of the above via `.github/workflows/ci.yml`.
 
 ## Docker
 ```bash
@@ -95,4 +97,4 @@ docker run -p 8000:8000 hotel-cancellation-app
 ```
 
 ## Generated Files
-Artifacts and reports are generated outputs and ignored by default via `.gitignore`.
+Artifacts and reports are generated outputs and git-ignored by default.

@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
+import argparse
 import logging
-import sys
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.pipelines import run_training_pipeline
 from src.utils import configure_logging
@@ -17,8 +12,28 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Train the hotel booking cancellation model end-to-end.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--data-path",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Path to the hotel bookings CSV. Defaults to data/hotel_bookings.csv.",
+    )
+    parser.add_argument(
+        "--max-rows",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Limit training to the first N rows (useful for fast smoke-tests).",
+    )
+    args = parser.parse_args()
+
     configure_logging()
-    outputs = run_training_pipeline()
+    outputs = run_training_pipeline(data_path=args.data_path, max_rows=args.max_rows)
     logger.info(
         "pipeline_finished model_path=%s metrics_file=%s",
         outputs.model_path,

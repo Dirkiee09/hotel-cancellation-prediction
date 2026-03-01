@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, status
 from src.app.schemas import BookingRequest, ModelInfoResponse, PredictionResponse
 from src.config import MODEL_SELECTION_POLICY, RISK_TIER_HIGH_THRESHOLD, RISK_TIER_MEDIUM_THRESHOLD
 from src.serving.inference import ModelArtifacts, load_artifacts, predict_proba
+from src.utils.thresholds import resolve_thresholds
 
 from .ui import BACKGROUND_CSS, build_ui
 
@@ -46,45 +47,6 @@ def readiness():
     return {"status": "ok", "service": "ready"}
 
 
-def _resolve_thresholds(
-    raw_thresholds: dict[str, object],
-) -> tuple[dict[str, float], dict[str, str], bool, list[str]]:
-    alerts: list[str] = []
-    threshold_sources: dict[str, str] = {
-        "high_precision": "artifact",
-        "max_f1": "artifact",
-        "cost_sensitive": "artifact",
-    }
-
-    def _threshold_or_none(payload: object) -> float | None:
-        if isinstance(payload, dict):
-            value = payload.get("threshold")
-            if isinstance(value, int | float):
-                return float(value)
-        return None
-
-    thr_hp = _threshold_or_none(raw_thresholds.get("high_precision")) or 0.5
-    thr_f1 = _threshold_or_none(raw_thresholds.get("max_f1")) or 0.5
-
-    cost_payload = raw_thresholds.get("cost_sensitive")
-    cost_threshold = _threshold_or_none(cost_payload)
-    cost_missing = cost_threshold is None
-    if cost_missing:
-        threshold_sources["cost_sensitive"] = "max_f1_fallback"
-        alerts.append("cost_sensitive threshold missing; using max_f1 fallback.")
-        thr_cost = thr_f1
-    else:
-        assert cost_threshold is not None
-        thr_cost = cost_threshold
-
-    thresholds = {
-        "high_precision": thr_hp,
-        "max_f1": thr_f1,
-        "cost_sensitive": thr_cost,
-    }
-    return thresholds, threshold_sources, cost_missing, alerts
-
-
 @app.get("/model-info", response_model=ModelInfoResponse)
 def model_info():
     try:
@@ -95,7 +57,7 @@ def model_info():
             detail=str(exc),
         ) from exc
 
-    thresholds, threshold_sources, _, alerts = _resolve_thresholds(artifacts.thresholds or {})
+    thresholds, threshold_sources, _, alerts = resolve_thresholds(artifacts.thresholds or {})
     metadata = artifacts.metadata or {}
     lineage_bundle_sha256 = metadata.get("lineage", {}).get("artifacts", {}).get("bundle_sha256")
     model_type = str(metadata.get("model_type") or "unknown")
@@ -133,9 +95,15 @@ def predict(payload: BookingRequest):
             detail=str(exc),
         ) from exc
 
-    probs, _ = predict_proba(payload.model_dump(exclude={"arrival_date"}), artifacts)
+    try:
+        probs, _ = predict_proba(payload.model_dump(exclude={"arrival_date"}), artifacts)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Prediction failed: {exc}",
+        ) from exc
     prob = float(probs[0])
-    thresholds, threshold_sources, cost_fallback, alerts = _resolve_thresholds(
+    thresholds, threshold_sources, cost_fallback, alerts = resolve_thresholds(
         artifacts.thresholds or {}
     )
     thr_hp = thresholds["high_precision"]

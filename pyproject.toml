@@ -8,6 +8,10 @@ version = "0.1.0"
 description = "End-to-end hotel booking cancellation modeling and serving."
 requires-python = ">=3.11"
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -15,10 +19,8 @@ exclude = [".venv", "notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+# E501 ignored because ruff format enforces line-length; lint rule is redundant
 ignore = ["E501"]
-
-[tool.ruff.lint.per-file-ignores]
-"scripts/*.py" = ["E402"]
 
 [tool.ruff.format]
 line-ending = "lf"
@@ -66,12 +68,23 @@ ignore_errors = true
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-q --cov=src --cov-report=term-missing --cov-fail-under=80"
+filterwarnings = [
+  # lbfgs legitimately struggles on small test datasets (~1k rows) with 200+ OHE
+  # features; production training uses 95k rows where it converges without issue.
+  "ignore::sklearn.exceptions.ConvergenceWarning",
+  # sklearn/LightGBM internal: LightGBM fitted inside a Pipeline receives a numpy
+  # array from ColumnTransformer (correct behaviour); the check is a false positive.
+  "ignore:X does not have valid feature names:UserWarning",
+]
 
 [tool.coverage.run]
 source = ["src"]
 omit = [
   "src/app/ui.py",
-  "src/eval/*",
+  "src/eval/verify.py",
+  "src/eval/thesis.py",
+  "src/eval/repro.py",
+  "src/eval/notebook_utils.py",
   "src/models/tuning.py",
 ]
 

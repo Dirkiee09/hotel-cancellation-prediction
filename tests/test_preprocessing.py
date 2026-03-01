@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from src.config import BOOKING_TIME_FEATURES
-from src.features.build import build_preprocessor
+from src.features.build import build_preprocessor, ensure_model_features
 
 
 def test_preprocessor_handles_missing_values_and_schema() -> None:
@@ -66,7 +66,9 @@ def test_preprocessor_handles_missing_values_and_schema() -> None:
             "total_of_special_requests": 2,
         },
     ]
-    frame = pd.DataFrame(rows, columns=BOOKING_TIME_FEATURES)
+    # ensure_model_features derives computed columns (total_stay, month_sin, etc.)
+    # from raw booking fields so the numeric imputer has observed values to work with.
+    frame = ensure_model_features(pd.DataFrame(rows))
     preprocessor = build_preprocessor()
     transformed = preprocessor.fit_transform(frame)
 

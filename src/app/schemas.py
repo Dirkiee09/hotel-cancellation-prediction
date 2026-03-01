@@ -7,6 +7,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from src.config import ADR_MAX_VALID
+
 MONTHS = [
     "January",
     "February",
@@ -21,7 +23,9 @@ MONTHS = [
     "November",
     "December",
 ]
-_MONTH_LOOKUP = {month.lower(): month for month in MONTHS}
+_MONTH_LOOKUP = {month.lower(): month for month in MONTHS} | {
+    month[:3].lower(): month for month in MONTHS
+}
 
 
 class BookingRequest(BaseModel):
@@ -54,7 +58,7 @@ class BookingRequest(BaseModel):
     agent: Optional[str] = None
     company: Optional[str] = None
     customer_type: Optional[str] = None
-    adr: Optional[float] = Field(default=None, ge=0, le=2000)
+    adr: Optional[float] = Field(default=None, ge=0, le=ADR_MAX_VALID)
     required_car_parking_spaces: Optional[int] = Field(default=None, ge=0, le=10)
     total_of_special_requests: Optional[int] = Field(default=None, ge=0, le=10)
 

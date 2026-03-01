@@ -63,7 +63,7 @@ def expected_calibration_error(y_true: np.ndarray, y_prob: np.ndarray, bins: int
     y_prob = np.asarray(y_prob)
     total = len(y_true)
     if total == 0:
-        return 0.0
+        return float("nan")  # Undefined for empty input; 0.0 would imply perfect calibration.
     edges = np.linspace(0.0, 1.0, bins + 1)
     ece = 0.0
     for idx in range(bins):
