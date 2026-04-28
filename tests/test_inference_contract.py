@@ -5,8 +5,9 @@ from datetime import datetime
 from fastapi.testclient import TestClient
 
 import src.app.main as app_main
+import src.serving.inference as inference_mod
 from src.app.schemas import BookingRequest
-from src.serving.inference import load_artifacts
+from src.serving.inference import load_artifacts, predict_proba
 
 
 def test_predict_endpoint_contract_with_arrival_date(
@@ -15,7 +16,7 @@ def test_predict_endpoint_contract_with_arrival_date(
     sample_record,
 ) -> None:
     artifacts = load_artifacts(trained_artifacts_dir)
-    monkeypatch.setattr(app_main, "_ARTIFACTS", artifacts)
+    monkeypatch.setattr(inference_mod, "_CACHED_ARTIFACTS", artifacts)
     client = TestClient(app_main.app)
 
     payload = dict(sample_record)
@@ -54,7 +55,7 @@ def test_predict_endpoint_rejects_missing_arrival_fields(
     monkeypatch, trained_artifacts_dir, sample_record
 ) -> None:
     artifacts = load_artifacts(trained_artifacts_dir)
-    monkeypatch.setattr(app_main, "_ARTIFACTS", artifacts)
+    monkeypatch.setattr(inference_mod, "_CACHED_ARTIFACTS", artifacts)
     client = TestClient(app_main.app)
 
     payload = dict(sample_record)
@@ -69,7 +70,7 @@ def test_predict_endpoint_rejects_missing_arrival_fields(
 
 def test_model_info_endpoint_contract(monkeypatch, trained_artifacts_dir) -> None:
     artifacts = load_artifacts(trained_artifacts_dir)
-    monkeypatch.setattr(app_main, "_ARTIFACTS", artifacts)
+    monkeypatch.setattr(inference_mod, "_CACHED_ARTIFACTS", artifacts)
     client = TestClient(app_main.app)
 
     response = client.get("/model-info")
@@ -100,7 +101,7 @@ def test_predict_cost_threshold_fallback_alert(
         "high_precision": {"threshold": 0.8},
         "max_f1": {"threshold": 0.4},
     }
-    monkeypatch.setattr(app_main, "_ARTIFACTS", artifacts)
+    monkeypatch.setattr(inference_mod, "_CACHED_ARTIFACTS", artifacts)
     client = TestClient(app_main.app)
 
     payload = dict(sample_record)
@@ -126,3 +127,40 @@ def test_predict_cost_threshold_fallback_alert(
     assert body["cost_threshold_source"] == "max_f1_fallback"
     assert len(body["alerts"]) >= 1
     assert float(body["threshold_cost_sensitive"]) == float(body["threshold_max_f1"])
+
+
+def test_predict_endpoint_rejects_invalid_types(monkeypatch, trained_artifacts_dir) -> None:
+    """Malformed payload (wrong types) should return 422."""
+    artifacts = load_artifacts(trained_artifacts_dir)
+    monkeypatch.setattr(inference_mod, "_CACHED_ARTIFACTS", artifacts)
+    client = TestClient(app_main.app)
+
+    payload = {"hotel": 12345, "lead_time": "not_a_number"}
+    response = client.post("/predict", json=payload)
+    assert response.status_code == 422, response.text
+
+
+def test_healthz_endpoint(monkeypatch, trained_artifacts_dir) -> None:
+    """Health check endpoint should return 200 when artifacts are loaded."""
+    artifacts = load_artifacts(trained_artifacts_dir)
+    monkeypatch.setattr(inference_mod, "_CACHED_ARTIFACTS", artifacts)
+    client = TestClient(app_main.app)
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
+def test_predict_proba_handles_nan_feature_values(
+    trained_artifacts_dir,
+    sample_record,
+) -> None:
+    """Inference gracefully handles records with NaN feature values."""
+    artifacts = load_artifacts(trained_artifacts_dir)
+    record = dict(sample_record)
+    # Set numeric features to NaN — preprocessor should impute them
+    record["previous_cancellations"] = float("nan")
+    record["previous_bookings_not_canceled"] = float("nan")
+    record["lead_time"] = float("nan")
+    probs, feat_df = predict_proba(record, artifacts)
+    assert len(probs) == 1
+    assert 0.0 <= probs[0] <= 1.0

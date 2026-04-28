@@ -87,27 +87,9 @@ def train_xgb(
     model = XGBClassifier(**config)
 
     if X_val is not None and y_val is not None:
-        try:
-            model.fit(
-                X_train,
-                y_train,
-                eval_set=[(X_val, y_val)],
-                verbose=False,
-                early_stopping_rounds=25,
-            )
-        except TypeError as exc:
-            if "early_stopping_rounds" not in str(exc):
-                raise
-            # Older XGBoost versions don't support early_stopping_rounds in fit().
-            model.fit(
-                X_train,
-                y_train,
-                eval_set=[(X_val, y_val)],
-                verbose=False,
-            )
+        model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
     else:
         model.fit(X_train, y_train)
-
     return model
 
 
@@ -126,16 +108,13 @@ def train_lgbm(
         config.update(params)
     model = lgb.LGBMClassifier(**config)
 
-    fit_kwargs: dict[str, Any] = {}
     if X_val is not None and y_val is not None:
-        fit_kwargs["eval_set"] = [(X_val, y_val)]
-        callbacks: list[Any] = []
-        if hasattr(lgb, "early_stopping"):
-            callbacks.append(lgb.early_stopping(stopping_rounds=25, verbose=False))
-        if hasattr(lgb, "log_evaluation"):
-            callbacks.append(lgb.log_evaluation(period=0))
-        if callbacks:
-            fit_kwargs["callbacks"] = callbacks
-
-    model.fit(X_train, y_train, **fit_kwargs)
+        model.fit(
+            X_train,
+            y_train,
+            eval_set=[(X_val, y_val)],
+            callbacks=[lgb.log_evaluation(period=0)],
+        )
+    else:
+        model.fit(X_train, y_train)
     return model

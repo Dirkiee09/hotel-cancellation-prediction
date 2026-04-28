@@ -21,12 +21,13 @@ from pydantic import ValidationError
 
 from src.app.schemas import BookingRequest
 from src.config import (
+    ADR_MAX_VALID,
     ARTIFACTS_DIR,
     BOOKING_TIME_FEATURES,
     RISK_TIER_HIGH_THRESHOLD,
     RISK_TIER_MEDIUM_THRESHOLD,
 )
-from src.serving.inference import ModelArtifacts, load_artifacts, predict_proba
+from src.serving.inference import ModelArtifacts, get_cached_artifacts, predict_proba
 from src.utils.thresholds import resolve_thresholds
 
 logger = logging.getLogger(__name__)
@@ -35,21 +36,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOGGED_PATH = PROJECT_ROOT / ".gradio" / "flagged" / "predictions.csv"
 DATA_PATH = PROJECT_ROOT / "data" / "hotel_bookings.csv"
 
-_ARTIFACTS: ModelArtifacts | None = None
-_ARTIFACTS_LOCK = threading.Lock()
 _GLOBAL_DRIVER_LINES: list[str] | None = None
 _GLOBAL_DRIVER_MODEL_ID: str | None = None
 _GLOBAL_DRIVER_LOCK = threading.Lock()
 
 
-def _get_artifacts() -> ModelArtifacts:
-    global _ARTIFACTS
-    if _ARTIFACTS is not None:
-        return _ARTIFACTS
-    with _ARTIFACTS_LOCK:
-        if _ARTIFACTS is None:
-            _ARTIFACTS = load_artifacts()
-    return _ARTIFACTS
+def _get_artifacts():
+    """Delegate to the shared singleton in inference.py."""
+    return get_cached_artifacts()
 
 
 MONTHS = [
@@ -80,23 +74,77 @@ RISK_TONES = {
 }
 
 
-def _load_country_choices() -> list[str]:
+def _load_categorical_choices() -> dict[str, list[str]]:
+    """Auto-detect categorical dropdown values from the training CSV."""
+    cols = [
+        "hotel",
+        "market_segment",
+        "distribution_channel",
+        "customer_type",
+        "meal",
+        "deposit_type",
+        "reserved_room_type",
+        "country",
+    ]
+    _fallbacks: dict[str, list[str]] = {
+        "hotel": ["City Hotel", "Resort Hotel"],
+        "market_segment": [
+            "Online TA",
+            "Offline TA/TO",
+            "Direct",
+            "Groups",
+            "Corporate",
+            "Complementary",
+            "Aviation",
+            "Undefined",
+        ],
+        "distribution_channel": ["TA/TO", "Direct", "Corporate", "GDS", "Undefined"],
+        "customer_type": ["Transient", "Transient-Party", "Contract", "Group"],
+        "meal": ["BB", "HB", "FB", "SC", "Undefined"],
+        "deposit_type": ["No Deposit", "Non Refund", "Refundable"],
+        "reserved_room_type": ["A", "B", "C", "D", "E", "F", "G", "H", "L", "P"],
+        "country": [],
+    }
+    result: dict[str, list[str]] = {}
     if DATA_PATH.exists():
         try:
-            series = pd.read_csv(DATA_PATH, usecols=["country"])["country"]
-            countries = sorted({str(c).strip() for c in series.dropna() if str(c).strip()})
+            df = pd.read_csv(DATA_PATH, usecols=cols)
+            for col in cols:
+                vals = sorted({str(v).strip() for v in df[col].dropna() if str(v).strip()})
+                result[col] = vals
         except Exception:
-            countries = []
-    else:
-        countries = []
+            pass
+    for col in cols:
+        if col not in result or not result[col]:
+            result[col] = _fallbacks.get(col, [])
+    if "UNKNOWN" not in result.get("country", []):
+        result.setdefault("country", []).insert(0, "UNKNOWN")
+    return result
 
-    if "UNKNOWN" not in countries:
-        countries.insert(0, "UNKNOWN")
-    return countries
 
-
-COUNTRY_CHOICES = _load_country_choices()
+_CAT_CHOICES = _load_categorical_choices()
+COUNTRY_CHOICES = _CAT_CHOICES["country"]
 COUNTRY_OPTIONAL_CHOICES = [""] + COUNTRY_CHOICES
+
+
+def _load_hero_metrics() -> str:
+    """Load ROC-AUC / PR-AUC from reports/metrics.json for the hero banner."""
+    reports_dir = PROJECT_ROOT / "reports"
+    metrics_path = reports_dir / "metrics.json"
+    if metrics_path.exists():
+        try:
+            data = json.loads(metrics_path.read_text(encoding="utf-8"))
+            max_f1 = data.get("max_f1", {})
+            roc = max_f1.get("roc_auc")
+            pr = max_f1.get("pr_auc")
+            if roc is not None and pr is not None:
+                return f"ROC-AUC {float(roc):.3f} \u00b7 PR-AUC {float(pr):.3f}"
+        except Exception:
+            pass
+    return "ROC-AUC \u2014 \u00b7 PR-AUC \u2014"
+
+
+_HERO_METRICS = _load_hero_metrics()
 
 REQUIRED_FIELD_ORDER = [
     "hotel",
@@ -125,7 +173,9 @@ REQUIRED_FIELD_LABELS = {
 
 
 def _default_arrival_date() -> datetime:
-    base = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    base = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0, tzinfo=None
+    )
     return base + timedelta(days=30)
 
 
@@ -279,9 +329,13 @@ def _risk_drivers(record: Dict[str, Any], prob: float) -> list[str]:
     prev_cxl = _to_int(record.get("previous_cancellations"), default=0)
 
     if deposit_type == "non refund":
-        drivers.append("Non-Refund deposit — in booking data this deposit type correlates with higher dropout rates.")
+        drivers.append(
+            "Non-Refund deposit — in booking data this deposit type correlates with higher dropout rates."
+        )
     if lead_time >= 120:
-        drivers.append(f"Booked {int(lead_time)} days in advance — very long lead times increase dropout risk.")
+        drivers.append(
+            f"Booked {int(lead_time)} days in advance — very long lead times increase dropout risk."
+        )
     if not repeated:
         drivers.append("First-time guest — no prior booking history to indicate loyalty.")
     if specials == 0:
@@ -289,7 +343,9 @@ def _risk_drivers(record: Dict[str, Any], prob: float) -> list[str]:
     if parking == 0:
         drivers.append("No parking needed — slightly lower commitment signal.")
     if market_segment in {"Groups", "Online TA"}:
-        drivers.append(f"{market_segment} bookings tend to have higher cancellation rates in our data.")
+        drivers.append(
+            f"{market_segment} bookings tend to have higher cancellation rates in our data."
+        )
     if prev_cxl > 0:
         drivers.append(f"The guest has {prev_cxl} previous cancellation(s) on record.")
 
@@ -300,11 +356,7 @@ def _risk_drivers(record: Dict[str, Any], prob: float) -> list[str]:
 
 def _artifact_model_id(artifacts: ModelArtifacts) -> str:
     metadata = artifacts.metadata or {}
-    lineage_sha = (
-        metadata.get("lineage", {})
-        .get("artifacts", {})
-        .get("bundle_sha256")
-    )
+    lineage_sha = metadata.get("lineage", {}).get("artifacts", {}).get("bundle_sha256")
     if isinstance(lineage_sha, str) and lineage_sha:
         return lineage_sha
     model_type = metadata.get("model_type")
@@ -352,9 +404,9 @@ def _load_global_model_drivers(artifacts: ModelArtifacts, top_k: int = 5) -> lis
             feature_names: list[str] = []
             preprocessor = None
             if artifacts.is_pipeline and hasattr(artifacts.model, "named_steps"):
-                preprocessor = artifacts.model.named_steps.get("preprocessor") or artifacts.model.named_steps.get(
-                    "preprocess"
-                )
+                preprocessor = artifacts.model.named_steps.get(
+                    "preprocessor"
+                ) or artifacts.model.named_steps.get("preprocess")
             elif artifacts.preprocessor is not None:
                 preprocessor = artifacts.preprocessor
 
@@ -395,40 +447,56 @@ def _intervention_suggestions(
     suggestions: list[str] = []
     if risk_label == "High":
         suggestions.append("Call or message the guest now to confirm they are still coming.")
-        suggestions.append("Hold a small room buffer for this arrival date in case this booking falls through.")
+        suggestions.append(
+            "Hold a small room buffer for this arrival date in case this booking falls through."
+        )
     elif risk_label == "Medium":
         suggestions.append("Send automated reminders at 72 h and 24 h before arrival.")
-        suggestions.append("Check room availability — review this booking manually if inventory is tight.")
+        suggestions.append(
+            "Check room availability — review this booking manually if inventory is tight."
+        )
     else:
         suggestions.append("No action needed — continue with the standard booking flow.")
 
     if lead_time >= 120:
-        suggestions.append("Set up a reconfirmation schedule: contact the guest at 90, 30 and 7 days before arrival.")
+        suggestions.append(
+            "Set up a reconfirmation schedule: contact the guest at 90, 30 and 7 days before arrival."
+        )
     if deposit_type in {"no deposit", "refundable"} and prob >= thr_f1:
-        suggestions.append("Request a deposit or card pre-authorisation to strengthen the guest's commitment.")
+        suggestions.append(
+            "Request a deposit or card pre-authorisation to strengthen the guest's commitment."
+        )
     if prev_cxl > 0:
-        suggestions.append("Call or email this guest personally — they have cancelled a booking before.")
+        suggestions.append(
+            "Call or email this guest personally — they have cancelled a booking before."
+        )
     if specials == 0:
-        suggestions.append("Ask the guest if they have any special requests — this increases booking engagement.")
+        suggestions.append(
+            "Ask the guest if they have any special requests — this increases booking engagement."
+        )
     if not repeated and prob >= thr_f1:
-        suggestions.append("Consider a small loyalty incentive (room upgrade or F&B voucher) to build commitment.")
+        suggestions.append(
+            "Consider a small loyalty incentive (room upgrade or F&B voucher) to build commitment."
+        )
     if prob >= thr_hp:
         suggestions.append("Flag this booking for daily monitoring in your reservations system.")
 
     seen: set[str] = set()
-    deduped = [s for s in suggestions if not (s in seen or seen.add(s))]
+    deduped = [s for s in suggestions if not (s in seen or seen.add(s))]  # type: ignore[func-returns-value]
     return deduped[:6]
 
 
 def _risk_meter_html(prob: float | None, *, label: str, note: str) -> str:
     tone = RISK_TONES.get(label, "neutral")
+    safe_label = html.escape(label)
+    safe_note = html.escape(note)
     medium_pct = max(0.0, min(100.0, RISK_TIER_MEDIUM_THRESHOLD * 100.0))
     high_pct = max(0.0, min(100.0, RISK_TIER_HIGH_THRESHOLD * 100.0))
     if prob is None:
         return f"""
 <div class="risk-card risk-{tone} risk-idle">
   <div class="risk-topline">
-    <span class="risk-pill">{label}</span>
+    <span class="risk-pill">{safe_label}</span>
     <span class="risk-percent risk-percent-idle">&#x2014;</span>
   </div>
   <div class="risk-track with-markers">
@@ -439,14 +507,14 @@ def _risk_meter_html(prob: float | None, *, label: str, note: str) -> str:
     <span>Medium @{RISK_TIER_MEDIUM_THRESHOLD:.2f}</span>
     <span>High @{RISK_TIER_HIGH_THRESHOLD:.2f}</span>
   </div>
-  <p class="risk-note">{note}</p>
+  <p class="risk-note">{safe_note}</p>
 </div>
 """
     pct = max(0.0, min(100.0, prob * 100.0))
     return f"""
 <div class="risk-card risk-{tone}">
   <div class="risk-topline">
-    <span class="risk-pill">{label}</span>
+    <span class="risk-pill">{safe_label}</span>
     <span class="risk-percent">{pct:.1f}%</span>
   </div>
   <div class="risk-track with-markers">
@@ -459,7 +527,7 @@ def _risk_meter_html(prob: float | None, *, label: str, note: str) -> str:
     <span>Medium @{RISK_TIER_MEDIUM_THRESHOLD:.2f}</span>
     <span>High @{RISK_TIER_HIGH_THRESHOLD:.2f}</span>
   </div>
-  <p class="risk-note">{note}</p>
+  <p class="risk-note">{safe_note}</p>
 </div>
 """
 
@@ -803,7 +871,7 @@ def _validated_record(values: Dict[str, Any]) -> Dict[str, Any]:
             payload[field] = None
 
     if isinstance(payload.get("is_repeated_guest"), bool):
-        payload["is_repeated_guest"] = int(payload["is_repeated_guest"])
+        payload["is_repeated_guest"] = int(payload["is_repeated_guest"])  # type: ignore[arg-type]
 
     request = BookingRequest.model_validate(payload)
     return request.model_dump(exclude={"arrival_date"})
@@ -839,11 +907,11 @@ def _exclusive_file_lock(handle):
 
     import fcntl
 
-    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
     try:
         yield
     finally:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
 
 
 def _append_log_row(record: Dict[str, Any], ordered_cols: list[str]) -> None:
@@ -952,672 +1020,495 @@ def _log_case(record: Dict[str, Any], label: str, flagged: bool = False) -> None
         columns = ["timestamp_utc", "prediction", "flagged", "arrival_date"]
         columns.extend(BOOKING_TIME_FEATURES)
         seen: set[str] = set()
-        ordered_cols = [c for c in columns if not (c in seen or seen.add(c))]
+        ordered_cols = [c for c in columns if not (c in seen or seen.add(c))]  # type: ignore[func-returns-value]
         _append_log_row(log_record, ordered_cols)
     except Exception:
         logger.exception("Failed to log prediction case to %s", LOGGED_PATH)
 
 
 BACKGROUND_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  --bg-0: #0a1220;
-  --bg-1: #101f35;
-  --ink: #f4f7ff;
-  --ink-muted: #c5d3ef;
-  --surface: rgba(8, 16, 30, 0.78);
-  --surface-soft: rgba(255, 255, 255, 0.06);
-  --line: rgba(255, 255, 255, 0.16);
-  --accent: #57d9a3;
-  --accent-2: #3ca0ff;
-  --warn: #ffb74d;
-  --danger: #ff5f6d;
+  --bg-deep:    #060d18;
+  --bg-base:    #0b1525;
+  --surface:    rgba(255,255,255,0.045);
+  --surface-md: rgba(255,255,255,0.07);
+  --panel:      rgba(10,20,38,0.90);
+  --border:     rgba(255,255,255,0.10);
+  --border-soft:rgba(255,255,255,0.06);
+  --ink:        #eef2ff;
+  --ink-muted:  #8fa3c8;
+  --ink-dim:    #4d6080;
+  --green:      #4ade9e;
+  --green-glow: rgba(74,222,158,0.20);
+  --blue:       #60a5fa;
+  --blue-glow:  rgba(96,165,250,0.20);
+  --warn:       #fbbf24;
+  --danger:     #f87171;
+  --r-sm: 8px; --r-md: 14px; --r-lg: 20px; --r-xl: 26px;
 }
 
-html, body { height: 100%; margin: 0; }
+/* ── Base ──────────────────────────────────────────────────────────── */
+html, body { height: 100%; margin: 0; background: var(--bg-deep); }
 
 #app-bg {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
-    radial-gradient(1000px 700px at 15% 10%, rgba(60, 160, 255, 0.22), transparent 65%),
-    radial-gradient(900px 650px at 88% 78%, rgba(87, 217, 163, 0.20), transparent 64%),
-    linear-gradient(150deg, var(--bg-0), var(--bg-1));
+    radial-gradient(ellipse 90% 60% at 15% -10%, rgba(96,165,250,0.20) 0%, transparent 60%),
+    radial-gradient(ellipse 75% 55% at 88% 95%, rgba(74,222,158,0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 45% at 55% 45%, rgba(167,139,250,0.07) 0%, transparent 60%),
+    var(--bg-deep);
 }
 
 #app-noise {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0.15;
-  background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
-  background-size: 26px 26px;
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
 }
 
+/* ── Container ─────────────────────────────────────────────────────── */
 .gradio-container {
-  font-family: "Space Grotesk", "Segoe UI", sans-serif !important;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif !important;
   background: transparent !important;
-  position: relative;
-  z-index: 1;
+  position: relative; z-index: 1;
   min-height: 100vh;
-  padding: 26px 16px 34px;
+  padding: 28px 20px 44px;
   color: var(--ink) !important;
 }
 
 .gradio-container > .wrap,
 .gradio-container .main {
-  max-width: 1220px;
-  margin: 0 auto;
-  background: var(--surface) !important;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.38);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  padding: 18px;
+  max-width: 1300px; margin: 0 auto;
+  background: transparent !important;
+  border: none !important; box-shadow: none !important; padding: 0;
 }
 
+/* ── Hero ──────────────────────────────────────────────────────────── */
 .hero-shell {
-  padding: 8px 8px 16px;
+  margin-bottom: 24px;
+  padding: 28px 32px 26px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+  backdrop-filter: blur(24px);
+  position: relative; overflow: hidden;
+}
+.hero-shell::before {
+  content: "";
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(74,222,158,0.55) 35%, rgba(96,165,250,0.55) 65%, transparent 100%);
+}
+
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--green); margin-bottom: 10px;
+}
+.hero-eyebrow-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+  box-shadow: 0 0 8px rgba(74,222,158,0.9);
+  animation: pulse-dot 2.2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.45; transform: scale(0.75); }
 }
 
 .hero-title {
-  margin: 0 0 6px;
-  font-size: clamp(1.45rem, 2.4vw, 2rem);
-  line-height: 1.12;
-  letter-spacing: 0.2px;
+  margin: 0 0 8px;
+  font-size: clamp(1.65rem, 2.6vw, 2.3rem);
+  font-weight: 900; line-height: 1.08; letter-spacing: -0.6px;
+  background: linear-gradient(130deg, #eef2ff 0%, #8fa3c8 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 
 .hero-subtitle {
-  margin: 0 0 12px;
-  color: var(--ink-muted);
-  max-width: 760px;
+  margin: 0 0 18px; color: var(--ink-muted);
+  font-size: 0.93rem; line-height: 1.65; max-width: 700px;
 }
 
-.hero-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
+.hero-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .hero-chip {
-  font-size: 0.83rem;
-  padding: 7px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: var(--ink);
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.75rem; font-weight: 500; padding: 5px 13px;
+  border-radius: 999px; background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border); color: var(--ink-muted);
+  transition: background 180ms, border-color 180ms;
+}
+.hero-chip:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.20); }
+
+/* ── Layout ────────────────────────────────────────────────────────── */
+.layout-row { gap: 20px; align-items: flex-start; }
+
+/* ── Panel blocks ──────────────────────────────────────────────────── */
+.input-panel .block, .result-panel .block {
+  border-radius: var(--r-md) !important;
+  border: 1px solid var(--border-soft) !important;
+  background: var(--surface) !important;
+  transition: border-color 200ms !important;
+}
+.input-panel .block:focus-within {
+  border-color: rgba(96,165,250,0.35) !important;
 }
 
-.input-panel .block,
-.result-panel .block,
-.gradio-container .gr-box {
-  border-radius: 16px !important;
-  border: 1px solid var(--line) !important;
-  background: var(--surface-soft) !important;
-}
+/* ── Typography ────────────────────────────────────────────────────── */
+.gradio-container h1, .gradio-container h2,
+.gradio-container h3 { color: var(--ink) !important; }
 
-.layout-row {
-  gap: 16px;
-}
-
-.result-panel .block {
-  background: rgba(5, 17, 38, 0.84) !important;
-  border-color: rgba(87, 217, 163, 0.45) !important;
-  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.28);
-}
-
-.gradio-container h1,
-.gradio-container h2,
-.gradio-container h3,
 .gradio-container label {
   color: var(--ink) !important;
+  font-size: 0.80rem !important; font-weight: 600 !important; letter-spacing: 0.01em;
 }
 
-.gradio-container label {
-  font-weight: 600 !important;
-  letter-spacing: 0.1px;
-}
-
+/* ── Form inputs ───────────────────────────────────────────────────── */
 .gradio-container input,
 .gradio-container textarea,
 .gradio-container select {
   color: var(--ink) !important;
-  background: rgba(0, 0, 0, 0.25) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  border-radius: 12px !important;
+  background: rgba(0,0,0,0.28) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-sm) !important;
+  font-size: 0.875rem !important;
+  transition: border-color 150ms, box-shadow 150ms !important;
+}
+.gradio-container input:focus, .gradio-container textarea:focus {
+  border-color: rgba(96,165,250,0.55) !important;
+  box-shadow: 0 0 0 3px rgba(96,165,250,0.12) !important; outline: none !important;
 }
 
-.gradio-container input:focus,
-.gradio-container textarea:focus,
-.gradio-container select:focus {
-  border-color: var(--accent-2) !important;
-  box-shadow: 0 0 0 3px rgba(60, 160, 255, 0.22) !important;
+/* ── Accordion ─────────────────────────────────────────────────────── */
+.gradio-container details {
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r-md) !important;
+  background: rgba(0,0,0,0.15) !important;
+  margin-bottom: 10px;
 }
+.gradio-container details summary {
+  font-size: 0.85rem !important; font-weight: 600 !important;
+  color: var(--ink) !important; padding: 13px 16px !important;
+  cursor: pointer; user-select: none; list-style: none;
+  transition: color 150ms;
+}
+.gradio-container details[open] summary { color: var(--blue) !important; }
+.gradio-container details summary::marker,
+.gradio-container details summary::-webkit-details-marker { display: none; }
 
+/* ── Buttons ───────────────────────────────────────────────────────── */
 .gradio-container button.primary {
-  background: linear-gradient(95deg, var(--accent), var(--accent-2)) !important;
-  border: none !important;
-  color: #031024 !important;
-  font-weight: 700 !important;
-  font-size: 1rem !important;
-  letter-spacing: 0.03em !important;
-  border-radius: 12px !important;
-  transition: filter 160ms ease, transform 120ms ease, box-shadow 160ms ease !important;
-  box-shadow: 0 4px 14px rgba(87, 217, 163, 0.28) !important;
+  background: linear-gradient(135deg, #4ade9e 0%, #38b2f5 100%) !important;
+  border: none !important; color: #040d1c !important;
+  font-weight: 700 !important; font-size: 0.9rem !important;
+  letter-spacing: 0.025em !important;
+  border-radius: var(--r-sm) !important;
+  box-shadow: 0 4px 18px rgba(74,222,158,0.32), 0 2px 6px rgba(0,0,0,0.28) !important;
+  transition: transform 130ms ease, box-shadow 150ms ease, filter 130ms ease !important;
+  position: relative; overflow: hidden;
+}
+.gradio-container button.primary::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 60%);
+  pointer-events: none;
 }
 .gradio-container button.primary:hover:not(:disabled) {
-  filter: brightness(1.10) !important;
-  transform: translateY(-1px) !important;
-  box-shadow: 0 6px 20px rgba(87, 217, 163, 0.42) !important;
+  transform: translateY(-2px) !important;
+  filter: brightness(1.08) !important;
+  box-shadow: 0 8px 28px rgba(74,222,158,0.42), 0 4px 12px rgba(0,0,0,0.3) !important;
 }
 .gradio-container button.primary:active:not(:disabled) {
-  transform: translateY(0px) !important;
-  filter: brightness(0.96) !important;
-  box-shadow: 0 2px 8px rgba(87, 217, 163, 0.18) !important;
+  transform: translateY(0) !important; filter: brightness(0.97) !important;
+  box-shadow: 0 2px 8px rgba(74,222,158,0.22) !important;
 }
 .gradio-container button.primary:disabled {
-  background: rgba(87, 217, 163, 0.20) !important;
-  color: rgba(3, 16, 36, 0.50) !important;
-  box-shadow: none !important;
-  cursor: not-allowed !important;
+  background: rgba(74,222,158,0.16) !important;
+  color: rgba(4,13,28,0.42) !important; box-shadow: none !important; cursor: not-allowed !important;
 }
 
 .gradio-container button:not(.primary) {
-  border-color: var(--line) !important;
-  color: var(--ink) !important;
+  background: rgba(255,255,255,0.06) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--ink-muted) !important; border-radius: var(--r-sm) !important;
+  font-size: 0.84rem !important; font-weight: 500 !important;
+  transition: background 130ms, border-color 130ms, color 130ms !important;
+}
+.gradio-container button:not(.primary):hover:not(:disabled) {
+  background: rgba(255,255,255,0.10) !important;
+  border-color: rgba(255,255,255,0.22) !important; color: var(--ink) !important;
 }
 
-/* Keep radio option labels readable in all states (fixes disappearing text on selection) */
+/* ── Radio/Checkbox ────────────────────────────────────────────────── */
 .gradio-container [role="radiogroup"] button {
-  background: rgba(0, 0, 0, 0.26) !important;
-  border: 1px solid var(--line) !important;
-  color: var(--ink) !important;
+  background: rgba(0,0,0,0.22) !important;
+  border: 1px solid var(--border) !important; color: var(--ink) !important;
 }
-
 .gradio-container [role="radiogroup"] button *,
-.gradio-container [role="radiogroup"] label {
-  color: inherit !important;
-}
-
+.gradio-container [role="radiogroup"] label { color: inherit !important; }
 .gradio-container [role="radiogroup"] button:hover {
-  border-color: rgba(87, 217, 163, 0.55) !important;
+  border-color: rgba(74,222,158,0.50) !important;
 }
-
 .gradio-container [role="radiogroup"] button[aria-checked="true"],
 .gradio-container [role="radiogroup"] button[aria-pressed="true"],
 .gradio-container [role="radiogroup"] button.selected {
-  background: linear-gradient(95deg, var(--accent), var(--accent-2)) !important;
-  border-color: transparent !important;
-  color: #031024 !important;
+  background: linear-gradient(135deg, var(--green), var(--blue)) !important;
+  border-color: transparent !important; color: #040d1c !important;
 }
-
 .gradio-container [role="radiogroup"] button[aria-checked="true"] *,
 .gradio-container [role="radiogroup"] button[aria-pressed="true"] *,
-.gradio-container [role="radiogroup"] button.selected * {
-  color: #031024 !important;
-}
+.gradio-container [role="radiogroup"] button.selected * { color: #040d1c !important; }
 
-/* Checkbox controls */
-.gradio-container input[type="checkbox"] {
-  accent-color: var(--accent) !important;
-  width: 1.05rem;
-  height: 1.05rem;
-  cursor: pointer;
-}
-
+.gradio-container input[type="checkbox"] { accent-color: var(--green) !important; }
 .gradio-container [role="checkbox"] {
-  border: 1px solid var(--line) !important;
-  background: rgba(0, 0, 0, 0.26) !important;
-  color: var(--ink) !important;
-  border-radius: 10px !important;
+  border: 1px solid var(--border) !important;
+  background: rgba(0,0,0,0.22) !important; color: var(--ink) !important; border-radius: 8px !important;
 }
-
 .gradio-container [role="checkbox"][aria-checked="true"] {
   border-color: transparent !important;
-  background: linear-gradient(95deg, var(--accent), var(--accent-2)) !important;
-  color: #031024 !important;
+  background: linear-gradient(135deg, var(--green), var(--blue)) !important; color: #040d1c !important;
 }
+.gradio-container [role="checkbox"][aria-checked="true"] * { color: #040d1c !important; }
 
-.gradio-container [role="checkbox"][aria-checked="true"] * {
-  color: #031024 !important;
-}
-
+/* ── Result summary ────────────────────────────────────────────────── */
 #result-summary {
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 12px 16px 14px;
+  background: rgba(0,0,0,0.20);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md); padding: 14px 18px;
 }
 #result-summary h3 {
-  margin: 0 0 10px;
-  font-size: clamp(1.1rem, 1.8vw, 1.3rem);
-  font-weight: 800;
-  letter-spacing: -0.2px;
-  color: var(--ink) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
-  padding-bottom: 8px;
+  margin: 0 0 10px; font-size: 1.05rem; font-weight: 700; letter-spacing: -0.2px;
+  color: var(--ink) !important; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-soft);
 }
-#result-summary p,
-#result-summary li { font-size: 0.92rem; line-height: 1.55; }
+#result-summary p, #result-summary li {
+  font-size: 0.875rem; line-height: 1.6; color: var(--ink-muted);
+}
+#result-summary strong { color: var(--ink); }
 
+/* ── Required status ───────────────────────────────────────────────── */
 #required-status {
-  margin-top: 8px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
+  margin-top: 10px; background: rgba(0,0,0,0.18);
+  border: 1px solid var(--border-soft); border-radius: var(--r-sm); padding: 10px 14px;
+  font-size: 0.80rem;
 }
 
-#decision-notes {
-  margin-top: 10px;
-  padding: 0;
-}
-
+/* ── Explain card ──────────────────────────────────────────────────── */
 .explain-card {
-  margin-top: 10px;
-  background: rgba(3, 14, 30, 0.86);
-  border: 1px solid rgba(87, 217, 163, 0.35);
-  border-radius: 14px;
-  padding: 14px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  margin-top: 12px;
+  background: rgba(6,13,24,0.85);
+  border: 1px solid var(--border); border-radius: var(--r-md); padding: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  position: relative; overflow: hidden;
 }
+.explain-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+}
+.explain-safe   { border-color: rgba(74,222,158,0.28); }
+.explain-watch  { border-color: rgba(251,191,36,0.32);  }
+.explain-danger { border-color: rgba(248,113,113,0.35); }
+.explain-safe::before   { background: linear-gradient(90deg, transparent, rgba(74,222,158,0.5), transparent); }
+.explain-watch::before  { background: linear-gradient(90deg, transparent, rgba(251,191,36,0.5), transparent); }
+.explain-danger::before { background: linear-gradient(90deg, transparent, rgba(248,113,113,0.5), transparent); }
 
 .explain-priority-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 14px; padding: 10px 12px;
+  border: 1px solid var(--border-soft); border-radius: var(--r-sm);
+  background: rgba(255,255,255,0.04);
 }
-
-.explain-priority-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .explain-priority-title {
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ink-muted);
-  font-weight: 700;
+  font-size: 0.70rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--ink-muted); font-weight: 700;
 }
-
+.explain-priority-actions { display: inline-flex; align-items: center; gap: 8px; }
 .explain-priority-pill {
-  font-size: 0.82rem;
-  font-weight: 800;
-  padding: 5px 11px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
+  font-size: 0.76rem; font-weight: 700; padding: 4px 12px;
+  border-radius: 999px; border: 1px solid var(--border);
 }
-
-.explain-priority-danger {
-  color: #ffd9dd;
-  border-color: rgba(255, 95, 109, 0.82);
-  background: rgba(255, 95, 109, 0.18);
-}
-
-.explain-priority-watch {
-  color: #ffe7bf;
-  border-color: rgba(255, 183, 77, 0.82);
-  background: rgba(255, 183, 77, 0.16);
-}
-
-.explain-priority-safe {
-  color: #d5ffef;
-  border-color: rgba(87, 217, 163, 0.82);
-  background: rgba(87, 217, 163, 0.18);
-}
-
-.explain-priority-neutral {
-  color: #dce8ff;
-  border-color: rgba(167, 189, 227, 0.78);
-  background: rgba(167, 189, 227, 0.16);
-}
+.explain-priority-danger { color: #f87171; border-color: rgba(248,113,113,0.65); background: rgba(248,113,113,0.12); }
+.explain-priority-watch  { color: #fbbf24; border-color: rgba(251,191,36,0.65);  background: rgba(251,191,36,0.12); }
+.explain-priority-safe   { color: #4ade9e; border-color: rgba(74,222,158,0.65);  background: rgba(74,222,158,0.12); }
+.explain-priority-neutral { color: var(--ink-muted); border-color: var(--border); background: rgba(255,255,255,0.05); }
 
 .explain-copy-btn {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--ink);
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: rgba(255,255,255,0.06); color: var(--ink-muted);
+  font-size: 0.68rem; font-weight: 600; padding: 3px 10px; cursor: pointer;
+  transition: all 130ms ease;
 }
-
 .explain-copy-btn:hover {
-  border-color: rgba(143, 240, 200, 0.72);
-  background: rgba(143, 240, 200, 0.12);
+  border-color: rgba(74,222,158,0.5); background: rgba(74,222,158,0.10); color: var(--green);
 }
-
-.explain-copy-btn:focus-visible {
-  outline: 2px solid rgba(143, 240, 200, 0.6);
-  outline-offset: 2px;
-}
-
-.explain-copy-btn:active {
-  transform: translateY(1px);
-}
-
 .explain-copy-toast {
-  min-width: 66px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #b9f7df;
-  opacity: 0;
-  transform: translateY(2px);
-  transition: opacity 140ms ease, transform 140ms ease;
-  pointer-events: none;
+  font-size: 0.68rem; font-weight: 600; color: var(--green);
+  opacity: 0; transition: opacity 140ms; pointer-events: none;
 }
-
-.explain-copy-toast.show {
-  opacity: 1;
-  transform: translateY(0);
-}
+.explain-copy-toast.show { opacity: 1; }
 
 .explain-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px;
 }
-
-.explain-title {
-  font-size: 1.02rem;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.explain-subtitle {
-  margin-top: 4px;
-  font-size: 0.86rem;
+.explain-title { font-size: 0.93rem; font-weight: 700; color: var(--ink); }
+.explain-subtitle { margin-top: 3px; font-size: 0.80rem; color: var(--ink-muted); }
+.explain-badge {
+  white-space: nowrap; font-size: 0.70rem; font-weight: 700; padding: 4px 11px;
+  border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,0.06);
   color: var(--ink-muted);
 }
-
-.explain-badge {
-  white-space: nowrap;
-  font-size: 0.78rem;
-  font-weight: 700;
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.explain-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
+.explain-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .explain-chip {
-  font-size: 0.76rem;
-  padding: 4px 9px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--ink);
+  font-size: 0.70rem; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border-soft); background: rgba(255,255,255,0.05); color: var(--ink-muted);
 }
+.explain-divider { height: 1px; margin: 12px 0; }
+.explain-safe  .explain-divider { background: linear-gradient(90deg, transparent, rgba(74,222,158,0.3), transparent); }
+.explain-watch .explain-divider { background: linear-gradient(90deg, transparent, rgba(251,191,36,0.3), transparent); }
+.explain-danger .explain-divider { background: linear-gradient(90deg, transparent, rgba(248,113,113,0.3), transparent); }
+.explain-neutral .explain-divider { background: var(--border-soft); }
 
-.explain-divider {
-  margin: 12px 0;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(87, 217, 163, 0.05), rgba(87, 217, 163, 0.55), rgba(87, 217, 163, 0.05));
-}
-
-.explain-grid {
-  display: grid;
-  gap: 10px;
-}
+.explain-grid { display: grid; gap: 10px; }
+@media (min-width: 900px) { .explain-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 .explain-section {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border-left-width: 4px;
+  border: 1px solid var(--border-soft); border-radius: var(--r-sm); padding: 12px;
+  background: rgba(255,255,255,0.03); border-left-width: 3px;
 }
+.explain-section:nth-child(1) { border-left-color: rgba(253,230,138,0.75); }
+.explain-section:nth-child(2) { border-left-color: rgba(134,239,172,0.75); }
+.explain-section:nth-child(3) { border-left-color: rgba(191,219,254,0.75); }
 
 .explain-h {
-  margin: 0 0 8px;
-  font-size: 0.9rem;
-  color: var(--ink);
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  margin: 0 0 8px; font-size: 0.80rem; font-weight: 700;
+  display: flex; align-items: center; gap: 7px;
 }
-
 .explain-ico {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 999px;
+  font-size: 0.68rem; font-weight: 700; border: 1px solid var(--border);
+  background: rgba(255,255,255,0.07); color: var(--ink);
+}
+.explain-h-why    { color: #fde68a; }
+.explain-h-action { color: #86efac; }
+.explain-h-model  { color: #bfdbfe; }
+.explain-h-why    .explain-ico { border-color: rgba(253,230,138,0.7); background: rgba(253,230,138,0.10); }
+.explain-h-action .explain-ico { border-color: rgba(134,239,172,0.7); background: rgba(134,239,172,0.10); }
+.explain-h-model  .explain-ico { border-color: rgba(191,219,254,0.7); background: rgba(191,219,254,0.10); }
+
+.explain-section ul { margin: 0; padding-left: 16px; }
+.explain-section li { margin: 0 0 5px; font-size: 0.79rem; line-height: 1.45; color: var(--ink-muted); }
+.explain-section li:last-child { margin-bottom: 0; }
+.explain-section:nth-child(1) li { color: #fef3c7; }
+.explain-section:nth-child(2) li { color: #d1fae5; }
+.explain-section:nth-child(3) li { color: #dbeafe; }
+
+.explain-safe  .explain-badge { border-color: rgba(74,222,158,0.55); }
+.explain-watch .explain-badge { border-color: rgba(251,191,36,0.60); }
+.explain-danger .explain-badge { border-color: rgba(248,113,113,0.60); }
+.explain-neutral .explain-badge { border-color: var(--border); }
+
+/* ── Verdict badges ────────────────────────────────────────────────── */
+.verdict-badge {
+  display: inline-block; font-size: 0.72rem; font-weight: 700;
+  padding: 2px 9px; border-radius: 999px; vertical-align: middle; letter-spacing: 0.02em;
+}
+.verdict-cancel { background: rgba(248,113,113,0.14); border: 1px solid rgba(248,113,113,0.60); color: #fca5a5; }
+.verdict-safe   { background: rgba(74,222,158,0.12);  border: 1px solid rgba(74,222,158,0.55); color: #86efac; }
+
+/* ── Borderline banner ─────────────────────────────────────────────── */
+.borderline-banner {
+  margin: 12px 0 0; padding: 10px 14px;
+  border-radius: var(--r-sm); border: 1px solid rgba(251,191,36,0.50);
+  background: rgba(251,191,36,0.09); color: #fde68a;
+  font-size: 0.84rem; font-weight: 500; line-height: 1.5;
 }
 
-.explain-h-why { color: #ffd78a; }
-.explain-h-action { color: #8ff0c8; }
-.explain-h-model { color: #9ec7ff; }
-
-.explain-h-why .explain-ico {
-  border-color: rgba(255, 215, 138, 0.8);
-  background: rgba(255, 215, 138, 0.14);
-}
-
-.explain-h-action .explain-ico {
-  border-color: rgba(143, 240, 200, 0.85);
-  background: rgba(143, 240, 200, 0.14);
-}
-
-.explain-h-model .explain-ico {
-  border-color: rgba(158, 199, 255, 0.85);
-  background: rgba(158, 199, 255, 0.14);
-}
-
-.explain-section:nth-child(1) { border-left-color: rgba(255, 215, 138, 0.85); }
-.explain-section:nth-child(2) { border-left-color: rgba(143, 240, 200, 0.9); }
-.explain-section:nth-child(3) { border-left-color: rgba(158, 199, 255, 0.9); }
-
-.explain-section:nth-child(1) li { color: #ffe9be; }
-.explain-section:nth-child(2) li { color: #c7f8e7; }
-.explain-section:nth-child(3) li { color: #d4e5ff; }
-
-.explain-section li:last-child {
-  margin-bottom: 0;
-}
-
-.explain-section ul {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.explain-section li {
-  margin: 0 0 6px;
-  color: var(--ink-muted);
-  line-height: 1.35;
-}
-
-.explain-safe .explain-badge { border-color: rgba(87, 217, 163, 0.65); }
-.explain-watch .explain-badge { border-color: rgba(255, 183, 77, 0.72); }
-.explain-danger .explain-badge { border-color: rgba(255, 95, 109, 0.75); }
-.explain-neutral .explain-badge { border-color: rgba(167, 189, 227, 0.7); }
-
-@media (min-width: 900px) {
-  .explain-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
+/* ── JSON output ───────────────────────────────────────────────────── */
 #result-details textarea {
-  font-family: "IBM Plex Mono", Consolas, monospace !important;
-  font-size: 0.82rem !important;
-  line-height: 1.4 !important;
+  font-family: "JetBrains Mono", Consolas, monospace !important;
+  font-size: 0.78rem !important; line-height: 1.55 !important; color: #7090b8 !important;
 }
 
+/* ── Risk card ─────────────────────────────────────────────────────── */
 .risk-card {
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  padding: 12px;
-  background: rgba(0, 0, 0, 0.26);
+  border-radius: var(--r-md); border: 1px solid var(--border);
+  padding: 20px; background: rgba(0,0,0,0.28);
+  transition: border-color 350ms, box-shadow 350ms;
 }
+.risk-safe   { border-color: rgba(74,222,158,0.40) !important;  box-shadow: 0 0 28px rgba(74,222,158,0.10); }
+.risk-watch  { border-color: rgba(251,191,36,0.42) !important;  box-shadow: 0 0 28px rgba(251,191,36,0.10); }
+.risk-danger { border-color: rgba(248,113,113,0.45) !important; box-shadow: 0 0 28px rgba(248,113,113,0.12); }
 
 .risk-topline {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 10px; margin-bottom: 16px;
 }
-
 .risk-pill {
-  font-size: 0.8rem;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 0.70rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border);
+  background: rgba(255,255,255,0.07); color: var(--ink-muted);
 }
+.risk-safe   .risk-pill { border-color: rgba(74,222,158,0.55);  color: var(--green); background: rgba(74,222,158,0.10); }
+.risk-watch  .risk-pill { border-color: rgba(251,191,36,0.55);  color: var(--warn);  background: rgba(251,191,36,0.10); }
+.risk-danger .risk-pill { border-color: rgba(248,113,113,0.55); color: var(--danger); background: rgba(248,113,113,0.10); }
 
 .risk-percent {
-  font-size: clamp(2.4rem, 4vw, 3.2rem);
-  font-weight: 800;
-  letter-spacing: -0.5px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
+  font-size: clamp(3rem, 5vw, 4rem); font-weight: 900;
+  letter-spacing: -2px; line-height: 1; font-variant-numeric: tabular-nums;
 }
-.risk-safe  .risk-percent { color: #7fe2ba; }
-.risk-watch .risk-percent { color: #ffca6b; }
-.risk-danger .risk-percent { color: #ff7b7b; }
+.risk-safe   .risk-percent { color: var(--green);  text-shadow: 0 0 32px rgba(74,222,158,0.50); }
+.risk-watch  .risk-percent { color: var(--warn);   text-shadow: 0 0 32px rgba(251,191,36,0.50); }
+.risk-danger .risk-percent { color: var(--danger); text-shadow: 0 0 32px rgba(248,113,113,0.50); }
 
 .risk-track {
-  position: relative;
-  margin-top: 10px;
-  border-radius: 999px;
-  height: 18px;
-  background: rgba(255, 255, 255, 0.10);
-  overflow: visible;
+  position: relative; border-radius: 999px; height: 8px;
+  background: rgba(255,255,255,0.09); overflow: visible; margin-bottom: 8px;
 }
+.risk-fill {
+  height: 100%; border-radius: 999px;
+  transition: width 550ms cubic-bezier(0.34, 1.20, 0.64, 1);
+}
+.risk-safe   .risk-fill { background: linear-gradient(90deg, #2dd47a, #4ade9e); box-shadow: 0 0 10px rgba(74,222,158,0.55); }
+.risk-watch  .risk-fill { background: linear-gradient(90deg, #d97706, #fbbf24); box-shadow: 0 0 10px rgba(251,191,36,0.55); }
+.risk-danger .risk-fill { background: linear-gradient(90deg, #dc2626, #f87171); box-shadow: 0 0 10px rgba(248,113,113,0.55); }
+.risk-neutral .risk-fill { background: linear-gradient(90deg, #4b5563, #9ca3af); }
 
 .risk-marker {
-  position: absolute;
-  top: -3px;
-  width: 2px;
-  height: 18px;
-  background: rgba(255, 255, 255, 0.75);
-  z-index: 3;
+  position: absolute; top: -4px; width: 2px; height: 16px;
+  background: rgba(255,255,255,0.28); border-radius: 2px; z-index: 3;
 }
+.risk-marker.high { background: rgba(248,113,113,0.75); }
 
-.risk-marker.high {
-  background: rgba(255, 95, 109, 0.92);
+.risk-dot {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2.5px solid rgba(255,255,255,0.92); z-index: 5;
+  transition: left 550ms cubic-bezier(0.34, 1.20, 0.64, 1); pointer-events: none;
 }
+.risk-safe   .risk-dot { background: var(--green);  box-shadow: 0 0 12px rgba(74,222,158,0.80); }
+.risk-watch  .risk-dot { background: var(--warn);   box-shadow: 0 0 12px rgba(251,191,36,0.80); }
+.risk-danger .risk-dot { background: var(--danger); box-shadow: 0 0 12px rgba(248,113,113,0.80); }
+.risk-neutral .risk-dot { background: #9ca3af; }
 
 .risk-threshold-labels {
-  margin-top: 8px;
-  display: flex;
-  justify-content: space-between;
-  color: var(--ink-muted);
-  font-size: 0.76rem;
+  display: flex; justify-content: space-between;
+  color: var(--ink-dim); font-size: 0.70rem; font-weight: 500; margin-top: 5px;
 }
-
-.risk-fill {
-  height: 100%;
-  border-radius: 999px;
-  transition: width 420ms ease;
-}
-
 .risk-note {
-  margin: 10px 0 0;
-  color: var(--ink-muted);
-  font-size: 0.86rem;
-  line-height: 1.38;
+  margin: 14px 0 0; color: var(--ink-muted); font-size: 0.84rem; line-height: 1.55;
+  padding-top: 14px; border-top: 1px solid var(--border-soft);
 }
 
-.risk-safe .risk-fill { background: linear-gradient(90deg, #56cc9d, #7fe2ba); }
-.risk-watch .risk-fill { background: linear-gradient(90deg, #ffca6b, #ff9f3f); }
-.risk-danger .risk-fill { background: linear-gradient(90deg, #ff7b7b, #ff4e6d); }
-.risk-neutral .risk-fill { background: linear-gradient(90deg, #8ba7d8, #a7bde3); }
-
-@media (min-width: 980px) {
-  #result-col {
-    position: sticky;
-    top: 18px;
-    align-self: flex-start;
-    max-height: calc(100vh - 36px);
-    overflow: auto;
-  }
-}
-
-@media (max-width: 720px) {
-  .gradio-container {
-    padding: 12px 8px 20px;
-  }
-  .gradio-container > .wrap,
-  .gradio-container .main {
-    border-radius: 14px;
-    padding: 10px;
-  }
-  .hero-title {
-    font-size: 1.3rem;
-  }
-}
-
-/* ── Risk meter: position indicator dot ─────────────────────────────── */
-.risk-dot {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2.5px solid rgba(255, 255, 255, 0.9);
-  z-index: 5;
-  transition: left 420ms ease;
-  pointer-events: none;
-}
-.risk-safe  .risk-dot { background: #7fe2ba; box-shadow: 0 0 8px rgba(87, 217, 163, 0.6); }
-.risk-watch .risk-dot { background: #ffca6b; box-shadow: 0 0 8px rgba(255, 183, 77, 0.6); }
-.risk-danger .risk-dot { background: #ff7b7b; box-shadow: 0 0 8px rgba(255, 95, 109, 0.6); }
-.risk-neutral .risk-dot { background: #8ba7d8; }
-
-/* ── Risk meter: idle / awaiting state ──────────────────────────────── */
+/* Idle shimmer */
 .risk-idle .risk-percent-idle {
-  font-size: clamp(2.4rem, 4vw, 3.2rem);
-  font-weight: 800;
-  color: var(--ink-muted);
-  opacity: 0.45;
+  font-size: clamp(3rem, 5vw, 4rem); font-weight: 900; letter-spacing: -2px;
+  color: var(--ink-dim);
 }
-.risk-idle .risk-track {
-  overflow: hidden;
-}
+.risk-idle .risk-track { overflow: hidden; }
 .risk-idle .risk-track::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    transparent 20%,
-    rgba(255, 255, 255, 0.07) 50%,
-    transparent 80%
-  );
+  content: ""; position: absolute; inset: 0; border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.11), transparent);
   background-size: 200% 100%;
   animation: risk-shimmer 2.4s ease-in-out infinite;
 }
@@ -1626,38 +1517,24 @@ html, body { height: 100%; margin: 0; }
   100% { background-position: 220% 0; }
 }
 
-/* ── Borderline warning banner ─────────────────────────────────────── */
-.borderline-banner {
-  margin: 10px 0 0;
-  padding: 9px 14px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 183, 77, 0.65);
-  background: rgba(255, 183, 77, 0.12);
-  color: #ffe7bf;
-  font-size: 0.9rem;
-  font-weight: 600;
-  line-height: 1.45;
+/* ── Sticky result column ──────────────────────────────────────────── */
+@media (min-width: 980px) {
+  #result-col {
+    position: sticky; top: 20px; align-self: flex-start;
+    max-height: calc(100vh - 40px); overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
 }
 
-/* ── Verdict pill badges ─────────────────────────────────────────────── */
-.verdict-badge {
-  display: inline-block;
-  font-size: 0.78rem;
-  font-weight: 800;
-  padding: 3px 10px;
-  border-radius: 999px;
-  vertical-align: middle;
-  letter-spacing: 0.02em;
+/* ── Responsive ────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .gradio-container { padding: 12px 10px 28px; }
+  .hero-shell { padding: 20px 18px; border-radius: var(--r-lg); }
+  .hero-title { font-size: 1.45rem; }
 }
-.verdict-cancel {
-  background: rgba(255, 95, 109, 0.18);
-  border: 1px solid rgba(255, 95, 109, 0.72);
-  color: #ffd9dd;
-}
-.verdict-safe {
-  background: rgba(87, 217, 163, 0.15);
-  border: 1px solid rgba(87, 217, 163, 0.65);
-  color: #d5ffef;
+
+/* ── Verdict pill badges ────────────────────────────────────────────── */
+/* (kept for backward compat) */
 }
 
 /* ── Explain card: border & divider colour per risk tier ─────────────── */
@@ -1684,8 +1561,12 @@ html, body { height: 100%; margin: 0; }
 
 
 def build_ui() -> gr.Blocks:
+    def _first(col: str) -> str:
+        vals = _CAT_CHOICES.get(col, [])
+        return vals[0] if vals else ""
+
     defaults: dict[str, Any] = {
-        "hotel": "City Hotel",
+        "hotel": _first("hotel"),
         "lead_time": 30,
         "arrival_date": _default_arrival_date(),
         "stays_in_weekend_nights": 0,
@@ -1693,18 +1574,18 @@ def build_ui() -> gr.Blocks:
         "adults": 2,
         "children": 0,
         "babies": 0,
-        "meal": "BB",
+        "meal": _first("meal"),
         "country": "",
-        "market_segment": "Online TA",
-        "distribution_channel": "TA/TO",
+        "market_segment": _first("market_segment"),
+        "distribution_channel": _first("distribution_channel"),
         "is_repeated_guest": False,
         "previous_cancellations": 0,
         "previous_bookings_not_canceled": 0,
-        "reserved_room_type": "A",
-        "deposit_type": "No Deposit",
+        "reserved_room_type": _first("reserved_room_type"),
+        "deposit_type": _first("deposit_type"),
         "agent": "UNKNOWN",
         "company": "UNKNOWN",
-        "customer_type": "Transient",
+        "customer_type": _first("customer_type"),
         "adr": 100.0,
         "required_car_parking_spaces": 0,
         "total_of_special_requests": 0,
@@ -1726,15 +1607,20 @@ def build_ui() -> gr.Blocks:
         gr.HTML(
             f"""
 <section class="hero-shell">
+  <div class="hero-eyebrow">
+    <span class="hero-eyebrow-dot"></span>
+    LightGBM · Calibrated · Real-time
+  </div>
   <h1 class="hero-title">Hotel Booking Cancellation Predictor</h1>
   <p class="hero-subtitle">
-    Enter booking details to see how likely this guest is to cancel.
-    The model flags high-risk bookings so your team can act before arrival.
+    Enter booking details to get a calibrated cancellation probability and a clear recommended action.
+    The model scores at booking time only — no post-check-in data required.
   </p>
   <div class="hero-chips">
-    <span class="hero-chip">Uses booking details only — no post-check-in data needed</span>
-    <span class="hero-chip">Medium risk: {int(RISK_TIER_MEDIUM_THRESHOLD * 100)}%+ chance of cancellation</span>
-    <span class="hero-chip">High risk: {int(RISK_TIER_HIGH_THRESHOLD * 100)}%+ chance of cancellation</span>
+    <span class="hero-chip">{_HERO_METRICS}</span>
+    <span class="hero-chip">Medium risk ≥ {int(RISK_TIER_MEDIUM_THRESHOLD * 100)}%</span>
+    <span class="hero-chip">High risk ≥ {int(RISK_TIER_HIGH_THRESHOLD * 100)}%</span>
+    <span class="hero-chip">Cost-sensitive threshold optimization</span>
   </div>
 </section>
 """
@@ -1745,13 +1631,13 @@ def build_ui() -> gr.Blocks:
                     with gr.Row():
                         hotel = gr.Dropdown(
                             label="Hotel (required)",
-                            choices=["City Hotel", "Resort Hotel"],
+                            choices=_CAT_CHOICES["hotel"],
                             value=defaults["hotel"],
                             allow_custom_value=True,
                         )
                         customer_type = gr.Dropdown(
                             label="Guest type (required)",
-                            choices=["Transient", "Transient-Party", "Contract", "Group"],
+                            choices=_CAT_CHOICES["customer_type"],
                             value=defaults["customer_type"],
                             allow_custom_value=True,
                         )
@@ -1759,23 +1645,14 @@ def build_ui() -> gr.Blocks:
                         market_segment = gr.Dropdown(
                             label="Market segment (required)",
                             info="How the booking was sourced — e.g., Online TA = online travel agency.",
-                            choices=[
-                                "Online TA",
-                                "Offline TA/TO",
-                                "Direct",
-                                "Groups",
-                                "Corporate",
-                                "Complementary",
-                                "Aviation",
-                                "Undefined",
-                            ],
+                            choices=_CAT_CHOICES["market_segment"],
                             value=defaults["market_segment"],
                             allow_custom_value=True,
                         )
                         distribution_channel = gr.Dropdown(
                             label="Booking platform (required)",
                             info="The platform or channel used to make this booking.",
-                            choices=["TA/TO", "Direct", "Corporate", "GDS", "Undefined"],
+                            choices=_CAT_CHOICES["distribution_channel"],
                             value=defaults["distribution_channel"],
                             allow_custom_value=True,
                         )
@@ -1836,13 +1713,13 @@ def build_ui() -> gr.Blocks:
                             label="Room rate — ADR (required)",
                             value=defaults["adr"],
                             minimum=0.01,
-                            maximum=2000,
+                            maximum=ADR_MAX_VALID,
                             step=1,
-                            info="Average Daily Rate in EUR. The nightly room price.",
+                            info="Average Daily Rate — the nightly room price.",
                         )
                         deposit_type = gr.Dropdown(
                             label="Payment / deposit type (required)",
-                            choices=["No Deposit", "Non Refund", "Refundable"],
+                            choices=_CAT_CHOICES["deposit_type"],
                             value=defaults["deposit_type"],
                             allow_custom_value=True,
                         )
@@ -1863,7 +1740,9 @@ def build_ui() -> gr.Blocks:
                             interactive=False,
                         )
 
-                with gr.Accordion("2) Guest preferences (optional — improves accuracy)", open=False):
+                with gr.Accordion(
+                    "2) Guest preferences (optional — improves accuracy)", open=False
+                ):
                     with gr.Row():
                         country = gr.Dropdown(
                             label="Country (optional)",
@@ -1873,7 +1752,7 @@ def build_ui() -> gr.Blocks:
                         )
                         meal = gr.Dropdown(
                             label="Meal plan (optional)",
-                            choices=["BB", "HB", "FB", "SC", "Undefined"],
+                            choices=_CAT_CHOICES["meal"],
                             value=defaults["meal"],
                             allow_custom_value=True,
                             info="BB = Bed & Breakfast  ·  HB = Half Board  ·  FB = Full Board  ·  SC = Self-Catering",
@@ -1881,7 +1760,7 @@ def build_ui() -> gr.Blocks:
                     with gr.Row():
                         reserved_room_type = gr.Dropdown(
                             label="Room category (optional)",
-                            choices=["A", "B", "C", "D", "E", "F", "G", "H", "L", "P"],
+                            choices=_CAT_CHOICES["reserved_room_type"],
                             value=defaults["reserved_room_type"],
                             allow_custom_value=True,
                         )
@@ -1940,10 +1819,13 @@ def build_ui() -> gr.Blocks:
                     reset_btn = gr.Button("Reset")
 
             with gr.Column(scale=6, elem_id="result-col", elem_classes=["result-panel"]):
-                gr.Markdown("## Prediction result")
-                gr.Markdown(
-                    "Fill in the booking details and click **Predict** to get a risk score and recommended action."
-                )
+                gr.HTML("""
+<div style="padding:4px 0 14px; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:14px;">
+  <div style="font-size:0.70rem;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:#4ade9e;margin-bottom:6px;">Live output</div>
+  <div style="font-size:1.15rem;font-weight:800;color:#eef2ff;letter-spacing:-0.3px;">Prediction result</div>
+  <div style="font-size:0.82rem;color:#8fa3c8;margin-top:4px;">Fill in the form and click <strong style="color:#eef2ff;">Predict</strong> to score this booking.</div>
+</div>
+""")
                 risk_card = gr.HTML(value=initial_risk_html, elem_id="risk-card")
                 result = gr.Markdown(value=initial_summary, elem_id="result-summary")
                 decision_notes = gr.HTML(value=initial_decision_notes, elem_id="decision-notes")
@@ -2038,7 +1920,9 @@ def build_ui() -> gr.Blocks:
                     return summary, details_json, risk_html, decision_md, None
                 summary, details_json, risk_html, decision_md, record = _predict_output(payload)
                 if record is not None:
-                    _log_case(record, summary, flagged=False)
+                    _log_case(
+                        record, json.loads(details_json).get("risk_label", "unknown"), flagged=False
+                    )
                 state_payload = {
                     "timestamp_utc": _format_utc(datetime.now(timezone.utc)),
                     "summary": summary,
@@ -2075,7 +1959,9 @@ def build_ui() -> gr.Blocks:
                     return summary, details_json, risk_html, decision_md, None
                 summary, details_json, risk_html, decision_md, record = _predict_output(payload)
                 if record is not None:
-                    _log_case(record, summary, flagged=True)
+                    _log_case(
+                        record, json.loads(details_json).get("risk_label", "unknown"), flagged=True
+                    )
                 state_payload = {
                     "timestamp_utc": _format_utc(datetime.now(timezone.utc)),
                     "summary": summary,
@@ -2165,7 +2051,7 @@ def build_ui() -> gr.Blocks:
             last_prediction_state,
         ]
         for component in inputs.values():
-            component.change(
+            component.change(  # type: ignore[attr-defined]
                 _on_form_change,
                 inputs=list(inputs.values()),
                 outputs=validation_outputs,
@@ -2208,3 +2094,9 @@ def build_ui() -> gr.Blocks:
         )
 
     return demo
+
+
+if __name__ == "__main__":
+    build_ui().launch(
+        server_name="127.0.0.1", server_port=7860, css=BACKGROUND_CSS, theme=gr.themes.Base()
+    )

@@ -61,8 +61,28 @@ class ThesisOutputs:
     sections: dict[str, Path]
 
 
+def _sanitise_for_json(obj: Any) -> Any:
+    """Make *obj* safe for ``json.dumps``: convert numpy scalars, replace NaN/Inf."""
+    if isinstance(obj, dict):
+        return {k: _sanitise_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitise_for_json(v) for v in obj]
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return None if not np.isfinite(obj) else float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, float) and not np.isfinite(obj):
+        return None
+    return obj
+
+
 def _save_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    path.write_text(
+        json.dumps(_sanitise_for_json(payload), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
 
 
 def _prepare_data(
@@ -647,13 +667,20 @@ def run_thesis_analysis(
     _calibrator = joblib.load(ARTIFACTS_DIR / "probability_calibrator.pkl")
     _inner_model = _pipeline.named_steps["model"]
 
-    champion_probs = np.clip(_calibrator.predict(_inner_model.predict_proba(X_test_t)[:, 1]), 0.0, 1.0)
-    val_probs = np.clip(_calibrator.predict(_inner_model.predict_proba(X_val_t)[:, 1]), 0.0, 1.0)
+    # Use the full saved pipeline (not just the inner model) so the pipeline's own fitted
+    # preprocessor handles encoding.  When --max-rows is used, a fresh preprocessor may
+    # produce a different column count (rare one-hot levels absent from the slice), causing
+    # a feature-dimension mismatch at predict_proba time.  The raw DataFrames X_test / X_val
+    # are always valid inputs to the saved pipeline regardless of slice size.
+    champion_probs = np.clip(_calibrator.predict(_pipeline.predict_proba(X_test)[:, 1]), 0.0, 1.0)
+    val_probs = np.clip(_calibrator.predict(_pipeline.predict_proba(X_val)[:, 1]), 0.0, 1.0)
 
     # Load threshold directly from artifact so model_family_summary matches thresholds.json.
     _raw_thr: dict[str, Any] = json.loads((ARTIFACTS_DIR / "thresholds.json").read_text())
     _max_f1_payload = _raw_thr.get("max_f1", {})
-    threshold = float(_max_f1_payload.get("threshold", 0.35)) if isinstance(_max_f1_payload, dict) else 0.35
+    threshold = (
+        float(_max_f1_payload.get("threshold", 0.35)) if isinstance(_max_f1_payload, dict) else 0.35
+    )
 
     sections: dict[str, Path] = {}
 

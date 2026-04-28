@@ -73,7 +73,10 @@ def test_resolve_thresholds_clamps_below_zero() -> None:
 
 def test_resolve_thresholds_missing_max_f1_falls_back() -> None:
     """Missing max_f1 key falls back to 0.5."""
-    raw: dict[str, object] = {"high_precision": {"threshold": 0.9}, "cost_sensitive": {"threshold": 0.03}}
+    raw: dict[str, object] = {
+        "high_precision": {"threshold": 0.9},
+        "cost_sensitive": {"threshold": 0.03},
+    }
     thresholds, sources, _, _ = resolve_thresholds(raw)
     assert thresholds["max_f1"] == pytest.approx(0.5)
     assert sources["max_f1"] == "artifact"  # source is artifact (key present as None-returning)
@@ -144,6 +147,43 @@ def test_select_min_cost_threshold(sweep_data) -> None:
     result = select_min_cost_threshold(df)
     assert "threshold" in result
     assert result["total_cost"] == pytest.approx(df["total_cost"].min(), abs=1e-6)
+
+
+def test_select_max_f1_all_nan_returns_default() -> None:
+    """When all F1 values are NaN, the default threshold 0.5 is returned."""
+    import pandas as pd
+
+    df = pd.DataFrame(
+        {
+            "threshold": [0.1, 0.2, 0.3],
+            "precision": [0.0, 0.0, 0.0],
+            "recall": [0.0, 0.0, 0.0],
+            "f1": [float("nan"), float("nan"), float("nan")],
+            "positive_rate": [0.0, 0.0, 0.0],
+        }
+    )
+    result = select_max_f1_threshold(df)
+    assert result["threshold"] == pytest.approx(0.5)
+    assert result["f1"] == pytest.approx(0.0)
+
+
+def test_select_min_cost_empty_returns_default() -> None:
+    """When cost sweep DataFrame is empty, the default threshold 0.5 is returned."""
+    import pandas as pd
+
+    df = pd.DataFrame(
+        columns=[
+            "threshold",
+            "total_cost",
+            "fp_count",
+            "fn_count",
+            "fp_cost_total",
+            "fn_cost_total",
+        ]
+    )
+    result = select_min_cost_threshold(df)
+    assert result["threshold"] == pytest.approx(0.5)
+    assert result["total_cost"] == pytest.approx(0.0)
 
 
 def test_make_threshold_grid_no_accumulation() -> None:

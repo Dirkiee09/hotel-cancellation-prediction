@@ -17,6 +17,8 @@ Run `make full-pipeline` before opening any notebook for the first time.
 | 06 | `06_business_analytics.ipynb` | Revenue management dashboard — overbooking buffer, ROI, segment P&L | `reports/test_predictions_for_powerbi.csv` |
 | 07 | `07_model_selection.ipynb` | Model family comparison, dumbbell charts, hyperparameter fairness | `reports/benchmarks/`, `reports/thesis/` |
 | 08 | `08_model_monitoring.ipynb` | Drift detection baseline — score distribution, feature shift vs production | `reports/test_predictions_for_powerbi.csv` |
+| 09 | `09_model_comparison.ipynb` | Champion vs challengers — complexity ladder, significance tests, cost tradeoffs, why boosting wins | `reports/benchmarks/`, `reports/thesis/` |
+| 10 | `10_sensitivity_analysis.ipynb` | Cost sensitivity, dataset size impact, threshold policy comparison | `artifacts/`, `reports/` |
 
 ---
 
@@ -25,6 +27,7 @@ Run `make full-pipeline` before opening any notebook for the first time.
 ```bash
 # 1. Generate all artifacts and reports
 make full-pipeline
+# Windows without make: python scripts/train.py && python scripts/train.py --verify-only
 
 # 2. Open a notebook
 jupyter lab notebooks/01_eda.ipynb

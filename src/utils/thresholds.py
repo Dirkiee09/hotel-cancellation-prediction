@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import f1_score, precision_score, recall_score
+
+from src.config import DEFAULT_FALLBACK_THRESHOLD
+
+logger = logging.getLogger(__name__)
 
 
 def _make_threshold_grid(step: float) -> np.ndarray:
@@ -62,7 +67,7 @@ def select_high_precision_threshold(
 ) -> dict[str, Any]:
     if df.empty:
         return {
-            "threshold": 0.5,
+            "threshold": DEFAULT_FALLBACK_THRESHOLD,
             "precision": 0.0,
             "recall": 0.0,
             "f1": 0.0,
@@ -107,11 +112,31 @@ def select_high_precision_threshold(
 
 def select_max_f1_threshold(df: pd.DataFrame) -> dict[str, Any]:
     if df.empty:
-        return {"threshold": 0.5, "precision": 0.0, "recall": 0.0, "f1": 0.0, "positive_rate": 0.0}
+        logger.warning(
+            "select_max_f1_threshold: sweep DataFrame is empty; returning default %.2f.",
+            DEFAULT_FALLBACK_THRESHOLD,
+        )
+        return {
+            "threshold": DEFAULT_FALLBACK_THRESHOLD,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "positive_rate": 0.0,
+        }
     # Drop rows with NaN f1 before sorting to avoid undefined ordering.
     valid = df.dropna(subset=["f1"])
     if valid.empty:
-        return {"threshold": 0.5, "precision": 0.0, "recall": 0.0, "f1": 0.0, "positive_rate": 0.0}
+        logger.warning(
+            "select_max_f1_threshold: all F1 values are NaN; returning default %.2f.",
+            DEFAULT_FALLBACK_THRESHOLD,
+        )
+        return {
+            "threshold": DEFAULT_FALLBACK_THRESHOLD,
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "positive_rate": 0.0,
+        }
     best = valid.sort_values(["f1", "threshold"], ascending=[False, True]).iloc[0]
     return cast(dict[str, Any], best.to_dict())
 
@@ -156,8 +181,11 @@ def cost_threshold_sweep(
 
 def select_min_cost_threshold(df: pd.DataFrame) -> dict[str, Any]:
     if df.empty:
+        logger.warning(
+            "select_min_cost_threshold: cost sweep DataFrame is empty; returning default."
+        )
         return {
-            "threshold": 0.5,
+            "threshold": DEFAULT_FALLBACK_THRESHOLD,
             "total_cost": 0.0,
             "fp_count": 0,
             "fn_count": 0,
@@ -190,9 +218,9 @@ def resolve_thresholds(
         return None
 
     _hp = _threshold_or_none(raw_thresholds.get("high_precision"))
-    thr_hp = 0.5 if _hp is None else float(np.clip(_hp, 0.0, 1.0))
+    thr_hp = DEFAULT_FALLBACK_THRESHOLD if _hp is None else float(np.clip(_hp, 0.0, 1.0))
     _f1 = _threshold_or_none(raw_thresholds.get("max_f1"))
-    thr_f1 = 0.5 if _f1 is None else float(np.clip(_f1, 0.0, 1.0))
+    thr_f1 = DEFAULT_FALLBACK_THRESHOLD if _f1 is None else float(np.clip(_f1, 0.0, 1.0))
 
     cost_payload = raw_thresholds.get("cost_sensitive")
     cost_threshold = _threshold_or_none(cost_payload)
@@ -202,6 +230,8 @@ def resolve_thresholds(
         alerts.append("cost_sensitive threshold missing; using max_f1 fallback.")
         thr_cost = thr_f1
     else:
+        # Defensive invariant: cost_missing is False ↔ cost_threshold is not None.
+        # This branch cannot be reached in practice; kept as a guard against future refactoring.
         if cost_threshold is None:
             raise ValueError("cost_threshold resolved to None despite cost_missing=False")
         thr_cost = float(np.clip(cost_threshold, 0.0, 1.0))

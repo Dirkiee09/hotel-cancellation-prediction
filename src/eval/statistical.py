@@ -109,7 +109,7 @@ def bootstrap_all_metrics(
             ci_lower=ci.ci_lower,
             ci_upper=ci.ci_upper,
             alpha=alpha,
-            n_bootstraps=n_bootstraps,
+            n_bootstraps=ci.n_bootstraps,  # actual valid resamples, not the requested count
         )
     return results
 

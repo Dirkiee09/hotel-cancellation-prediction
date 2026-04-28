@@ -228,18 +228,26 @@ def _load_benchmark_tables(root: Path) -> dict[str, pd.DataFrame] | None:
     return tables
 
 
-def benchmark_rankings_table(ctx: dict[str, Any]) -> pd.DataFrame:
+def benchmark_rankings_table(ctx: dict[str, Any], top_n: int | None = None) -> pd.DataFrame:
     tables = ctx.get("benchmark_tables")
     if not tables:
         raise FileNotFoundError("Benchmark tables not found. Run: python scripts/benchmark.py")
-    return tables["16_rankings"].copy()
+    df = tables["16_rankings"].copy()
+    if top_n is not None:
+        df = df.head(top_n)
+    return df
 
 
-def benchmark_significance_table(ctx: dict[str, Any]) -> pd.DataFrame:
+def benchmark_significance_table(ctx: dict[str, Any], top_n: int | None = None) -> pd.DataFrame:
     tables = ctx.get("benchmark_tables")
     if not tables:
         raise FileNotFoundError("Benchmark tables not found. Run: python scripts/benchmark.py")
     df = tables["14_paired_significance_vs_champion"].copy()
+    if top_n is not None:
+        rankings = tables.get("16_rankings")
+        if rankings is not None:
+            top_models = rankings.head(top_n + 1)["model"].tolist()
+            df = df[df["challenger_model"].isin(top_models)]
     return df.sort_values(["metric", "challenger_model"]).reset_index(drop=True)
 
 
@@ -270,11 +278,18 @@ def plot_benchmark_model_comparison(ctx: dict[str, Any], fig_dir: Path, fig_no: 
     plt.show()
 
 
-def plot_benchmark_threshold_heatmap(ctx: dict[str, Any], fig_dir: Path, fig_no: int = 9) -> None:
+def plot_benchmark_threshold_heatmap(
+    ctx: dict[str, Any], fig_dir: Path, fig_no: int = 9, top_n: int | None = None
+) -> None:
     tables = ctx.get("benchmark_tables")
     if not tables:
         raise FileNotFoundError("Benchmark tables not found. Run: python scripts/benchmark.py")
     df = tables["05_holdout_threshold_metrics_max_f1"].copy()
+    if top_n is not None:
+        rankings = tables.get("16_rankings")
+        if rankings is not None:
+            top_models = rankings.head(top_n)["model"].tolist()
+            df = df[df["model"].isin(top_models)]
     metric_cols = ["precision", "recall", "f1", "balanced_accuracy", "pr_auc", "roc_auc"]
     heat = df.set_index("model")[metric_cols]
 
@@ -1123,9 +1138,19 @@ def grouped_permutation_stats(
 
 
 def plot_grouped_permutation(
-    ctx: dict[str, Any], fig_dir: Path, fig_no_start: int = 6
+    ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no_start: int = 6,
+    style: str = "box",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Plot grouped permutation mean+CI and stability distribution."""
+    """Plot grouped permutation mean+CI and stability distribution.
+
+    Parameters
+    ----------
+    style : str
+        ``"box"`` (default) uses box plots for the stability panel.
+        ``"violin"`` uses the legacy violin+strip overlay.
+    """
     group_stats, grouped_repeat = grouped_permutation_stats(ctx, n_repeats=20)
     top_k = 15
     top_stats = group_stats.head(top_k).sort_values("mean_importance", ascending=True)
@@ -1156,24 +1181,34 @@ def plot_grouped_permutation(
         var_name="feature_group", value_name="importance"
     )
     fig, ax = plt.subplots(figsize=(11.5, 7))
-    sns.violinplot(
-        data=stability_long,
-        y="feature_group",
-        x="importance",
-        inner=None,
-        color="#a0cbe8",
-        linewidth=0,
-        ax=ax,
-    )
-    sns.stripplot(
-        data=stability_long,
-        y="feature_group",
-        x="importance",
-        color="#1f4e79",
-        alpha=0.45,
-        size=3.8,
-        ax=ax,
-    )
+    if style == "violin":
+        sns.violinplot(
+            data=stability_long,
+            y="feature_group",
+            x="importance",
+            inner=None,
+            color="#a0cbe8",
+            linewidth=0,
+            ax=ax,
+        )
+        sns.stripplot(
+            data=stability_long,
+            y="feature_group",
+            x="importance",
+            color="#1f4e79",
+            alpha=0.45,
+            size=3.8,
+            ax=ax,
+        )
+    else:
+        sns.boxplot(
+            data=stability_long,
+            y="feature_group",
+            x="importance",
+            color="#a0cbe8",
+            fliersize=3,
+            ax=ax,
+        )
     ax.set_title("Figure 7. Importance Stability Across Permutation Repeats")
     ax.set_xlabel("ROC-AUC Decrease")
     ax.set_ylabel("Original Feature Group")
@@ -1184,9 +1219,19 @@ def plot_grouped_permutation(
 
 
 def plot_cv_violin_strip(
-    ctx: dict[str, Any], fig_dir: Path, fig_no: int = 8, sample_cap: int = 25000
+    ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no: int = 8,
+    sample_cap: int = 25000,
+    style: str = "box",
 ) -> pd.DataFrame:
-    """Plot rolling-origin vs stratified-kfold metric distributions."""
+    """Plot rolling-origin vs stratified-kfold metric distributions.
+
+    Parameters
+    ----------
+    style : str
+        ``"box"`` (default) uses box plots. ``"violin"`` uses violin+strip.
+    """
     rolling_long = ctx["rolling_cv"][["model_family", "roc_auc", "pr_auc"]].copy()
     rolling_long["method"] = "Rolling-Origin"
 
@@ -1236,27 +1281,38 @@ def plot_cv_violin_strip(
         (axes[0], "roc_auc", "Figure 8A. ROC-AUC Distribution by CV Method"),
         (axes[1], "pr_auc", "Figure 8B. PR-AUC Distribution by CV Method"),
     ]:
-        sns.violinplot(
-            data=cv_compare,
-            x="model_family",
-            y=metric,
-            hue="method",
-            dodge=True,
-            inner=None,
-            cut=0,
-            ax=ax,
-        )
-        sns.stripplot(
-            data=cv_compare,
-            x="model_family",
-            y=metric,
-            hue="method",
-            dodge=True,
-            palette={"Rolling-Origin": "#1f1f1f", "Stratified K-Fold": "#1f1f1f"},
-            alpha=0.55,
-            size=4,
-            ax=ax,
-        )
+        if style == "violin":
+            sns.violinplot(
+                data=cv_compare,
+                x="model_family",
+                y=metric,
+                hue="method",
+                dodge=True,
+                inner=None,
+                cut=0,
+                ax=ax,
+            )
+            sns.stripplot(
+                data=cv_compare,
+                x="model_family",
+                y=metric,
+                hue="method",
+                dodge=True,
+                palette={"Rolling-Origin": "#1f1f1f", "Stratified K-Fold": "#1f1f1f"},
+                alpha=0.55,
+                size=4,
+                ax=ax,
+            )
+        else:
+            sns.boxplot(
+                data=cv_compare,
+                x="model_family",
+                y=metric,
+                hue="method",
+                dodge=True,
+                fliersize=3,
+                ax=ax,
+            )
         ax.set_title(title)
         ax.set_xlabel("Model Family")
         ax.set_ylabel(metric.upper())
@@ -1405,18 +1461,23 @@ def plot_shap_beeswarm(
     importance_df = shap_ctx["feature_importance_df"]
     top_groups = importance_df.head(top_k)["group"].tolist()
 
-    # Aggregate SHAP values to original feature groups
+    # Aggregate SHAP values to original feature groups and track if categorical
     group_shap: dict[str, np.ndarray] = {}
     group_feat: dict[str, np.ndarray] = {}
+    group_is_categorical: dict[str, bool] = {}
     for i, fname in enumerate(feature_names):
         g = _feature_group_name(fname)
         if g not in top_groups:
             continue
+        is_cat = fname.startswith("categorical__")
         if g not in group_shap:
             group_shap[g] = shap_values[:, i].copy()
             group_feat[g] = X_test_t[:, i].copy()
+            group_is_categorical[g] = is_cat
         else:
             group_shap[g] += shap_values[:, i]
+            # A group is categorical if any constituent feature is categorical
+            group_is_categorical[g] = group_is_categorical[g] or is_cat
 
     # Subsample for plotting performance
     n = min(sample_cap, len(shap_values))
@@ -1429,30 +1490,43 @@ def plot_shap_beeswarm(
         if group not in group_shap:
             continue
         sv = group_shap[group][idx]
-        fv = group_feat[group][idx]
         y = y_positions[group]
-        # Normalize feature values to [0, 1] for coloring
-        fv_norm = (fv - fv.min()) / (fv.max() - fv.min() + 1e-9)
-        ax.scatter(
-            sv,
-            np.full_like(sv, y) + np.random.default_rng(42).uniform(-0.25, 0.25, len(sv)),
-            c=fv_norm,
-            cmap="coolwarm",
-            alpha=0.35,
-            s=8,
-            linewidths=0,
-        )
+        jitter = np.random.default_rng(42).uniform(-0.25, 0.25, len(sv))
+        if group_is_categorical.get(group, False):
+            # Categorical features: color by SHAP magnitude (direction already on x-axis)
+            ax.scatter(
+                sv,
+                np.full_like(sv, y) + jitter,
+                c=np.abs(sv),
+                cmap="Purples",
+                alpha=0.35,
+                s=8,
+                linewidths=0,
+            )
+        else:
+            fv = group_feat[group][idx]
+            # Normalize feature values to [0, 1] for coloring
+            fv_norm = (fv - fv.min()) / (fv.max() - fv.min() + 1e-9)
+            ax.scatter(
+                sv,
+                np.full_like(sv, y) + jitter,
+                c=fv_norm,
+                cmap="coolwarm",
+                alpha=0.35,
+                s=8,
+                linewidths=0,
+            )
 
     ax.set_yticks(list(y_positions.values()))
     ax.set_yticklabels(list(y_positions.keys()))
     ax.axvline(0, color="black", linewidth=0.9)
     ax.set_xlabel("SHAP value (impact on model output)")
     ax.set_title(f"Figure {fig_no}. SHAP Beeswarm — Direction & Magnitude")
-    # Colorbar legend
+    # Colorbar legend for numeric features
     sm = plt.cm.ScalarMappable(cmap="coolwarm", norm=plt.Normalize(0, 1))
     sm.set_array([])
     cbar = fig.colorbar(sm, ax=ax, pad=0.01)
-    cbar.set_label("Feature value (low → high)", fontsize=9)
+    cbar.set_label("Numeric feature value (low → high)\nCategorical: shaded by |SHAP|", fontsize=9)
     fig.tight_layout()
     save_thesis_figure(fig, fig_no, "shap_beeswarm", fig_dir)
     plt.show()
@@ -1542,7 +1616,7 @@ def plot_baseline_comparison(
 
     baseline_path = thesis_dir / "baseline_comparison.json"
     if not baseline_path.exists():
-        raise FileNotFoundError(f"{baseline_path} not found — run `make thesis-analysis` first.")
+        raise FileNotFoundError(f"{baseline_path} not found — run `make thesis` first.")
 
     raw: dict[str, Any] = json.loads(baseline_path.read_text(encoding="utf-8"))
 
@@ -1626,7 +1700,7 @@ def plot_thesis_dt(
 
     dt_path = artifacts_dir / "thesis_baseline_dt.pkl"
     if not dt_path.exists():
-        raise FileNotFoundError(f"{dt_path} not found — run `make thesis-analysis` first.")
+        raise FileNotFoundError(f"{dt_path} not found — run `make thesis` first.")
     dt = joblib.load(dt_path)
 
     # Resolve feature names from the champion pipeline's preprocessor
@@ -1668,3 +1742,1120 @@ def plot_thesis_dt(
     save_thesis_figure(fig, fig_no, "decision_tree_baseline", fig_dir)
     plt.show()
     return dt
+
+
+# ---------------------------------------------------------------------------
+# Chi-Squared Independence Test
+# ---------------------------------------------------------------------------
+
+
+def chi_squared_independence(
+    df: pd.DataFrame,
+    categorical_cols: list[str],
+    target: str = TARGET_COL,
+) -> pd.DataFrame:
+    """Run chi-squared independence tests between categorical features and the target.
+
+    Returns a DataFrame with columns: Feature, Chi2 Statistic, p-value, Degrees of Freedom,
+    Cramér's V, and a Significant? flag (at alpha = 0.05).
+    """
+    from scipy.stats import chi2_contingency
+
+    rows: list[dict[str, object]] = []
+    for col in categorical_cols:
+        if col not in df.columns:
+            continue
+        ct = pd.crosstab(df[col], df[target])
+        if ct.shape[0] < 2 or ct.shape[1] < 2:
+            continue
+        chi2, p, dof, _ = chi2_contingency(ct)
+        n = ct.values.sum()
+        k = min(ct.shape) - 1
+        cramers_v = float(np.sqrt(chi2 / (n * k))) if k > 0 and n > 0 else 0.0
+        rows.append(
+            {
+                "Feature": col,
+                "Chi2 Statistic": round(float(chi2), 2),
+                "p-value": float(p),
+                "Degrees of Freedom": int(dof),
+                "Cramér's V": round(cramers_v, 4),
+                "Significant?": "Yes" if p < 0.05 else "No",
+            }
+        )
+    return pd.DataFrame(rows).sort_values("Chi2 Statistic", ascending=False).reset_index(drop=True)
+
+
+# ---------------------------------------------------------------------------
+# Gradient-boosted tree deep-dive helpers (Notebook 02 — Section 2.10+)
+# ---------------------------------------------------------------------------
+
+
+def _get_model_and_preprocessor(
+    ctx: dict[str, Any],
+) -> tuple[Any, Any, list[str]]:
+    """Extract the inner model, preprocessor, and feature names from context."""
+    preprocessor = ctx["model_pipeline"].named_steps["preprocessor"]
+    model = ctx["model_pipeline"].named_steps.get("model") or ctx["model_pipeline"].named_steps.get(
+        "classifier"
+    )
+    if model is None:
+        raise KeyError("Pipeline must have a step named 'model' or 'classifier'.")
+    try:
+        feature_names = list(preprocessor.get_feature_names_out())
+    except AttributeError:
+        ct = preprocessor.named_steps["encode"]
+        _names: list[str] = []
+        for _tname, _trans, _ in ct.transformers_:
+            try:
+                _out = list(_trans.get_feature_names_out())
+            except AttributeError:
+                _out = list(_trans.named_steps["onehot"].get_feature_names_out())
+            _names.extend(f"{_tname}__{n}" for n in _out)
+        feature_names = _names
+    return model, preprocessor, feature_names
+
+
+def champion_hyperparameters_table(ctx: dict[str, Any]) -> pd.DataFrame:
+    """Return a styled table of the champion model's key hyperparameters."""
+    model, _, _ = _get_model_and_preprocessor(ctx)
+    model_type = type(model).__name__
+    params = model.get_params()
+
+    key_params = [
+        ("Model Class", model_type),
+        ("n_estimators", params.get("n_estimators")),
+        ("max_depth", params.get("max_depth")),
+        ("learning_rate", params.get("learning_rate")),
+        ("subsample", params.get("subsample", params.get("colsample_bytree", "N/A"))),
+        (
+            "min_child_weight",
+            params.get("min_child_weight", params.get("min_child_samples", "N/A")),
+        ),
+        ("reg_alpha (L1)", params.get("reg_alpha", "N/A")),
+        ("reg_lambda (L2)", params.get("reg_lambda", "N/A")),
+        ("num_leaves", params.get("num_leaves", "N/A")),
+        ("random_state", params.get("random_state")),
+    ]
+    rows = [{"Parameter": k, "Value": v} for k, v in key_params if v is not None]
+    return pd.DataFrame(rows)
+
+
+def plot_split_feature_importance(
+    ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no: int = 16,
+    top_k: int = 20,
+) -> pd.DataFrame:
+    """Bar chart of built-in split-based feature importance (gain/weight)."""
+    model, _, feature_names = _get_model_and_preprocessor(ctx)
+    importances = model.feature_importances_
+
+    fi_df = pd.DataFrame({"feature": feature_names, "importance": importances})
+    # Map to original feature groups
+    fi_df["group"] = fi_df["feature"].apply(_feature_group_name)
+    grouped = (
+        fi_df.groupby("group", as_index=False)["importance"]
+        .sum()
+        .sort_values("importance", ascending=False)  # type: ignore[call-overload]
+        .reset_index(drop=True)
+    )
+
+    top = grouped.head(top_k).sort_values("importance", ascending=True)
+    fig, ax = plt.subplots(figsize=(11, max(5, top_k * 0.38)))
+    bars = ax.barh(
+        top["group"],
+        top["importance"],
+        color="#4e79a7",
+        alpha=0.85,
+        edgecolor="black",
+        linewidth=0.4,
+    )
+    for bar, val in zip(bars, top["importance"]):
+        ax.text(
+            val + grouped["importance"].max() * 0.008,
+            bar.get_y() + bar.get_height() / 2,
+            f"{val:.4f}",
+            va="center",
+            fontsize=9,
+        )
+    model_name = type(model).__name__
+    ax.set_xlabel("Feature Importance (split gain)")
+    ax.set_title(f"Figure {fig_no}. {model_name} Built-in Feature Importance — Top {top_k}")
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "split_feature_importance", fig_dir)
+    plt.show()
+    return grouped
+
+
+def plot_learning_dynamics(
+    ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no: int = 17,
+    n_checkpoints: int = 10,
+) -> pd.DataFrame:
+    """Train incremental models to show how performance improves with more trees."""
+    from sklearn.metrics import log_loss
+
+    model, preprocessor, _ = _get_model_and_preprocessor(ctx)
+    model_type = type(model).__name__
+    params = model.get_params()
+
+    max_trees = params.get("n_estimators", 100)
+    checkpoints = sorted(
+        set([1, 5, 10] + list(np.linspace(10, max_trees, n_checkpoints, dtype=int)))
+    )
+
+    X_val = ctx["val_df"][BOOKING_TIME_FEATURES]
+    y_val = ctx["val_df"][TARGET_COL].astype(int).to_numpy()
+    X_val_t = preprocessor.transform(X_val)
+
+    X_train = ctx["train_df"][BOOKING_TIME_FEATURES]
+    y_train = ctx["train_df"][TARGET_COL].astype(int).to_numpy()
+    X_train_t = preprocessor.transform(X_train)
+
+    rows: list[dict[str, Any]] = []
+    for n_est in checkpoints:
+        clone_params = {k: v for k, v in params.items() if k != "n_estimators"}
+        clone_params["n_estimators"] = int(n_est)
+        # Suppress verbose output
+        clone_params["verbose"] = 0
+        if "verbosity" in clone_params:
+            clone_params["verbosity"] = 0
+        try:
+            m = type(model)(**clone_params)
+            m.fit(X_train_t, y_train)
+            p_val = m.predict_proba(X_val_t)[:, 1]
+            p_train = m.predict_proba(X_train_t)[:, 1]
+            rows.append(
+                {
+                    "n_estimators": int(n_est),
+                    "val_roc_auc": float(roc_auc_score(y_val, p_val)),
+                    "val_pr_auc": float(average_precision_score(y_val, p_val)),
+                    "val_log_loss": float(log_loss(y_val, p_val)),
+                    "train_roc_auc": float(roc_auc_score(y_train, p_train)),
+                    "train_log_loss": float(log_loss(y_train, p_train)),
+                }
+            )
+        except Exception:
+            continue
+
+    curve_df = pd.DataFrame(rows)
+    if curve_df.empty:
+        return curve_df
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5.5))
+
+    ax = axes[0]
+    ax.plot(
+        curve_df["n_estimators"],
+        curve_df["val_roc_auc"],
+        "o-",
+        color=PALETTE["roc"],
+        linewidth=2.2,
+        label="Validation",
+    )
+    ax.plot(
+        curve_df["n_estimators"],
+        curve_df["train_roc_auc"],
+        "s--",
+        color=PALETTE["roc"],
+        alpha=0.5,
+        linewidth=1.5,
+        label="Train",
+    )
+    ax.set_xlabel("Number of Trees")
+    ax.set_ylabel("ROC-AUC")
+    ax.set_title(f"Figure {fig_no}A. ROC-AUC vs Trees")
+    ax.legend(frameon=False)
+
+    ax = axes[1]
+    ax.plot(
+        curve_df["n_estimators"],
+        curve_df["val_pr_auc"],
+        "o-",
+        color=PALETTE["pr"],
+        linewidth=2.2,
+        label="Validation",
+    )
+    ax.set_xlabel("Number of Trees")
+    ax.set_ylabel("PR-AUC")
+    ax.set_title(f"Figure {fig_no}B. PR-AUC vs Trees")
+    ax.legend(frameon=False)
+
+    ax = axes[2]
+    ax.plot(
+        curve_df["n_estimators"],
+        curve_df["val_log_loss"],
+        "o-",
+        color=PALETTE["f1"],
+        linewidth=2.2,
+        label="Validation",
+    )
+    ax.plot(
+        curve_df["n_estimators"],
+        curve_df["train_log_loss"],
+        "s--",
+        color=PALETTE["f1"],
+        alpha=0.5,
+        linewidth=1.5,
+        label="Train",
+    )
+    ax.set_xlabel("Number of Trees")
+    ax.set_ylabel("Log Loss")
+    ax.set_title(f"Figure {fig_no}C. Log Loss vs Trees")
+    ax.legend(frameon=False)
+
+    fig.suptitle(
+        f"{model_type} Learning Dynamics — Performance vs Ensemble Size",
+        fontsize=13,
+        fontweight="bold",
+        y=1.02,
+    )
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "learning_dynamics", fig_dir)
+    plt.show()
+    return curve_df
+
+
+def plot_prediction_distribution_by_class(
+    ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no: int = 18,
+) -> None:
+    """KDE + rug plot showing predicted probability distribution per true class."""
+    y_prob = ctx["y_prob"]
+    y_true = ctx["y_test_np"]
+
+    fig, axes = plt.subplots(1, 2, figsize=(15, 5.5))
+
+    # Panel A: overlapping KDE
+    ax = axes[0]
+    for label, color, name in [(0, "#1f77b4", "Kept Bookings"), (1, "#d62728", "Cancelled")]:
+        mask = y_true == label
+        sns.kdeplot(
+            y_prob[mask], ax=ax, color=color, fill=True, alpha=0.3, linewidth=2.2, label=name
+        )
+    ax.axvline(
+        ctx["threshold_max_f1"],
+        color="black",
+        linestyle="-.",
+        linewidth=1.5,
+        label=f"Max-F1 @ {ctx['threshold_max_f1']:.2f}",
+    )
+    ax.axvline(
+        ctx["threshold_high_precision"],
+        color="gray",
+        linestyle="--",
+        linewidth=1.5,
+        label=f"High-Prec @ {ctx['threshold_high_precision']:.2f}",
+    )
+    ax.set_xlabel("Predicted Probability of Cancellation")
+    ax.set_ylabel("Density")
+    ax.set_title(f"Figure {fig_no}A. Prediction Distribution by True Class")
+    ax.legend(frameon=False, fontsize=9)
+
+    # Panel B: cumulative distribution
+    ax = axes[1]
+    for label, color, name in [(0, "#1f77b4", "Kept Bookings"), (1, "#d62728", "Cancelled")]:
+        mask = y_true == label
+        sorted_probs = np.sort(y_prob[mask])
+        cdf = np.arange(1, len(sorted_probs) + 1) / len(sorted_probs)
+        ax.plot(sorted_probs, cdf, color=color, linewidth=2.2, label=name)
+    ax.axvline(ctx["threshold_max_f1"], color="black", linestyle="-.", linewidth=1.5)
+    ax.set_xlabel("Predicted Probability of Cancellation")
+    ax.set_ylabel("Cumulative Proportion")
+    ax.set_title(f"Figure {fig_no}B. Cumulative Distribution (Separation Quality)")
+    ax.legend(frameon=False, fontsize=9)
+
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "prediction_distribution_by_class", fig_dir)
+    plt.show()
+
+
+def plot_tree_depth_analysis(
+    ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no: int = 19,
+) -> pd.DataFrame | None:
+    """Visualise tree structure statistics from the gradient-boosted ensemble."""
+    model, _, _ = _get_model_and_preprocessor(ctx)
+    model_type = type(model).__name__
+
+    # XGBoost: extract from booster dump
+    if hasattr(model, "get_booster"):
+        booster = model.get_booster()
+        dump = booster.get_dump(with_stats=True)
+        n_trees = len(dump)
+        depths: list[int] = []
+        leaves_per_tree: list[int] = []
+        for tree_str in dump:
+            tree_depths = [line.count("\t") for line in tree_str.strip().split("\n")]
+            depths.append(max(tree_depths) if tree_depths else 0)
+            leaves_per_tree.append(
+                sum(1 for line in tree_str.strip().split("\n") if "leaf" in line)
+            )
+        summary = {
+            "n_trees": n_trees,
+            "mean_depth": float(np.mean(depths)),
+            "max_depth": int(np.max(depths)),
+            "mean_leaves": float(np.mean(leaves_per_tree)),
+            "total_leaves": int(np.sum(leaves_per_tree)),
+        }
+    # LightGBM: extract from booster
+    elif hasattr(model, "booster_"):
+        booster = model.booster_
+        model_dump = booster.dump_model()
+        tree_info = model_dump.get("tree_info", [])
+        n_trees = len(tree_info)
+        depths = [t.get("max_depth", 0) for t in tree_info]
+        leaves_per_tree = [t.get("num_leaves", 0) for t in tree_info]
+        summary = {
+            "n_trees": n_trees,
+            "mean_depth": float(np.mean(depths)) if depths else 0,
+            "max_depth": int(np.max(depths)) if depths else 0,
+            "mean_leaves": float(np.mean(leaves_per_tree)) if leaves_per_tree else 0,
+            "total_leaves": int(np.sum(leaves_per_tree)) if leaves_per_tree else 0,
+        }
+    else:
+        return None
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+
+    ax = axes[0]
+    ax.hist(
+        depths,
+        bins=range(0, max(depths) + 2),
+        color=PALETTE["champion"],
+        alpha=0.8,
+        edgecolor="black",
+        linewidth=0.5,
+    )
+    ax.axvline(
+        np.mean(depths),
+        color="red",
+        linestyle="--",
+        linewidth=1.8,
+        label=f"Mean = {np.mean(depths):.1f}",
+    )
+    ax.set_xlabel("Tree Depth")
+    ax.set_ylabel("Number of Trees")
+    ax.set_title(f"Figure {fig_no}A. Distribution of Tree Depths")
+    ax.legend(frameon=False)
+
+    ax = axes[1]
+    ax.hist(
+        leaves_per_tree, bins=20, color=PALETTE["pr"], alpha=0.8, edgecolor="black", linewidth=0.5
+    )
+    ax.axvline(
+        np.mean(leaves_per_tree),
+        color="red",
+        linestyle="--",
+        linewidth=1.8,
+        label=f"Mean = {np.mean(leaves_per_tree):.1f}",
+    )
+    ax.set_xlabel("Leaves per Tree")
+    ax.set_ylabel("Number of Trees")
+    ax.set_title(f"Figure {fig_no}B. Distribution of Leaves per Tree")
+    ax.legend(frameon=False)
+
+    fig.suptitle(
+        f"{model_type}: {n_trees} Trees, Mean Depth {np.mean(depths):.1f}, "
+        f"Total Leaves {np.sum(leaves_per_tree):,}",
+        fontsize=12,
+        fontweight="bold",
+        y=1.02,
+    )
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "tree_depth_analysis", fig_dir)
+    plt.show()
+    return pd.DataFrame([summary])
+
+
+def plot_gain_vs_cover(
+    ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no: int = 20,
+    top_k: int = 15,
+) -> pd.DataFrame | None:
+    """Compare feature importance by gain vs cover (XGBoost) or split vs gain (LightGBM)."""
+    model, _, feature_names = _get_model_and_preprocessor(ctx)
+
+    if hasattr(model, "get_booster"):
+        booster = model.get_booster()
+        gain_scores = booster.get_score(importance_type="gain")
+        cover_scores = booster.get_score(importance_type="cover")
+        weight_scores = booster.get_score(importance_type="weight")
+
+        # Map booster feature names (f0, f1, ...) to real names
+        fmap = {f"f{i}": name for i, name in enumerate(feature_names)}
+        rows = []
+        for fkey in gain_scores:
+            real_name = fmap.get(fkey, fkey)
+            group = _feature_group_name(real_name)
+            rows.append(
+                {
+                    "feature": real_name,
+                    "group": group,
+                    "gain": gain_scores.get(fkey, 0),
+                    "cover": cover_scores.get(fkey, 0),
+                    "weight": weight_scores.get(fkey, 0),
+                }
+            )
+        df = pd.DataFrame(rows)
+        # Aggregate by group
+        grouped = df.groupby("group", as_index=False)[["gain", "cover", "weight"]].sum()
+        grouped = grouped.sort_values("gain", ascending=False).reset_index(drop=True)
+        metric_a, metric_b = "gain", "cover"
+        label_a, label_b = "Total Gain", "Total Cover"
+    elif hasattr(model, "booster_"):
+        booster = model.booster_
+        fi = booster.feature_importance(importance_type="gain")
+        fi_split = booster.feature_importance(importance_type="split")
+        rows = []
+        for i, name in enumerate(feature_names):
+            group = _feature_group_name(name)
+            rows.append({"feature": name, "group": group, "gain": fi[i], "split": fi_split[i]})
+        df = pd.DataFrame(rows)
+        grouped = df.groupby("group", as_index=False)[["gain", "split"]].sum()
+        grouped = grouped.sort_values("gain", ascending=False).reset_index(drop=True)
+        metric_a, metric_b = "gain", "split"
+        label_a, label_b = "Total Gain", "Split Count"
+    else:
+        return None
+
+    top = grouped.head(top_k)
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, max(5, top_k * 0.38)), sharey=True)
+
+    top_sorted = top.sort_values(metric_a, ascending=True)
+    ax = axes[0]
+    ax.barh(top_sorted["group"], top_sorted[metric_a], color=PALETTE["champion"], alpha=0.85)
+    ax.set_xlabel(label_a)
+    ax.set_title(f"Figure {fig_no}A. Feature Importance by {label_a}")
+
+    top_sorted_b = top.sort_values(metric_b, ascending=True)
+    ax = axes[1]
+    ax.barh(top_sorted_b["group"], top_sorted_b[metric_b], color=PALETTE["pr"], alpha=0.85)
+    ax.set_xlabel(label_b)
+    ax.set_title(f"Figure {fig_no}B. Feature Importance by {label_b}")
+
+    model_name = type(model).__name__
+    fig.suptitle(
+        f"{model_name}: {label_a} vs {label_b} — Top {top_k} Feature Groups",
+        fontsize=12,
+        fontweight="bold",
+        y=1.02,
+    )
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "gain_vs_cover", fig_dir)
+    plt.show()
+    return grouped
+
+
+# ---------------------------------------------------------------------------
+# Simplified visualisation helpers (added for thesis-panel readability)
+# ---------------------------------------------------------------------------
+
+
+def plot_model_grouped_bar(ctx: dict[str, Any], fig_dir: Path, fig_no: int | str = 2) -> None:
+    """Grouped horizontal bar chart — PR-AUC and ROC-AUC per model family.
+
+    Replaces the dumbbell chart with a universally understood chart type.
+    """
+    _sel = ctx.get("selection_summary") or ctx.get("model_selection", {})
+    candidates = pd.DataFrame(_sel.get("candidates", [])).copy()
+    if candidates.empty or "rolling_roc_auc_mean" not in candidates.columns:
+        print("plot_model_grouped_bar: no candidate data available — skipping figure.")
+        return
+    candidates = candidates.sort_values("rolling_pr_auc_mean", ascending=True).reset_index(
+        drop=True
+    )
+    candidates["label"] = candidates["model_family"].str.replace("_", " ").str.title()
+
+    y = np.arange(len(candidates))
+    bar_h = 0.35
+    fig, ax = plt.subplots(figsize=(11, max(4, len(candidates) * 1.5)))
+    bars_pr = ax.barh(
+        y - bar_h / 2,
+        candidates["rolling_pr_auc_mean"],
+        height=bar_h,
+        color=PALETTE["pr"],
+        label="PR-AUC",
+        alpha=0.85,
+    )
+    bars_roc = ax.barh(
+        y + bar_h / 2,
+        candidates["rolling_roc_auc_mean"],
+        height=bar_h,
+        color=PALETTE["roc"],
+        label="ROC-AUC",
+        alpha=0.85,
+    )
+    ax.bar_label(bars_pr, fmt="%.3f", padding=4, fontsize=9)
+    ax.bar_label(bars_roc, fmt="%.3f", padding=4, fontsize=9)
+    ax.set_yticks(y)
+    ax.set_yticklabels(candidates["label"])
+    ax.set_xlabel("Rolling Mean Score")
+    ax.set_title(
+        f"Figure {fig_no}. Rolling-Origin Model Comparison: PR-AUC vs ROC-AUC",
+        fontweight="bold",
+    )
+    ax.legend(frameon=False, loc="lower right")
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "grouped_bar_model_selection", fig_dir)
+    plt.show()
+
+
+def plot_pr_curve_plain(ctx: dict[str, Any], fig_dir: Path, fig_no: int | str = 3) -> None:
+    """Plain precision-recall curve without iso-F1 contour lines.
+
+    Keeps the two operating-point markers (max_f1 and high_precision) but removes
+    the grey iso-F1 contour overlay that confuses non-ML audiences.
+    """
+    y_true = ctx["y_test_np"]
+    y_prob = ctx["y_prob"]
+    prec_curve, rec_curve, _ = precision_recall_curve(y_true, y_prob)
+    pr_auc = float(average_precision_score(y_true, y_prob))
+    prevalence = float(np.mean(y_true))
+
+    def _pr_at(threshold: float) -> tuple[float, float]:
+        pred = (y_prob >= threshold).astype(int)
+        return float(recall_score(y_true, pred, zero_division=0)), float(
+            precision_score(y_true, pred, zero_division=0)
+        )
+
+    recall_f1, precision_f1 = _pr_at(ctx["threshold_max_f1"])
+    recall_hp, precision_hp = _pr_at(ctx["threshold_high_precision"])
+
+    fig, ax = plt.subplots(figsize=(8, 6.5))
+    ax.plot(rec_curve, prec_curve, color=PALETTE["pr"], linewidth=2.6)
+    ax.hlines(prevalence, 0, 1, color="gray", linestyle="--", linewidth=1.5, label="Baseline")
+    ax.scatter(recall_f1, precision_f1, color=PALETTE["f1"], s=100, zorder=4, edgecolor="black")
+    ax.scatter(
+        recall_hp, precision_hp, color=PALETTE["precision"], s=100, zorder=4, edgecolor="black"
+    )
+    ax.annotate(
+        f"Max-F1 @ {ctx['threshold_max_f1']:.2f}",
+        xy=(recall_f1, precision_f1),
+        xytext=(recall_f1 + 0.05, precision_f1 + 0.05),
+        fontsize=10,
+        color=PALETTE["f1"],
+        arrowprops={"arrowstyle": "->", "color": PALETTE["f1"]},
+    )
+    ax.annotate(
+        f"High-Precision @ {ctx['threshold_high_precision']:.2f}",
+        xy=(recall_hp, precision_hp),
+        xytext=(recall_hp + 0.05, precision_hp - 0.08),
+        fontsize=10,
+        color=PALETTE["precision"],
+        arrowprops={"arrowstyle": "->", "color": PALETTE["precision"]},
+    )
+    ax.set_xlabel("Recall")
+    ax.set_ylabel("Precision")
+    ax.set_title(
+        f"Figure {fig_no}. Precision-Recall Curve (PR-AUC = {pr_auc:.3f})", fontweight="bold"
+    )
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.03)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "pr_curve_plain", fig_dir)
+    plt.show()
+
+
+def plot_top_correlations_bar(
+    df: pd.DataFrame,
+    target: str,
+    fig_dir: Path,
+    fig_no: int | str = 5,
+    top_k: int = 10,
+) -> pd.DataFrame:
+    """Horizontal bar chart of features most correlated with the target.
+
+    Replaces the dense 16x16 annotated heatmap with a clear ranked bar chart.
+    Returns the correlation series.
+    """
+    numeric_df = df.select_dtypes(include="number")
+    if target not in numeric_df.columns:
+        print(f"plot_top_correlations_bar: target '{target}' not in numeric columns — skipping.")
+        return pd.DataFrame()
+    corr = numeric_df.corr()[target].drop(target, errors="ignore").dropna()
+    top = corr.abs().nlargest(top_k)
+    top_corr = corr[top.index].sort_values()
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = ["#e15759" if v > 0 else "#4e79a7" for v in top_corr.values]
+    bars = ax.barh(top_corr.index, top_corr.values.tolist(), color=colors, alpha=0.85)
+    ax.bar_label(bars, fmt="{:+.3f}", padding=4, fontsize=9)
+    ax.axvline(0, color="gray", linewidth=0.8)
+    ax.set_xlabel("Correlation with Cancellation")
+    ax.set_title(
+        f"Figure {fig_no}. Top {top_k} Features Correlated with Cancellation",
+        fontweight="bold",
+    )
+    legend_handles = [
+        Line2D([0], [0], color="#e15759", lw=8, label="Positive (more → more cancellations)"),
+        Line2D([0], [0], color="#4e79a7", lw=8, label="Negative (more → fewer cancellations)"),
+    ]
+    ax.legend(handles=legend_handles, frameon=False, loc="lower right", fontsize=9)
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "top_correlations_bar", fig_dir)
+    plt.show()
+    return top_corr.to_frame("correlation")
+
+
+def plot_significance_bar(
+    ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no: int | str = "9B",
+    metric: str = "pr_auc",
+) -> None:
+    """Simple bar chart showing champion advantage over each challenger.
+
+    Replaces the 3-panel forest plot with a single, easy-to-read bar chart.
+    Bars are colored by significance. Error bars show 95% CI.
+    """
+    tables = ctx.get("benchmark_tables")
+    if not tables:
+        print("plot_significance_bar: benchmark tables not found — skipping.")
+        return
+    sig = tables["14_paired_significance_vs_champion"].copy()
+    subset = sig[sig["metric"] == metric].sort_values("observed_delta", ascending=True)
+    if subset.empty:
+        print(f"plot_significance_bar: no data for metric '{metric}' — skipping.")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, max(4, len(subset) * 1.2)))
+    y = np.arange(len(subset))
+    colors = ["#e15759" if s else "#bdbdbd" for s in subset["significant_at_05"]]
+    xerr_low = subset["observed_delta"] - subset["delta_ci_lower"]
+    xerr_high = subset["delta_ci_upper"] - subset["observed_delta"]
+    ax.barh(
+        y,
+        subset["observed_delta"],
+        xerr=[xerr_low.values, xerr_high.values],
+        color=colors,
+        alpha=0.85,
+        edgecolor="black",
+        linewidth=0.5,
+        capsize=4,
+    )
+    ax.set_yticks(y)
+    ax.set_yticklabels(subset["challenger_model"].str.replace("_", " ").str.title())
+    ax.axvline(0, color="gray", linestyle="--", linewidth=1)
+    nice = metric.replace("_", "-").upper()
+    ax.set_xlabel(f"Champion Advantage ({nice})")
+    ax.set_title(
+        f"Figure {fig_no}. Champion vs Challengers — {nice} (Paired Bootstrap, n=2000)",
+        fontweight="bold",
+    )
+    for i, (_, row) in enumerate(subset.iterrows()):
+        label = "sig." if row["significant_at_05"] else f"p={row['p_value_two_sided']:.2f}"
+        ax.text(
+            row["observed_delta"] + xerr_high.iloc[i] + 0.001,
+            i,
+            label,
+            va="center",
+            fontsize=9,
+            fontstyle="italic",
+        )
+    legend_handles = [
+        Line2D([0], [0], color="#e15759", lw=8, label="Significant (p < 0.05)"),
+        Line2D([0], [0], color="#bdbdbd", lw=8, label="Not significant"),
+    ]
+    ax.legend(handles=legend_handles, frameon=False, fontsize=9)
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, f"significance_bar_{metric}", fig_dir)
+    plt.show()
+
+
+def plot_rolling_stability_top3(
+    ctx: dict[str, Any],
+    fig_dir: Path,
+    fig_no: int | str = "9G",
+    top_n: int = 3,
+) -> pd.DataFrame:
+    """Rolling-origin stability plot showing only the top N models.
+
+    Replaces the cluttered 6-line version with a cleaner view focused on
+    the most competitive models.
+    """
+    tables = ctx.get("benchmark_tables")
+    if not tables:
+        print("plot_rolling_stability_top3: benchmark tables not found — skipping.")
+        return pd.DataFrame()
+
+    rankings = tables.get("16_rankings")
+    if rankings is not None:
+        top_models = rankings.head(top_n)["model"].tolist()
+    else:
+        top_models = ["lightgbm", "gradient_boosting", "xgboost"][:top_n]
+
+    rolling_key = "10_rolling_origin_fold_metrics"
+    if rolling_key in tables:
+        rolling = tables[rolling_key].copy()
+    else:
+        from src.eval.notebook_utils import project_root
+
+        rolling = pd.read_csv(
+            project_root() / "reports" / "benchmarks" / "10_rolling_origin_fold_metrics.csv"
+        )
+
+    rolling = rolling[rolling["model"].isin(top_models)]
+    model_colors = {
+        "lightgbm": "#e15759",
+        "gradient_boosting": "#4e79a7",
+        "xgboost": "#f28e2b",
+        "random_forest": "#59a14f",
+        "logistic_regression": "#b07aa1",
+        "decision_tree": "#9c755f",
+    }
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+    for metric, ax in zip(["roc_auc", "pr_auc"], axes):
+        for model_name in rolling["model"].unique():
+            subset = rolling[rolling["model"] == model_name]
+            color = model_colors.get(model_name, "gray")
+            ax.plot(
+                subset["cutoff_frac"],
+                subset[metric],
+                marker="o",
+                linewidth=2.5,
+                markersize=9,
+                label=model_name.replace("_", " ").title(),
+                color=color,
+            )
+        nice = metric.replace("_", "-").upper()
+        ax.set_title(f"{nice} Across Rolling-Origin Folds", fontweight="bold")
+        ax.set_xlabel("Training Cutoff Fraction")
+        ax.set_ylabel(nice)
+        ax.legend(fontsize=10, loc="lower left")
+        ax.set_xticks([0.6, 0.7, 0.8])
+
+    fig.suptitle(
+        f"Figure {fig_no}. Temporal Stability — Top {top_n} Models",
+        fontsize=13,
+        fontweight="bold",
+        y=1.02,
+    )
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "rolling_origin_stability_top", fig_dir)
+    plt.show()
+    return rolling
+
+
+# ---------------------------------------------------------------------------
+# Sensitivity analysis helpers (Notebook 10)
+# ---------------------------------------------------------------------------
+
+
+def load_sensitivity_context() -> dict[str, Any]:
+    """Load context for sensitivity analysis — extends main context with val predictions."""
+    ctx = load_main_context()
+    root = ctx["root"]
+    feature_cols = BOOKING_TIME_FEATURES.copy()
+    feature_columns_path = root / "artifacts" / "feature_columns.json"
+    if feature_columns_path.exists():
+        feature_cols = load_json(feature_columns_path).get("features", feature_cols)
+
+    val_df = ctx["val_df"]
+    train_df = ctx["train_df"]
+    for col in feature_cols:
+        if col not in val_df.columns:
+            val_df[col] = None
+        if col not in train_df.columns:
+            train_df[col] = None
+
+    X_val = val_df[feature_cols]
+    y_val = val_df[TARGET_COL].astype(int)
+    X_train = train_df[feature_cols]
+    y_train = train_df[TARGET_COL].astype(int)
+
+    model = ctx["model_pipeline"]
+    calibrator = ctx["calibrator"]
+    val_probs_raw = model.predict_proba(X_val)[:, 1]
+    val_probs = np.clip(calibrator.predict(val_probs_raw), 0.0, 1.0)
+
+    ctx.update(
+        {
+            "X_train": X_train,
+            "y_train": y_train,
+            "X_val": X_val,
+            "y_val": y_val,
+            "val_probs": val_probs,
+            "val_probs_calibrated": val_probs,
+            "val_labels": y_val.to_numpy(),
+            "feature_cols": feature_cols,
+        }
+    )
+    return ctx
+
+
+def cost_sensitivity_sweep(
+    ctx: dict[str, Any],
+    fp_costs: list[float] | None = None,
+) -> pd.DataFrame:
+    """Sweep FP intervention costs and return optimal cost-sensitive thresholds.
+
+    For each FP cost, re-runs the cost threshold sweep on the validation set
+    and records the optimal threshold and total cost.
+    """
+    from src.utils.thresholds import cost_threshold_sweep, select_min_cost_threshold
+
+    if fp_costs is None:
+        fp_costs = [1.0, 5.0, 10.0, 15.0, 25.0, 50.0, 75.0, 100.0]
+
+    _vp = ctx.get("val_probs_calibrated")
+    if _vp is None:
+        _vp = ctx.get("val_probs", [])
+    val_probs = np.array(_vp)
+    val_labels = np.array(ctx.get("val_labels", []))
+
+    # Compute per-sample FN cost (revenue at risk)
+    val_df = ctx.get("val_df")
+    if val_df is not None and "revenue_at_risk" in val_df.columns:
+        fn_cost = val_df["revenue_at_risk"].values
+    else:
+        fn_cost = np.full(len(val_labels), 100.0)
+
+    rows = []
+    for fp_cost in fp_costs:
+        sweep_df = cost_threshold_sweep(val_labels, val_probs, fn_cost, fp_cost=fp_cost)
+        best = select_min_cost_threshold(sweep_df)
+        rows.append(
+            {
+                "FP Cost": fp_cost,
+                "Optimal Threshold": best["threshold"],
+                "Total Cost": best["total_cost"],
+                "FP Count": best["fp_count"],
+                "FN Count": best["fn_count"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def plot_cost_sensitivity(
+    sweep_df: pd.DataFrame,
+    fig_dir: Path,
+    fig_no: int | str = 101,
+) -> None:
+    """Plot how the optimal threshold shifts as FP intervention cost changes."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+    ax1.plot(sweep_df["FP Cost"], sweep_df["Optimal Threshold"], "o-", color="#4e79a7", lw=2)
+    ax1.set_xlabel("FP Intervention Cost (EUR)")
+    ax1.set_ylabel("Optimal Threshold")
+    ax1.set_title("(a) How FP Cost Shifts the Optimal Threshold")
+    ax1.grid(True, alpha=0.3)
+
+    ax2.plot(sweep_df["FP Cost"], sweep_df["Total Cost"], "s-", color="#e15759", lw=2)
+    ax2.set_xlabel("FP Intervention Cost (EUR)")
+    ax2.set_ylabel("Total Misclassification Cost (EUR)")
+    ax2.set_title("(b) Total Cost at Optimal Threshold")
+    ax2.grid(True, alpha=0.3)
+    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:,.0f}"))
+
+    fig.suptitle(
+        f"Figure {fig_no}. Cost Sensitivity Analysis",
+        fontsize=13,
+        fontweight="bold",
+        y=1.02,
+    )
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "cost_sensitivity", fig_dir)
+    plt.show()
+
+
+def dataset_size_sensitivity(
+    ctx: dict[str, Any],
+    fractions: list[float] | None = None,
+    n_repeats: int = 3,
+) -> pd.DataFrame:
+    """Train on progressively smaller subsets and measure holdout performance.
+
+    Uses the pipeline's preprocessor to transform raw features into numeric
+    arrays before fitting standalone classifiers on each subset.
+
+    Returns a DataFrame with columns: Fraction, Rows, ROC-AUC (mean/std),
+    PR-AUC (mean/std), F1 (mean/std).
+    """
+    from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
+
+    if fractions is None:
+        fractions = [0.1, 0.2, 0.3, 0.5, 0.7, 1.0]
+
+    X_train = ctx.get("X_train")
+    y_train = ctx.get("y_train")
+    X_val = ctx.get("X_val")
+    y_val = ctx.get("y_val")
+
+    if X_train is None or y_train is None or X_val is None or y_val is None:
+        return pd.DataFrame()
+
+    # Extract the preprocessor from the loaded pipeline to transform raw features
+    pipeline = ctx.get("model_pipeline")
+    preprocessor = None
+    if pipeline is not None and hasattr(pipeline, "named_steps"):
+        step_names = list(pipeline.named_steps.keys())
+        preprocessor = pipeline.named_steps.get(step_names[0])
+
+    # Pre-transform the full training and validation sets once
+    if preprocessor is not None:
+        X_train_enc = preprocessor.transform(X_train)
+        X_val_enc = preprocessor.transform(X_val)
+    else:
+        X_train_enc = X_train.values if hasattr(X_train, "values") else X_train
+        X_val_enc = X_val.values if hasattr(X_val, "values") else X_val
+
+    rows = []
+    for frac in fractions:
+        roc_aucs, pr_aucs, f1s = [], [], []
+        n_rows = int(len(X_train_enc) * frac)
+        for seed in range(n_repeats):
+            rng = np.random.RandomState(42 + seed)
+            idx = rng.choice(len(X_train_enc), size=n_rows, replace=False)
+            X_sub = X_train_enc[idx]
+            y_sub = y_train.iloc[idx] if hasattr(y_train, "iloc") else y_train[idx]
+
+            try:
+                from src.models.train import is_lightgbm_available
+
+                if is_lightgbm_available():
+                    import lightgbm as lgb
+
+                    model = lgb.LGBMClassifier(
+                        n_estimators=100,
+                        max_depth=6,
+                        learning_rate=0.1,
+                        random_state=42 + seed,
+                        verbosity=-1,
+                    )
+                else:
+                    from sklearn.ensemble import GradientBoostingClassifier
+
+                    model = GradientBoostingClassifier(
+                        n_estimators=100,
+                        max_depth=5,
+                        random_state=42 + seed,
+                    )
+                model.fit(X_sub, y_sub)
+                probs = model.predict_proba(X_val_enc)[:, 1]
+                preds = (probs >= 0.5).astype(int)
+                roc_aucs.append(roc_auc_score(y_val, probs))
+                pr_aucs.append(average_precision_score(y_val, probs))
+                f1s.append(f1_score(y_val, preds))
+            except Exception:
+                continue
+
+        if roc_aucs:
+            rows.append(
+                {
+                    "Fraction": frac,
+                    "Rows": n_rows,
+                    "ROC-AUC Mean": np.mean(roc_aucs),
+                    "ROC-AUC Std": np.std(roc_aucs),
+                    "PR-AUC Mean": np.mean(pr_aucs),
+                    "PR-AUC Std": np.std(pr_aucs),
+                    "F1 Mean": np.mean(f1s),
+                    "F1 Std": np.std(f1s),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def plot_dataset_size_sensitivity(
+    size_df: pd.DataFrame,
+    fig_dir: Path,
+    fig_no: int | str = 102,
+) -> None:
+    """Plot how model performance degrades with less training data."""
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    metrics = [("ROC-AUC", "#4e79a7"), ("PR-AUC", "#e15759"), ("F1", "#59a14f")]
+
+    for ax, (metric, color) in zip(axes, metrics):
+        mean_col = f"{metric} Mean"
+        std_col = f"{metric} Std"
+        ax.errorbar(
+            size_df["Rows"],
+            size_df[mean_col],
+            yerr=size_df[std_col],
+            fmt="o-",
+            color=color,
+            capsize=4,
+            lw=2,
+        )
+        ax.set_xlabel("Training Rows")
+        ax.set_ylabel(metric)
+        ax.set_title(metric)
+        ax.grid(True, alpha=0.3)
+        ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x/1000:.0f}k"))
+
+    fig.suptitle(
+        f"Figure {fig_no}. Dataset Size Sensitivity",
+        fontsize=13,
+        fontweight="bold",
+        y=1.02,
+    )
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "dataset_size_sensitivity", fig_dir)
+    plt.show()
+
+
+def threshold_policy_comparison(
+    ctx: dict[str, Any],
+) -> pd.DataFrame:
+    """Compare the three threshold policies side by side on test set."""
+    test_metrics = {}
+    for policy in ["max_f1", "high_precision", "cost_sensitive"]:
+        m = ctx.get("metrics", {}).get(policy, {})
+        if m:
+            test_metrics[policy] = {
+                "Threshold": ctx.get("thresholds", {}).get(policy, {}).get("threshold", "N/A"),
+                "Precision": m.get("precision", 0),
+                "Recall": m.get("recall", 0),
+                "F1": m.get("f1", 0),
+                "Balanced Accuracy": m.get("balanced_accuracy", 0),
+            }
+    if not test_metrics:
+        return pd.DataFrame()
+    df = pd.DataFrame(test_metrics).T
+    df.index.name = "Policy"
+    return df.reset_index()
+
+
+def plot_threshold_policy_comparison(
+    policy_df: pd.DataFrame,
+    fig_dir: Path,
+    fig_no: int | str = 103,
+) -> None:
+    """Grouped bar chart comparing metrics across threshold policies."""
+    if policy_df.empty:
+        return
+
+    metrics = ["Precision", "Recall", "F1", "Balanced Accuracy"]
+    x = np.arange(len(policy_df))
+    width = 0.18
+    colors = ["#4e79a7", "#e15759", "#59a14f", "#f28e2b"]
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    for i, (metric, color) in enumerate(zip(metrics, colors)):
+        if metric in policy_df.columns:
+            ax.bar(x + i * width, policy_df[metric], width, label=metric, color=color)
+
+    ax.set_xlabel("Threshold Policy")
+    ax.set_ylabel("Score")
+    ax.set_xticks(x + width * 1.5)
+    ax.set_xticklabels(policy_df["Policy"])
+    ax.legend()
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, axis="y", alpha=0.3)
+
+    fig.suptitle(
+        f"Figure {fig_no}. Threshold Policy Trade-offs",
+        fontsize=13,
+        fontweight="bold",
+        y=1.02,
+    )
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, "threshold_policy_comparison", fig_dir)
+    plt.show()

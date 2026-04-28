@@ -169,6 +169,13 @@ class PredictionResponse(BaseModel):
         default_factory=list,
         description="Non-fatal warnings relevant to this prediction response.",
     )
+    top_features: list[dict[str, object]] = Field(
+        default_factory=list,
+        description=(
+            "Top contributing features for this prediction. "
+            "Each entry has 'feature', 'value', and 'contribution' keys."
+        ),
+    )
 
 
 class ModelInfoResponse(BaseModel):

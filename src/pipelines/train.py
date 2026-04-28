@@ -100,16 +100,17 @@ def _ensure_dirs(*paths: Path) -> None:
 
 
 def _sanitise_for_json(obj: Any) -> Any:
-    """Recursively replace non-finite floats (NaN / ±Inf) with None.
-
-    Python's ``json.dumps`` serialises ``float('nan')`` as the literal token
-    ``NaN``, which is not valid JSON (RFC 8259).  Replacing with ``null``
-    (Python ``None``) preserves the key while producing valid output.
-    """
+    """Make *obj* safe for ``json.dumps``: convert numpy scalars, replace NaN/Inf."""
     if isinstance(obj, dict):
         return {k: _sanitise_for_json(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_sanitise_for_json(v) for v in obj]
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return None if not np.isfinite(obj) else float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
     if isinstance(obj, float) and not np.isfinite(obj):
         return None
     return obj
@@ -179,8 +180,15 @@ def _fit_probability_calibrator(
 ) -> IsotonicRegression:
     if CALIBRATION_METHOD != "isotonic":
         raise ValueError(f"Unsupported calibration method: {CALIBRATION_METHOD}")
+    y_arr = y_val.to_numpy().astype(int)
+    n_classes = len(np.unique(y_arr))
+    if n_classes < 2:
+        raise ValueError(
+            f"Validation set has only {n_classes} unique class(es), but calibration "
+            f"requires both classes. Check the train/val split or use more data."
+        )
     calibrator = IsotonicRegression(out_of_bounds="clip")
-    calibrator.fit(val_probs_raw, y_val.to_numpy().astype(int))
+    calibrator.fit(val_probs_raw, y_arr)
     return calibrator
 
 
@@ -625,7 +633,14 @@ def run_training_pipeline(
     logger.info("pipeline_start artifacts_dir=%s reports_dir=%s", artifacts_dir, reports_dir)
 
     df = load_raw_data(path=data_path)
+    if df.empty:
+        raise ValueError("Loaded dataset is empty. Check that the data file contains rows.")
     df, cleaning_issues = clean_raw(df)
+    if df.empty:
+        raise ValueError(
+            f"Dataset became empty after cleaning (all {sum(cleaning_issues.values())} rows "
+            f"dropped). Check data quality: {cleaning_issues}"
+        )
     logger.info(
         "data_loaded rows=%d cleaning_issues=%d",
         len(df),

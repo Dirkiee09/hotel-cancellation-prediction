@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import pandas as pd
 
 from src.config import ADR_MAX_VALID, BOOKING_TIME_FEATURES, LEAKAGE_COLS, TARGET_COL
 from src.features.build import add_derived_booking_features
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -90,6 +93,16 @@ def clean_raw(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
 
     if "company" in df.columns:
         df = df.drop(columns=["company"])
+
+    total_dropped = issues.get("rows_dropped_total", 0)
+    if total_dropped > 0:
+        logger.info(
+            "clean_raw: dropped %d rows (neg_adr=%d, adr_outlier=%d, zero_guests=%d)",
+            total_dropped,
+            issues.get("rows_dropped_negative_adr", 0),
+            issues.get("rows_dropped_adr_outlier", 0),
+            issues.get("rows_dropped_zero_guests", 0),
+        )
 
     return df, issues
 

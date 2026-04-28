@@ -8,6 +8,7 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,19 +40,20 @@ jobs:
         run: python scripts/train.py
 
       - name: Model metric gates
-        run: python scripts/check_metrics.py
+        run: python scripts/check.py metrics
 
       - name: Security scan (bandit)
         run: bandit -q -r src scripts -s B101 -x tests
 
       - name: Artifact threshold sync check
-        run: python scripts/sync_check.py
+        run: python scripts/check.py sync
 
       - name: Dependency vulnerability scan (pip-audit)
         run: pip-audit -r requirements.txt --no-deps --disable-pip
 
   thesis-analysis:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: quality
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
@@ -69,17 +71,14 @@ jobs:
           pip install -e . -r requirements.txt
           pip check
 
-      - name: Train pipeline
-        run: python scripts/train.py
-
-      - name: Run thesis analysis
-        run: python scripts/thesis.py
+      - name: Train pipeline + thesis analysis
+        run: python scripts/train.py --thesis
 
       - name: Generate benchmark tables
         run: python scripts/benchmark.py
 
       - name: Cross-artifact sync check
-        run: python scripts/sync_check.py
+        run: python scripts/check.py sync
 
       - name: Upload thesis reports
         uses: actions/upload-artifact@v4

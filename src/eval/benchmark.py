@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -15,6 +16,7 @@ import numpy as np
 import pandas as pd
 from sklearn.calibration import IsotonicRegression
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss, f1_score, roc_auc_score
 from sklearn.tree import DecisionTreeClassifier
@@ -71,6 +73,21 @@ except Exception:  # pragma: no cover - optional dependency
     lgb = None
 
 logger = logging.getLogger(__name__)
+
+
+def _suppress_known_benchmark_warnings() -> None:
+    # Logistic baseline can hit iteration cap on sparse OHE inputs in some folds.
+    warnings.filterwarnings("ignore", category=ConvergenceWarning)
+    # LightGBM inside sklearn pipelines can emit benign feature-name warnings.
+    warnings.filterwarnings(
+        "ignore", message="X does not have valid feature names", category=UserWarning
+    )
+    # Small temporal buckets can contain a single class; metrics remain deterministic.
+    warnings.filterwarnings(
+        "ignore",
+        message="A single label was found in 'y_true' and 'y_pred'",
+        category=UserWarning,
+    )
 
 
 @dataclass(frozen=True)
@@ -213,6 +230,7 @@ def _model_specs() -> list[ModelSpec]:
                     colsample_bytree=0.8,
                     random_state=RANDOM_STATE,
                     n_jobs=1,
+                    verbosity=-1,
                 ),
                 params_for_report={
                     "n_estimators": 300,
@@ -222,6 +240,7 @@ def _model_specs() -> list[ModelSpec]:
                     "colsample_bytree": 0.8,
                     "random_state": RANDOM_STATE,
                     "n_jobs": 1,
+                    "verbosity": -1,
                 },
             )
         )
@@ -265,15 +284,16 @@ def _evaluate_model(
     y_test_np: np.ndarray,
 ) -> ModelResult:
     model = spec.factory()
+    with warnings.catch_warnings():
+        _suppress_known_benchmark_warnings()
+        fit_start = time.perf_counter()
+        model.fit(X_train_t, y_train_np)
+        fit_seconds = float(time.perf_counter() - fit_start)
 
-    fit_start = time.perf_counter()
-    model.fit(X_train_t, y_train_np)
-    fit_seconds = float(time.perf_counter() - fit_start)
-
-    pred_start = time.perf_counter()
-    val_probs_raw = model.predict_proba(X_val_t)[:, 1]
-    test_probs_raw = model.predict_proba(X_test_t)[:, 1]
-    predict_seconds = float(time.perf_counter() - pred_start)
+        pred_start = time.perf_counter()
+        val_probs_raw = model.predict_proba(X_val_t)[:, 1]
+        test_probs_raw = model.predict_proba(X_test_t)[:, 1]
+        predict_seconds = float(time.perf_counter() - pred_start)
 
     calibrator = IsotonicRegression(out_of_bounds="clip")
     calibrator.fit(val_probs_raw, y_val_np)
@@ -461,6 +481,7 @@ def run_model_benchmark(
     temporal_buckets: int = TEMPORAL_STABILITY_BUCKETS,
 ) -> ModelBenchmarkOutputs:
     """Run deterministic multi-model benchmark and persist 16 benchmark tables."""
+    _suppress_known_benchmark_warnings()
     set_global_seed(RANDOM_STATE)
     benchmark_dir = reports_dir / "benchmarks"
     benchmark_dir.mkdir(parents=True, exist_ok=True)
@@ -645,8 +666,10 @@ def run_model_benchmark(
             X_tr_t = fold_preprocessor.fit_transform(X_tr)
             X_va_t = fold_preprocessor.transform(X_va)
             model = spec.factory()
-            model.fit(X_tr_t, y_tr)
-            probs = model.predict_proba(X_va_t)[:, 1]
+            with warnings.catch_warnings():
+                _suppress_known_benchmark_warnings()
+                model.fit(X_tr_t, y_tr)
+                probs = model.predict_proba(X_va_t)[:, 1]
             rolling_rows.append(
                 {
                     "model": spec.name,

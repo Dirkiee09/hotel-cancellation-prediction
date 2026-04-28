@@ -13,12 +13,14 @@ pip install -e . -r requirements.txt
 ```bash
 make train          # Train model end-to-end
 make eval           # Post-training verification
-make artifact-check # Validate artifacts
-make sync-check     # Verify threshold consistency
+make check          # Validate artifacts, metrics, sync, fairness
 make full-pipeline  # All of the above in one command
 ```
 
 Use `make help` to see all available targets.
+
+> **Windows users**: If `make` is not available, run scripts directly:
+> `python scripts/train.py`, `python scripts/train.py --verify-only`, etc.
 
 ## Project Entry Points
 
@@ -29,9 +31,9 @@ Use `make help` to see all available targets.
 | `make train MAX_ROWS=10000` | Fast smoke-train (10k rows) |
 | `make eval` | Post-training verification report |
 | `make benchmark` | Generate 16 benchmark CSV tables |
-| `make full-pipeline` | train → eval → benchmark → artifact-check → sync-check |
-| `make run-notebooks` | Execute all 8 notebooks headlessly |
-| `make fairness-check` | Hyperparameter fairness audit |
+| `make thesis` | Full thesis analysis (SHAP, CI, Optuna) |
+| `make check` | All quality gates (artifacts, metrics, sync, fairness) |
+| `make full-pipeline` | train → eval → benchmark → check |
 | `uvicorn src.app.main:app --host 0.0.0.0 --port 8000` | Start API + Gradio UI |
 
 ## Data
@@ -40,7 +42,6 @@ Use `make help` to see all available targets.
 - Training uses booking-time features only (`src/config.py`), with explicit leakage exclusion for post-outcome fields.
 
 ## Navigation
-See `PROJECT_MAP.md` for a full guide to folders, files, and "where to edit" for each common task.
 See `notebooks/README.md` for notebook purposes, run order, and required artifacts.
 
 ## Reproducible Training
@@ -77,9 +78,8 @@ Endpoints:
 ## Quality Gates
 ```bash
 make lint typecheck test    # ruff + mypy + pytest (≥80% coverage)
-make security deps-audit    # bandit + pip-audit
-make metrics-gate           # ROC-AUC ≥ 0.84, PR-AUC ≥ 0.74, F1 ≥ 0.70
-make sync-check             # thresholds consistent across artifacts and reports
+make security               # bandit security scan
+make check                  # artifacts + metrics + sync + fairness
 ```
 
 Pre-commit hooks:
@@ -88,12 +88,23 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-CI runs all of the above via `.github/workflows/ci.yml`.
+CI runs all of the above via `.github/workflows/ci.yml` (Python 3.11). Local development on Python 3.12+ is also supported.
 
 ## Docker
 ```bash
-docker build -t hotel-cancellation-app .
-docker run -p 8000:8000 hotel-cancellation-app
+docker compose build
+docker compose run --rm train
+docker compose up api
+```
+
+Notes:
+- Install Docker Desktop or Docker Engine before using these commands.
+- `train` mounts local `data/`, `artifacts/`, and `reports/` so generated model files persist on your machine.
+- `api` serves the FastAPI + Gradio app on `http://localhost:8000` and reads model artifacts from the local `artifacts/` directory.
+- For a quick smoke-train you can override the command, for example:
+
+```bash
+docker compose run --rm train python scripts/train.py --max-rows 10000
 ```
 
 ## Generated Files
