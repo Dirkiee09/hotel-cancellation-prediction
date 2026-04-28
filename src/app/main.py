@@ -2,32 +2,26 @@
 
 from __future__ import annotations
 
-import threading
+import logging
 
 import gradio as gr
 from fastapi import FastAPI, HTTPException, status
 
 from src.app.schemas import BookingRequest, ModelInfoResponse, PredictionResponse
 from src.config import MODEL_SELECTION_POLICY, RISK_TIER_HIGH_THRESHOLD, RISK_TIER_MEDIUM_THRESHOLD
-from src.serving.inference import ModelArtifacts, load_artifacts, predict_proba
+from src.serving.inference import explain_prediction, get_cached_artifacts, predict_proba
 from src.utils.thresholds import resolve_thresholds
 
 from .ui import BACKGROUND_CSS, build_ui
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(title="Hotel Booking Cancellation")
 
-_ARTIFACTS: ModelArtifacts | None = None
-_ARTIFACTS_LOCK = threading.Lock()
 
-
-def get_artifacts() -> ModelArtifacts:
-    global _ARTIFACTS
-    if _ARTIFACTS is not None:
-        return _ARTIFACTS
-    with _ARTIFACTS_LOCK:
-        if _ARTIFACTS is None:
-            _ARTIFACTS = load_artifacts()
-    return _ARTIFACTS
+def get_artifacts():
+    """Delegate to the shared singleton in inference.py."""
+    return get_cached_artifacts()
 
 
 @app.get("/")
@@ -96,11 +90,22 @@ def predict(payload: BookingRequest):
         ) from exc
 
     try:
-        probs, _ = predict_proba(payload.model_dump(exclude={"arrival_date"}), artifacts)
+        probs, feature_df = predict_proba(payload.model_dump(exclude={"arrival_date"}), artifacts)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Prediction failed due to invalid input: {exc}",
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Model inference unavailable: {exc}",
+        ) from exc
     except Exception as exc:
+        logger.exception("Unexpected prediction error: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Prediction failed: {exc}",
+            detail="Internal prediction error. Check server logs for details.",
         ) from exc
     prob = float(probs[0])
     thresholds, threshold_sources, cost_fallback, alerts = resolve_thresholds(
@@ -117,6 +122,9 @@ def predict(payload: BookingRequest):
     else:
         risk_tier = "low"
 
+    # Compute per-prediction feature explanations (non-blocking — empty list on failure)
+    top_features = explain_prediction(feature_df, artifacts, top_n=5)
+
     return PredictionResponse(
         probability=prob,
         label_high_precision=int(prob >= thr_hp),
@@ -129,6 +137,7 @@ def predict(payload: BookingRequest):
         cost_threshold_source=threshold_sources["cost_sensitive"],
         cost_threshold_fallback_used=bool(cost_fallback),
         alerts=alerts,
+        top_features=top_features,
     )
 
 

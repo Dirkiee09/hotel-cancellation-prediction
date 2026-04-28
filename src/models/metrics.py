@@ -15,6 +15,7 @@ from sklearn.metrics import (
 
 
 def evaluate_at_threshold(y_true, y_prob, threshold: float) -> dict[str, float]:
+    """Evaluate binary classification metrics at a given probability threshold."""
     y_true_arr = np.asarray(y_true)
     y_prob_arr = np.asarray(y_prob)
     y_pred = (y_prob_arr >= threshold).astype(int)
@@ -37,6 +38,7 @@ def evaluate_at_threshold(y_true, y_prob, threshold: float) -> dict[str, float]:
 
 
 def compute_confusion(y_true, y_prob, threshold: float):
+    """Compute the confusion matrix for a given probability threshold."""
     y_pred = (np.asarray(y_prob) >= threshold).astype(int)
     return confusion_matrix(y_true, y_pred)
 

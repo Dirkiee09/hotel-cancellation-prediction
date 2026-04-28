@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 import numpy as np
@@ -12,6 +13,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 
 from src.config import BOOKING_TIME_FEATURES, LATE_WINDOW_MAX_LEAD_DAYS, TRAIN_RATIO, VAL_RATIO
+
+logger = logging.getLogger(__name__)
 
 MONTH_MAP = {
     "January": 1,
@@ -98,17 +101,32 @@ def add_derived_booking_features(df: pd.DataFrame) -> pd.DataFrame:
     lead_time = _to_numeric(_column_or_default(out, "lead_time", np.nan))
     adr = _to_numeric(_column_or_default(out, "adr", np.nan))
 
+    # total_stay: longer stays have different cancellation dynamics; captures
+    # length-of-stay effect that separate weekend/week columns miss.
     out["total_stay"] = weekend + week
+    # total_guests: party size proxy — large groups cancel less often; also used
+    # to compute per-person ADR below.
     out["total_guests"] = adults + children + babies
     # When total_guests == 0 (data quality issue; schema enforces adults >= 1),
     # denominator defaults to 1.0, so adr_per_person == adr.
     guests_denom = out["total_guests"].where(out["total_guests"] > 0, 1.0)
+    # adr_per_person: normalises room price by party size; budget travellers
+    # (low per-person spend) show higher cancellation rates in EDA.
     out["adr_per_person"] = adr / guests_denom
+    # is_weekend_heavy: weekend-dominant stays correlate with leisure travel,
+    # which has different cancellation patterns vs. business (weekday-heavy).
     out["is_weekend_heavy"] = (weekend > week).astype(int)
+    # revenue_at_risk: booking-time financial exposure (ADR × nights).  This is
+    # NOT leakage — it is known at booking time and is also used downstream in
+    # the cost-sensitive threshold sweep as the FN cost proxy.
     out["revenue_at_risk"] = adr * out["total_stay"]
     # NaN lead_time -> fillna(False): unknown lead time is conservatively treated as "not late window"
+    # is_late_window: bookings made ≤3 days before arrival are operationally urgent;
+    # late cancellations leave almost no time to re-sell the room.
     out["is_late_window"] = (lead_time <= LATE_WINDOW_MAX_LEAD_DAYS).fillna(False).astype(int)
 
+    # had_company: binary flag for corporate bookings (original 'company' column is
+    # a high-cardinality ID).  Corporate bookings cancel at different rates.
     if "company" in out.columns:
         out["had_company"] = out["company"].notna().astype(int)
     elif "had_company" not in out.columns:
@@ -116,6 +134,9 @@ def add_derived_booking_features(df: pd.DataFrame) -> pd.DataFrame:
 
     if "arrival_date_month" in out.columns:
         month_num = _month_num_from_name(out["arrival_date_month"])
+        # Cyclical encoding: sin/cos pair preserves the circular nature of months
+        # (December is adjacent to January, not 11 units apart as in one-hot).
+        # Tree models can split on sin/cos to capture seasonal booking patterns.
         angle = 2.0 * np.pi * (month_num / 12.0)
         out["month_sin"] = np.sin(angle)
         out["month_cos"] = np.cos(angle)
@@ -138,7 +159,7 @@ def ensure_model_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_arrival_date(df: pd.DataFrame) -> pd.Series:
     month_num = _month_num_from_name(df["arrival_date_month"])
-    return pd.to_datetime(
+    dates = pd.to_datetime(
         {
             "year": df["arrival_date_year"],
             "month": month_num,
@@ -146,6 +167,20 @@ def add_arrival_date(df: pd.DataFrame) -> pd.Series:
         },
         errors="coerce",
     )
+    nat_count = int(dates.isna().sum())
+    if nat_count == len(dates):
+        raise ValueError(
+            f"Date parsing failed for all {len(dates)} records. "
+            "Check that arrival_date_year, arrival_date_month, and "
+            "arrival_date_day_of_month contain valid values."
+        )
+    if nat_count > 0:
+        logger.warning(
+            "Date parsing produced NaT for %d/%d records; these will sort to the end (test set).",
+            nat_count,
+            len(dates),
+        )
+    return dates
 
 
 def sort_by_arrival_date(df: pd.DataFrame) -> pd.DataFrame:

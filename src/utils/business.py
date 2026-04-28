@@ -98,6 +98,7 @@ def assign_risk_tiers(
     medium_threshold: float,
     high_threshold: float,
 ) -> np.ndarray:
+    """Assign Low/Medium/High risk tier labels based on probability thresholds."""
     probs = np.asarray(probabilities, dtype=float)
     tiers = np.full(len(probs), "low", dtype=object)
     tiers[probs >= medium_threshold] = "medium"

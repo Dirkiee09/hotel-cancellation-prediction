@@ -1,0 +1,22 @@
+# Force LF line endings for all text files (matches ruff format convention)
+* text=auto eol=lf
+
+# Explicitly mark source files
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.csv text eol=lf
+*.toml text eol=lf
+*.cfg text eol=lf
+*.txt text eol=lf
+*.ipynb text eol=lf
+
+# Binary files
+*.pkl binary
+*.png binary
+*.pdf binary
+*.jpg binary
+*.jpeg binary
+*.keras binary

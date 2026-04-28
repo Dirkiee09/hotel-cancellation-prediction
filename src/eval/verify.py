@@ -46,54 +46,54 @@ SEED = 42
 
 NOTEBOOK_LOCATION_ROWS = [
     {
-        "Topic": "Holdout split construction (index/date cutoff) definition",
-        "main.ipynb": "cell 6; notebooks/main.ipynb:256,258,262",
-        "analysis.ipynb": "cell 8; notebooks/analysis.ipynb:354,356,360",
+        "Topic": "Holdout split construction (chronological 80/10/10)",
+        "Notebook": "02_modeling",
+        "Notes": "Loads pre-computed artifacts via load_main_context()",
     },
     {
-        "Topic": "Holdout train/test usage (feature matrices from split frames)",
-        "main.ipynb": "cell 7; notebooks/main.ipynb:305,307",
-        "analysis.ipynb": "cell 11; notebooks/analysis.ipynb:460,462",
+        "Topic": "Holdout train/test usage (feature matrices)",
+        "Notebook": "02_modeling, 03_deep_analysis",
+        "Notes": "Artifacts loaded; no retraining in notebooks",
     },
     {
-        "Topic": "TimeSeriesSplit configuration definition",
-        "main.ipynb": "not present as explicit setup cell",
-        "analysis.ipynb": "cell 37; notebooks/analysis.ipynb:2320,2322",
+        "Topic": "Expanding-window CV (TimeSeriesSplit)",
+        "Notebook": "03_deep_analysis",
+        "Notes": "Section on expanding-window cross-validation",
     },
     {
-        "Topic": "TimeSeriesSplit usage for CV",
-        "main.ipynb": "optional only if cv_results exists in globals() (cell 17)",
-        "analysis.ipynb": "cell 38; notebooks/analysis.ipynb:2429",
+        "Topic": "Preprocessing pipeline (OneHotEncoder + imputation)",
+        "Notebook": "02_modeling, 03_deep_analysis",
+        "Notes": "Pipeline loaded from artifacts/best_model.pkl",
     },
     {
-        "Topic": "Preprocessing pipeline definition",
-        "main.ipynb": "cell 10; notebooks/main.ipynb:385,386",
-        "analysis.ipynb": "cell 14; notebooks/analysis.ipynb:540,541",
+        "Topic": "Gradient Boosting & XGBoost hyperparameters",
+        "Notebook": "02_modeling, 07_model_selection",
+        "Notes": "Rolling-origin champion selection; fairness comparison",
     },
     {
-        "Topic": "Preprocessing pipeline usage in train/eval",
-        "main.ipynb": "cells 13/16/21; notebooks/main.ipynb:444,527,678",
-        "analysis.ipynb": "cells 17/21/38/44; notebooks/analysis.ipynb:599,682,889,2421,2719",
+        "Topic": "Thresholding logic (max_f1, high_precision, cost_sensitive)",
+        "Notebook": "03_deep_analysis, 05_explainability",
+        "Notes": "Loaded from artifacts/thresholds.json",
     },
     {
-        "Topic": "Gradient Boosting & XGBoost hyperparameters (fixed, not searched)",
-        "main.ipynb": "cell 15; notebooks/main.ipynb:595,597",
-        "analysis.ipynb": "cell 20; notebooks/analysis.ipynb:806,808",
+        "Topic": "SHAP explainability (TreeExplainer)",
+        "Notebook": "05_explainability",
+        "Notes": "Loads pre-computed SHAP values from reports/thesis/",
     },
     {
-        "Topic": "Thresholding logic definition (compute_thresholds)",
-        "main.ipynb": "cell 17; notebooks/main.ipynb:811-862",
-        "analysis.ipynb": "cell 22; notebooks/analysis.ipynb:994-1045",
+        "Topic": "Business analytics (cost model, risk tiers)",
+        "Notebook": "06_business_analytics",
+        "Notes": "Revenue-at-risk, segment cost analysis",
     },
     {
-        "Topic": "Thresholding logic usage (policy/reliability/report)",
-        "main.ipynb": "cells 19/21; notebooks/main.ipynb:1267,1472",
-        "analysis.ipynb": "cells 27/29/51; notebooks/analysis.ipynb:1150,1214,3252",
+        "Topic": "ADR forecasting (regression + time series)",
+        "Notebook": "04_adr_forecasting",
+        "Notes": "Loads adr_regressor.pkl; optional Keras NN model",
     },
     {
-        "Topic": "best_cv_tscv / best_cv_skf definition and usage",
-        "main.ipynb": "defined cell 17 (793-800), used cell 21 (1442-1508)",
-        "analysis.ipynb": "defined+used cell 49 (2934-2964)",
+        "Topic": "Model monitoring (drift detection, PSI)",
+        "Notebook": "08_model_monitoring",
+        "Notes": "Baseline from test_predictions_for_powerbi.csv",
     },
 ]
 
@@ -101,7 +101,7 @@ NOTEBOOK_LOCATION_ROWS = [
 @dataclass
 class PreparedData:
     df_clean: pd.DataFrame
-    train_df: pd.DataFrame
+    train_val_df: pd.DataFrame  # train + val combined (90%) — verify retrains from scratch
     test_df: pd.DataFrame
     feature_cols: list[str]
     X_train: pd.DataFrame
@@ -163,18 +163,19 @@ def _prepare_data() -> PreparedData:
 
     train_end = int(len(df_clean) * TRAIN_RATIO)
     val_end = train_end + int(len(df_clean) * VAL_RATIO)
-    train_df = df_clean.iloc[:val_end].copy()
+    # Verification uses train+val combined (90%) — no separate calibration needed here
+    train_val_df = df_clean.iloc[:val_end].copy()
     test_df = df_clean.iloc[val_end:].copy()
-    split_date = pd.Timestamp(train_df["arrival_date"].max())
+    split_date = pd.Timestamp(train_val_df["arrival_date"].max())
 
-    X_train = train_df[BOOKING_TIME_FEATURES].copy()
-    y_train = train_df[TARGET_COL].astype(int).copy()
+    X_train = train_val_df[BOOKING_TIME_FEATURES].copy()
+    y_train = train_val_df[TARGET_COL].astype(int).copy()
     X_test = test_df[BOOKING_TIME_FEATURES].copy()
     y_test = test_df[TARGET_COL].astype(int).copy()
 
     return PreparedData(
         df_clean=df_clean,
-        train_df=train_df,
+        train_val_df=train_val_df,
         test_df=test_df,
         feature_cols=BOOKING_TIME_FEATURES.copy(),
         X_train=X_train,
@@ -335,7 +336,7 @@ def _evaluate_tscv(prepared: PreparedData, n_splits: int = 5, seed: int = SEED):
     tscv = TimeSeriesSplit(n_splits=n_splits)
     X = prepared.X_train.reset_index(drop=True)
     y = prepared.y_train.reset_index(drop=True).astype(int)
-    dates = prepared.train_df["arrival_date"].reset_index(drop=True)
+    dates = prepared.train_val_df["arrival_date"].reset_index(drop=True)
 
     rows: list[dict] = []
     for fold, (tr_idx, val_idx) in enumerate(tscv.split(X), start=1):
@@ -527,9 +528,9 @@ def _calibration_and_threshold_experiment(
     X_test = prepared.X_test
 
     # Validation window for threshold selection: last 20% of train timeline.
-    val_start = int(len(prepared.train_df) * 0.8)
-    train_sub = prepared.train_df.iloc[:val_start].copy()
-    val_sub = prepared.train_df.iloc[val_start:].copy()
+    val_start = int(len(prepared.train_val_df) * 0.8)
+    train_sub = prepared.train_val_df.iloc[:val_start].copy()
+    val_sub = prepared.train_val_df.iloc[val_start:].copy()
 
     X_subtrain = train_sub[prepared.feature_cols]
     y_subtrain = train_sub[TARGET_COL].astype(int).to_numpy()
@@ -917,7 +918,7 @@ def _build_report(
     )
     md.append(f"- Holdout cutoff date: `{prepared.split_date.date()}`.")
     md.append(
-        f"- Holdout train rows: `{len(prepared.train_df)}`, holdout test rows: `{len(prepared.test_df)}`."
+        f"- Holdout train rows: `{len(prepared.train_val_df)}`, holdout test rows: `{len(prepared.test_df)}`."
     )
     md.append(
         "- TimeSeriesSplit config for CV: `TimeSeriesSplit(n_splits=5)` with default `gap=0`, default fold test size."

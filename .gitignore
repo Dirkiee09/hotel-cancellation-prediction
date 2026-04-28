@@ -1,20 +1,51 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 *.egg-info/
+
+# Virtual environment
 .venv/
-.env
-.gradio/
+
+# IDE
 .idea/
+.vscode/
+*.swp
+*.swo
+
+# Local AI assistant settings (machine-specific)
+.claude/settings.local.json
+
+# Jupyter
 .ipynb_checkpoints/
+.jupyter_runtime/
+
+# Tool caches
 .pytest_cache/
+.pytest_tmp/
 .mypy_cache/
 .ruff_cache/
 .coverage
+htmlcov/
+
+# Gradio
+.gradio/
+
+# Temp
+.tmp/
+
+# Generated outputs (recreated by `make train` / `make benchmark`)
 artifacts/*
 !artifacts/.gitkeep
 reports/*
 !reports/.gitkeep
 reports/figures/*
 !reports/figures/.gitkeep
+data/*.csv
+!data/.gitkeep
+
+# Secrets
+.env
+.env.*
+!.env.example

@@ -1,13 +1,19 @@
 FROM python:3.11-slim
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
 WORKDIR /app
 
 COPY requirements.txt pyproject.toml /app/
 COPY src/ /app/src/
-RUN pip install --no-cache-dir -e . -r /app/requirements.txt
+RUN python -m pip install --upgrade pip \
+    && python -m pip install -r requirements.txt -e .
 
-COPY . /app
+COPY scripts/ /app/scripts/
+COPY README.md /app/README.md
 
 EXPOSE 8000
 
-CMD ["uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "src.app.main:app", "--host", "0.0.0.0", "--port", "8000"]

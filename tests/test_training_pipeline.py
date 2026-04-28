@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import json
 
-from src.config import MODEL_SELECTION_POLICY
+import numpy as np
+import pandas as pd
+
+from src.config import MODEL_SELECTION_POLICY, TARGET_COL
 from src.models.train import is_lightgbm_available
 from src.pipelines import run_training_pipeline
+from src.pipelines.train import FALLBACK_MODEL_FAMILY, _select_model_family
 from src.serving.inference import load_artifacts
 
 
@@ -44,3 +48,20 @@ def test_training_pipeline_produces_fitted_artifacts(tmp_path) -> None:
     segment = json.loads(segment_path.read_text(encoding="utf-8"))
     assert "rows" in segment
     assert isinstance(segment["rows"], list)
+
+
+def test_rolling_selection_fallback_for_tiny_dataset() -> None:
+    """When data is too small for rolling windows, fallback model is returned."""
+    rng = np.random.default_rng(42)
+    n = 50  # Well below ROLLING_SELECTION_MIN_TRAIN_ROWS (1500)
+    tiny_df = pd.DataFrame(
+        {
+            TARGET_COL: rng.integers(0, 2, size=n),
+            "lead_time": rng.integers(0, 365, size=n),
+        }
+    )
+    result = _select_model_family(tiny_df, feature_cols=["lead_time"])
+    assert result["winner"] == FALLBACK_MODEL_FAMILY
+    assert "fallback_reason" in result
+    assert result["candidates"] == []
+    assert result["folds"] == []

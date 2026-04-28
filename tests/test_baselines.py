@@ -20,6 +20,7 @@ def test_train_dummy_returns_predictions(synthetic_data) -> None:
     model = train_dummy(X, y)
     probs = model.predict_proba(X)
     assert probs.shape == (500, 2)
+    assert np.all(probs >= 0.0) and np.all(probs <= 1.0)
 
 
 def test_train_dummy_stratified(synthetic_data) -> None:
@@ -27,6 +28,7 @@ def test_train_dummy_stratified(synthetic_data) -> None:
     model = train_dummy(X, y, strategy="stratified")
     probs = model.predict_proba(X)
     assert probs.shape == (500, 2)
+    assert np.all(probs >= 0.0) and np.all(probs <= 1.0)
 
 
 def test_train_logistic_returns_predictions(synthetic_data) -> None:
@@ -52,6 +54,7 @@ def test_train_decision_tree_returns_predictions(synthetic_data) -> None:
     model = train_decision_tree(X, y)
     probs = model.predict_proba(X)
     assert probs.shape == (500, 2)
+    assert np.all(probs >= 0.0) and np.all(probs <= 1.0)
     # Pruned tree should still be better than chance
     preds = (probs[:, 1] >= 0.5).astype(int)
     accuracy = float(np.mean(preds == y))

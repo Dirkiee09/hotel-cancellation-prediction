@@ -22,13 +22,13 @@ serving (FastAPI + Gradio) → evaluation → thesis reporting.
 
 | Check | Status | Detail |
 |-------|--------|--------|
-| `pytest` | ✅ 25/25 | 89.7% coverage (gate: ≥80%) |
+| `pytest` | ✅ 91/91 | 89.15% coverage (gate: ≥80%) |
 | `ruff check` | ✅ clean | E, F, I rules |
 | `ruff format` | ✅ clean | line length 100 |
-| `mypy` | ✅ clean | 0 new errors (7 pre-existing in notebook_utils only) |
+| `mypy` | ✅ clean | 0 errors (48 source files checked) |
 | `src/` imports | ✅ 15/15 modules | all importable |
-| `scripts/` | ✅ 8/8 scripts | all wrappers intact |
-| `notebooks/` | ✅ 6/6 notebooks | valid JSON, cells parseable |
+| `scripts/` | ✅ 4/4 scripts | train, benchmark, check, notebooks |
+| `notebooks/` | ✅ 10/10 notebooks | 01_eda through 10_sensitivity_analysis, all with cached outputs |
 
 ---
 
@@ -92,34 +92,38 @@ src/
     schemas.py                # Pydantic BookingRequest with field coercion/validation
 
 scripts/                      # CLI entry points (thin wrappers over src/)
-  train.py                    # make train
-  verify.py                   # make eval
-  benchmark.py                # make benchmark
-  thesis.py                   # make thesis-analysis
-  repro.py                    # make repro-check
-  check_artifacts.py          # make artifact-check
-  check_metrics.py            # make metrics-gate (enforces METRIC_GATES)
-  notebooks.py                # make run-notebooks (executes all 6 notebooks headlessly)
-  prep_data.py                # One-time data prep
+  train.py                    # make train | --verify | --verify-only | --thesis | --repro
+  benchmark.py                # make benchmark (16 CSV tables)
+  check.py                    # make check (subcommands: artifacts, metrics, sync, fairness, all)
+  notebooks.py                # headless notebook execution (all 10 notebooks)
 
-tests/                        # pytest suite (25 tests, ≥80% coverage required)
+tests/                        # pytest suite (91 tests, ≥80% coverage required)
   test_preprocessing.py
   test_split_and_leakage.py
   test_training_pipeline.py
   test_inference_contract.py
   test_integration_train_serve.py
   test_baselines.py
+  test_business.py
+  test_metrics.py
   test_model_benchmark.py
+  test_schemas.py
   test_statistical.py
+  test_thresholds.py
   test_tuning.py
+  test_validate_data.py
 
-notebooks/                    # 6 professional Jupyter notebooks (load artifacts, no retraining)
+notebooks/                    # 10 Jupyter notebooks (load artifacts, no retraining)
   01_eda.ipynb                # Exploratory data analysis (26 cells)
   02_modeling.ipynb           # Model selection & rolling-origin evaluation (21 cells)
   03_deep_analysis.ipynb      # Calibration, SHAP, CV, ablation, baselines (51 cells)
   04_adr_forecasting.ipynb    # ADR time-series + regression (23 cells)
   05_explainability.ipynb     # SHAP beeswarm, segment insights, cost analysis (29 cells)
   06_business_analytics.ipynb # Revenue management dashboard (20 cells)
+  07_model_selection.ipynb    # Comprehensive model selection & fairness (37 cells)
+  08_model_monitoring.ipynb   # Production monitoring template (21 cells)
+  09_model_comparison.ipynb   # Cross-model comparison & stability analysis (31 cells)
+  10_sensitivity_analysis.ipynb # Cost sensitivity, data hunger, threshold trade-offs (15 cells)
 
 artifacts/                    # Trained model artifacts (git-ignored)
 reports/                      # Metrics, benchmark tables, thesis reports (git-ignored)
@@ -140,16 +144,15 @@ python -m pip install -e . -r requirements.txt
 make lint                     # ruff check .
 make format                   # ruff format --check .
 make typecheck                # mypy src/
-make test                     # pytest (25 tests, coverage ≥80%)
+make test                     # pytest (91 tests, coverage ≥80%)
 make security                 # bandit
 make train                    # Run full training pipeline
-make eval                     # Post-train verification
+make eval                     # Post-train verification (existing artifacts)
 make benchmark                # Multi-model benchmark (~5 min)
-make thesis-analysis          # Full thesis analysis (SHAP, CI, Optuna)
-make thesis-analysis-fast     # Skip Optuna + SHAP (faster iteration)
-make repro-check              # Reproduce 5k-row subset and check hashes
+make thesis                   # Full thesis analysis (SHAP, CI, Optuna)
+make check                    # All quality gates (artifacts, metrics, sync, fairness)
+make full-pipeline            # train → eval → benchmark → check
 make clean                    # Remove caches and build artifacts
-make coverage-html            # pytest --cov-report=html → open htmlcov/index.html
 
 # Serving
 uvicorn src.app.main:app --reload   # FastAPI at localhost:8000
@@ -166,13 +169,16 @@ python src/app/ui.py                # Gradio UI (standalone)
 3. mypy
 4. pytest (≥80% coverage)
 5. `scripts/train.py` — full train must succeed
-6. `scripts/check_metrics.py` — metric gates must pass
-7. bandit security scan
-8. pip-audit dependency vulnerability scan
+6. `scripts/check.py metrics` — metric gates must pass
+7. `scripts/check.py sync` — cross-artifact threshold consistency
+8. bandit security scan
+9. pip-audit dependency vulnerability scan
 
 **`thesis-analysis` job** (runs only on push to `main`, needs `quality`):
-1. Full train + `scripts/thesis.py`
-2. Uploads `reports/thesis/` as a GitHub Actions artifact
+1. `scripts/train.py --thesis` — full train + thesis analysis (SHAP, CI, ablation, Optuna)
+2. `scripts/benchmark.py` — 16 CSV benchmark tables
+3. `scripts/check.py sync` — post-benchmark consistency
+4. Uploads `reports/thesis/` as a GitHub Actions artifact
 
 **Critical**: Every PR must keep CI green. Never bypass hooks or skip coverage.
 
@@ -192,15 +198,17 @@ All project-wide numbers live here. Edit `config.py` first, never hardcode value
 | `FN_RECOVERY_NIGHTS` | 1.0 | Nights recovered after late cancellation (FN cost proxy) |
 | `RISK_TIER_MEDIUM_THRESHOLD` | 0.40 | P(cancel) boundary Low → Medium |
 | `RISK_TIER_HIGH_THRESHOLD` | 0.70 | P(cancel) boundary Medium → High |
-| `ADR_MAX_VALID` | 1000.0 | Max valid ADR (EUR) for API schema validation |
+| `ADR_MAX_VALID` | 50,000.0 | Currency-agnostic ceiling for valid ADR |
 | `REPRO_TOLERANCE` | 1e-6 | Cross-platform hash tolerance for reproducibility checks |
 | `BOOTSTRAP_N_ITERATIONS` | 2000 | Bootstrap resamples for confidence intervals |
 | `CALIBRATION_METHOD` | `"isotonic"` | Probability calibration method |
 | `THRESHOLD_STEP` | 0.01 | Grid step for threshold sweep (uses np.linspace) |
 
-**Metric quality gates** (enforced by `scripts/check_metrics.py`, must pass or CI fails):
-- `max_f1` policy: ROC-AUC ≥ 0.84, PR-AUC ≥ 0.74, F1 ≥ 0.70, Recall ≥ 0.75
-- `high_precision` policy: Precision ≥ 0.98, Recall ≥ 0.08
+**Metric quality gates** (enforced by `scripts/check.py metrics`, must pass or CI fails):
+- `max_f1` policy: ROC-AUC ≥ 0.70, PR-AUC ≥ 0.50, F1 ≥ 0.50, Recall ≥ 0.50
+- `high_precision` policy: Precision ≥ 0.90, Recall ≥ 0.05
+
+These are universal floor values for plug-and-play dataset support. Tighten to `(observed - 0.02)` after training on your dataset.
 
 ---
 
@@ -255,7 +263,7 @@ data/hotel_bookings.csv  (119k rows, 32 raw features)
   ├─▶ save artifacts/                   [artifacts/*.pkl, *.json, *.csv]
   ├─▶ save reports/                     [metrics.json, segment_metrics.csv, …]
   │
-  ├─▶ scripts/verify.py                 [src/eval/verify.py]
+  ├─▶ scripts/train.py --verify-only     [src/eval/verify.py]
   │     └── post-train sanity checks → model_verification_report.md
   │
   └─▶ FastAPI (src/app/main.py)  serves /predict, /model-info, /healthz
@@ -355,7 +363,7 @@ modelling assumption. DT is shallow enough to be printed in full in the thesis a
 | ADR regression | `artifacts/adr_regressor.pkl` + `adr_regressor_metadata.pkl` |
 | ADR neural network | `artifacts/adr_regressor_nn.keras` |
 | ADR time series | `artifacts/adr_timeseries_data.pkl` + `adr_timeseries_metadata.pkl` |
-| Thesis DT baseline | `artifacts/thesis_baseline_dt.pkl` (written by `make thesis-analysis`) |
+| Thesis DT baseline | `artifacts/thesis_baseline_dt.pkl` (written by `make thesis`) |
 | Benchmark tables | `reports/benchmarks/01_*.csv` … `16_*.csv` |
 | Thesis reports | `reports/thesis/*.json` |
 | Regression results | `reports/regression_results.csv` (columns: Model, Train RMSE, Val RMSE, Test RMSE, …) |
@@ -430,3 +438,45 @@ Claude is authorized to make the following changes **without asking for confirma
 | IMP-09 | `had_company` binary feature | Already in `BOOKING_TIME_FEATURES` ✓ |
 | IMP-10 | Baseline comparison visualisation in Notebook 03 (section 3.19) | **DONE** |
 | IMP-11 | `model_family_summary.json` table in Notebook 02 | `reports/thesis/model_family_summary.json` — **DONE** |
+
+---
+
+## Swapping Datasets (Plug-and-Play)
+
+The pipeline is designed to work with **any hotel booking CSV** that shares the same 32 column names.
+To use a different dataset (e.g., Philippine hotels):
+
+### Step 1: Replace the CSV
+Replace `data/hotel_bookings.csv` with your new CSV. Same column names required.
+
+### Step 2: Update currency-specific constants in `src/config.py`
+| Constant | Default | What to change |
+|----------|---------|----------------|
+| `ADR_MAX_VALID` | 50,000 | Max valid room rate in your currency (rows above this are dropped) |
+| `FP_INTERVENTION_COST` | 15.0 | Cost per false positive in your currency (e.g., EUR→PHP: 15→900) |
+| `FN_RECOVERY_NIGHTS` | 1.0 | Keep at 1.0 unless you have market-specific data |
+
+### Step 3: Retrain
+```bash
+make train        # Retrain on new data — all features, calibration, thresholds auto-adapt
+make eval         # Post-train verification (smoke test uses generic values)
+```
+
+### Step 4: Tighten metric gates (optional but recommended)
+After training, check `reports/metrics.json` for observed performance, then update
+`METRIC_GATES` in `src/config.py` to `(observed_value - 0.02)` for regression detection.
+
+### What auto-adapts (no changes needed)
+- UI dropdown choices (read from CSV at startup)
+- Feature engineering (operates on column names, not values)
+- OneHotEncoder categories (learned from training data, `handle_unknown="ignore"`)
+- Threshold sweep (data-driven on validation set)
+- Isotonic calibration (fitted on validation set probabilities)
+- Country list in UI (already dynamic)
+- Smoke test (uses generic UNKNOWN values)
+- Hero banner metrics (read from model metadata)
+
+### What needs manual update per dataset
+- `ADR_MAX_VALID` and `FP_INTERVENTION_COST` in `config.py` (currency-dependent)
+- `METRIC_GATES` in `config.py` (after first training run)
+- Notebook markdown narrative (search for "Portugal", "EUR", "PRT" in notebook cells)
