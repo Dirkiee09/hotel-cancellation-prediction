@@ -6,8 +6,8 @@ import csv
 import html
 import json
 import logging
-import os
 import re
+import sys
 import threading
 import traceback
 from contextlib import contextmanager
@@ -893,25 +893,24 @@ def _model_timestamp_utc() -> str | None:
 
 @contextmanager
 def _exclusive_file_lock(handle):
-    if os.name == "nt":
+    if sys.platform == "win32":
         import msvcrt
 
         handle.seek(0)
-        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)  # type: ignore[attr-defined, unused-ignore]
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
         try:
             yield
         finally:
             handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined, unused-ignore]
-        return
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
 
-    import fcntl
-
-    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined, unused-ignore]
-    try:
-        yield
-    finally:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined, unused-ignore]
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _append_log_row(record: Dict[str, Any], ordered_cols: list[str]) -> None:
