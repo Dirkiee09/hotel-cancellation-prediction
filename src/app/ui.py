@@ -897,21 +897,21 @@ def _exclusive_file_lock(handle):
         import msvcrt
 
         handle.seek(0)
-        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)  # type: ignore[attr-defined, unused-ignore]
         try:
             yield
         finally:
             handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined, unused-ignore]
         return
 
     import fcntl
 
-    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined, unused-ignore]
     try:
         yield
     finally:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined, unused-ignore]
 
 
 def _append_log_row(record: Dict[str, Any], ordered_cols: list[str]) -> None:
