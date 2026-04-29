@@ -286,8 +286,8 @@ def _get_encoded_feature_names(artifacts: ModelArtifacts) -> list[str]:
     if preprocessor is not None and hasattr(preprocessor, "get_feature_names_out"):
         try:
             return list(preprocessor.get_feature_names_out())
-        except Exception:
-            pass
+        except (AttributeError, ValueError) as exc:
+            logger.debug("encoded_feature_names_unavailable error=%s", exc)
     return []
 
 
