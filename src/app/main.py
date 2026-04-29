@@ -32,12 +32,30 @@ def health():
 @app.get("/healthz")
 def readiness():
     try:
-        get_artifacts()
+        artifacts = get_artifacts()
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Artifacts not ready: {exc}",
         ) from exc
+
+    # Beyond the model file, /predict also needs calibrator, thresholds, feature_columns,
+    # and metadata to behave correctly. load_artifacts() tolerates these being missing
+    # (it falls back to defaults) but a healthy deployment should have all of them.
+    missing: list[str] = []
+    if artifacts.calibrator is None:
+        missing.append("probability_calibrator.pkl")
+    if not artifacts.thresholds:
+        missing.append("thresholds.json")
+    if not artifacts.feature_columns:
+        missing.append("feature_columns.json")
+    if not artifacts.metadata:
+        missing.append("model_metadata.json")
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Artifacts incomplete: missing={missing}",
+        )
     return {"status": "ok", "service": "ready"}
 
 

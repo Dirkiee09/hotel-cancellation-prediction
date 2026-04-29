@@ -368,8 +368,41 @@ modelling assumption. DT is shallow enough to be printed in full in the thesis a
 | Thesis reports | `reports/thesis/*.json` |
 | Regression results | `reports/regression_results.csv` (columns: Model, Train RMSE, Val RMSE, Test RMSE, …) |
 | Publication figures | `reports/figures/thesis/fig_NN_*.{png,pdf}` |
-| Test predictions | `reports/test_predictions_for_powerbi.csv` |
+| Test predictions | `reports/test_predictions_for_powerbi.csv` (written by `scripts/train.py` only — single source of truth) |
 | Segment metrics | `reports/segment_metrics.csv` |
+| Champion summary | `reports/champion_summary.json` (champion family, runner-up, PR-AUC gap, selected_at) |
+
+### Artifact Contract (producers → consumers)
+
+Quick reference for who reads what — useful when modifying training or inference. Every
+artifact has exactly one writer; multiple consumers are normal.
+
+| Artifact | Writer | Consumers |
+|----------|--------|-----------|
+| `artifacts/best_model.pkl` | `src/pipelines/train.py` | `src/serving/inference.py` (`load_artifacts`), notebooks via `load_main_context()` |
+| `artifacts/probability_calibrator.pkl` | `src/pipelines/train.py` | `src/serving/inference.py` (`predict_proba`) |
+| `artifacts/thresholds.json` | `src/pipelines/train.py` | `src/utils/thresholds.py` (`resolve_thresholds`), API `/predict` and `/model-info`, notebooks |
+| `artifacts/feature_columns.json` | `src/pipelines/train.py` | `src/serving/inference.py`, `scripts/check.py artifacts` |
+| `artifacts/model_metadata.json` | `src/pipelines/train.py` | `/model-info` (lineage), `scripts/check.py artifacts`, notebooks |
+| `artifacts/threshold_sweep.csv` | `src/pipelines/train.py` | Notebook 02 plots |
+| `artifacts/cost_threshold_sweep.csv` | `src/pipelines/train.py` | Notebook 10 sensitivity sweep |
+| `artifacts/hashes.json` | `src/pipelines/train.py` | `scripts/check.py artifacts` (lineage verification) |
+| `reports/metrics.json` | `src/pipelines/train.py` | UI hero banner, notebooks, `scripts/check.py metrics` |
+| `reports/champion_summary.json` | `src/pipelines/train.py` | Thesis writeup (decision log) |
+| `reports/model_selection_summary.json` | `src/pipelines/train.py` | Thesis Notebook 02, `scripts/check.py sync` |
+| `reports/segment_metrics.csv` / `.json` | `src/pipelines/train.py` | Notebooks 05/07, `scripts/check.py fairness` |
+| `reports/test_predictions_for_powerbi.csv` | `src/pipelines/train.py` | Notebook 08 monitoring, PowerBI |
+| `reports/benchmarks/01_*.csv` … `16_*.csv` | `scripts/benchmark.py` | Notebook 07, `scripts/check.py sync` |
+| `reports/thesis/*.json` | `src/eval/thesis.py` | Notebooks 03/05, `scripts/check.py sync` |
+
+**Threshold cross-check**: `scripts/check.py sync` verifies the same `max_f1` / `high_precision`
+/ `cost_sensitive` thresholds appear in `artifacts/thresholds.json`,
+`reports/thesis/model_family_summary.json`, and `reports/benchmarks/07_thresholds_per_model.csv`
+within `REPRO_TOLERANCE = 1e-6`. If those drift, retrain.
+
+**Note on `reports/threshold_summary.json`**: this is a redundant copy of
+`artifacts/thresholds.json` kept for the thesis report. `artifacts/thresholds.json` is the
+canonical source; consumers should prefer it.
 
 ---
 

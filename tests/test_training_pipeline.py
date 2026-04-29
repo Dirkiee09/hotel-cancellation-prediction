@@ -50,6 +50,33 @@ def test_training_pipeline_produces_fitted_artifacts(tmp_path) -> None:
     assert isinstance(segment["rows"], list)
 
 
+def test_thresholds_have_sane_ordering_after_train(tmp_path) -> None:
+    """high_precision threshold must be >= max_f1, and all three must lie in [0, 1].
+
+    A precision-tuned policy must use a stricter cutoff than F1-balanced — if it doesn't,
+    something has gone wrong with the threshold sweep or calibration. Cost-sensitive is
+    free to be more aggressive (lower) than max_f1 because it weights FN cost.
+    """
+    outputs = run_training_pipeline(
+        artifacts_dir=tmp_path / "artifacts",
+        reports_dir=tmp_path / "reports",
+        max_rows=5000,
+    )
+    thr_hp = float(outputs.thresholds["high_precision"]["threshold"])
+    thr_f1 = float(outputs.thresholds["max_f1"]["threshold"])
+    thr_cost = float(outputs.thresholds["cost_sensitive"]["threshold"])
+    for name, value in [
+        ("high_precision", thr_hp),
+        ("max_f1", thr_f1),
+        ("cost_sensitive", thr_cost),
+    ]:
+        assert 0.0 <= value <= 1.0, f"{name} threshold {value} out of [0, 1]"
+    assert thr_hp >= thr_f1, (
+        f"high_precision threshold {thr_hp} should be >= max_f1 {thr_f1}; "
+        "calibration or threshold sweep may be inverted"
+    )
+
+
 def test_rolling_selection_fallback_for_tiny_dataset() -> None:
     """When data is too small for rolling windows, fallback model is returned."""
     rng = np.random.default_rng(42)

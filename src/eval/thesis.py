@@ -502,18 +502,14 @@ def _run_cost_sensitive_threshold(
     threshold = float(cost_summary["threshold"])
     cost_sweep_df.to_csv(reports_dir / "cost_threshold_sweep.csv", index=False)
 
+    # The canonical test_predictions_for_powerbi.csv is written by run_training_pipeline
+    # (src/pipelines/train.py); thesis analysis only consumes those predictions and
+    # derives risk-tier counts here.
     risk_tiers = assign_risk_tiers(
         test_probs,
         medium_threshold=RISK_TIER_MEDIUM_THRESHOLD,
         high_threshold=RISK_TIER_HIGH_THRESHOLD,
     )
-    export_df = test_df.copy()
-    export_df["cancel_probability"] = test_probs
-    export_df["risk_tier"] = risk_tiers
-    export_df["predicted_cancel_cost_sensitive"] = (
-        export_df["cancel_probability"] >= threshold
-    ).astype(int)
-    export_df.to_csv(reports_dir / "test_predictions_for_powerbi.csv", index=False)
 
     y_test_np = y_test.to_numpy().astype(int)
     fn_cost_test = compute_fn_cost_vector(test_df, fn_recovery_nights=FN_RECOVERY_NIGHTS)
