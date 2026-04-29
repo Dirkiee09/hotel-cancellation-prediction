@@ -7,6 +7,7 @@ import json
 import logging
 import subprocess  # nosec B404 – used only for `git rev-parse HEAD` with a hardcoded list
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
 
@@ -581,6 +582,50 @@ def _select_model_family(selection_df: pd.DataFrame, feature_cols: list[str]) ->
     }
 
 
+def _champion_summary(selection_report: dict[str, Any]) -> dict[str, Any]:
+    """Distill rolling-origin selection into a flat, decision-log JSON.
+
+    Consumers (thesis writeups, dashboards) want a one-shot view: who won,
+    by how much, over what. The full selection_report has more structure than is
+    convenient to render; this is the executive cut.
+    """
+    candidates = list(selection_report.get("candidates", []))
+    eligible = [c for c in candidates if c.get("folds_evaluated", 0) > 0]
+    eligible.sort(key=lambda c: -_rank_metric_value(c.get("rolling_pr_auc_mean", float("nan"))))
+    winner = str(selection_report.get("winner", ""))
+    champion_row = next((c for c in eligible if c.get("model_family") == winner), None)
+    runner_up_row = next((c for c in eligible if c.get("model_family") != winner), None)
+    champion_pr = (
+        float(champion_row["rolling_pr_auc_mean"])
+        if champion_row and not np.isnan(champion_row.get("rolling_pr_auc_mean", float("nan")))
+        else None
+    )
+    runner_up_pr = (
+        float(runner_up_row["rolling_pr_auc_mean"])
+        if runner_up_row and not np.isnan(runner_up_row.get("rolling_pr_auc_mean", float("nan")))
+        else None
+    )
+    pr_auc_gap = (
+        float(champion_pr - runner_up_pr)
+        if champion_pr is not None and runner_up_pr is not None
+        else None
+    )
+    return {
+        "champion_family": winner,
+        "runner_up": str(runner_up_row["model_family"]) if runner_up_row else None,
+        "pr_auc_rolling_mean": champion_pr,
+        "pr_auc_runner_up": runner_up_pr,
+        "pr_auc_gap": pr_auc_gap,
+        "primary_metric": selection_report.get("primary_metric"),
+        "secondary_metric": selection_report.get("secondary_metric"),
+        "policy": selection_report.get("policy"),
+        "fallback_reason": selection_report.get("fallback_reason"),
+        "n_candidates": len(candidates),
+        "n_eligible": len(eligible),
+        "selected_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
+
+
 def _model_metadata(
     feature_cols: list[str],
     cleaning_issues: dict[str, int],
@@ -870,6 +915,7 @@ def run_training_pipeline(
 
     _save_json(reports_dir / "metrics.json", metrics)
     _save_json(reports_dir / "model_selection_summary.json", selection_report)
+    _save_json(reports_dir / "champion_summary.json", _champion_summary(selection_report))
     _save_json(reports_dir / "calibration_metrics.json", calibration_report)
     _save_json(reports_dir / "segment_metrics.json", segment_report)
     _save_json(reports_dir / "cost_threshold_summary.json", cost_summary)

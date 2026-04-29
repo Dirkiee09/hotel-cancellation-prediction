@@ -164,3 +164,96 @@ def test_predict_proba_handles_nan_feature_values(
     probs, feat_df = predict_proba(record, artifacts)
     assert len(probs) == 1
     assert 0.0 <= probs[0] <= 1.0
+
+
+def test_calibrator_output_bounded_under_extreme_inputs(
+    trained_artifacts_dir, sample_record
+) -> None:
+    """Isotonic calibrator output must always remain in [0, 1] regardless of input.
+
+    Regression guard: the inference path applies np.clip after calibrator.predict.
+    """
+    artifacts = load_artifacts(trained_artifacts_dir)
+    extreme_records = []
+    for lead_time, adr, prev_cancels in [
+        (0, 0.01, 0),
+        (999, 999.0, 50),
+        (1, 250.0, 0),
+        (180, 50.0, 10),
+    ]:
+        rec = dict(sample_record)
+        rec["lead_time"] = lead_time
+        rec["adr"] = adr
+        rec["previous_cancellations"] = prev_cancels
+        extreme_records.append(rec)
+    probs, _ = predict_proba(extreme_records, artifacts)
+    assert len(probs) == len(extreme_records)
+    for p in probs:
+        assert 0.0 <= p <= 1.0, f"calibrator produced out-of-bounds probability: {p}"
+
+
+def test_predict_proba_invariant_to_input_column_order(
+    trained_artifacts_dir, sample_record
+) -> None:
+    """predict_proba must produce identical output when input columns are reordered.
+
+    Internally _prepare_features selects feature_columns in the canonical order,
+    so a shuffled input dict should yield the same probability.
+    """
+    import random
+
+    artifacts = load_artifacts(trained_artifacts_dir)
+    keys = list(sample_record.keys())
+    rng = random.Random(42)
+    shuffled_keys = keys.copy()
+    rng.shuffle(shuffled_keys)
+    canonical = dict(sample_record)
+    shuffled = {k: sample_record[k] for k in shuffled_keys}
+    probs_a, _ = predict_proba(canonical, artifacts)
+    probs_b, _ = predict_proba(shuffled, artifacts)
+    assert probs_a == probs_b
+
+
+def test_explain_prediction_returns_top_n_dicts(trained_artifacts_dir, sample_record) -> None:
+    """explain_prediction returns a list of dicts with the documented contract."""
+    from src.serving.inference import explain_prediction
+
+    artifacts = load_artifacts(trained_artifacts_dir)
+    _probs, feature_df = predict_proba(sample_record, artifacts)
+    top = explain_prediction(feature_df, artifacts, top_n=3)
+    # Empty list is a valid graceful-fallback when shap is unavailable
+    if not top:
+        return
+    assert len(top) <= 3
+    for entry in top:
+        assert isinstance(entry, dict)
+        assert set(entry.keys()) >= {"feature", "value", "contribution"}
+        assert isinstance(entry["feature"], str)
+        assert isinstance(entry["contribution"], float)
+
+
+def test_healthz_returns_503_when_calibrator_missing(monkeypatch, trained_artifacts_dir) -> None:
+    """Readiness fails cleanly when an essential artifact is missing.
+
+    Regression guard: previously /healthz only caught FileNotFoundError on best_model.pkl,
+    so missing thresholds/calibrator/feature_columns silently degraded /predict to a
+    0.5 fallback while /healthz reported 200.
+    """
+    artifacts = load_artifacts(trained_artifacts_dir)
+    artifacts.calibrator = None  # simulate missing probability_calibrator.pkl
+    monkeypatch.setattr(inference_mod, "_CACHED_ARTIFACTS", artifacts)
+    client = TestClient(app_main.app)
+    response = client.get("/healthz")
+    assert response.status_code == 503
+    assert "probability_calibrator.pkl" in response.json()["detail"]
+
+
+def test_healthz_returns_503_when_thresholds_missing(monkeypatch, trained_artifacts_dir) -> None:
+    """Readiness fails cleanly when thresholds.json is missing/empty."""
+    artifacts = load_artifacts(trained_artifacts_dir)
+    artifacts.thresholds = {}  # simulate missing thresholds.json
+    monkeypatch.setattr(inference_mod, "_CACHED_ARTIFACTS", artifacts)
+    client = TestClient(app_main.app)
+    response = client.get("/healthz")
+    assert response.status_code == 503
+    assert "thresholds.json" in response.json()["detail"]
