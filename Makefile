@@ -4,7 +4,7 @@ else
     PYTHON := .venv/bin/python
 endif
 
-.PHONY: install-dev lint format typecheck test security train eval benchmark thesis check full-pipeline clean help
+.PHONY: install-dev lint format typecheck test security train eval benchmark thesis check demo-check full-pipeline clean help
 
 help: ## Show this help message
 	@$(PYTHON) -c "import re, sys; lines = open('Makefile').readlines(); targets = [(m.group(1), m.group(2)) for l in lines if (m := re.match(r'^([a-zA-Z_-]+):.*?## (.*)$$', l))]; [print(f'  \033[36m{t[0]:<24}\033[0m {t[1]}') for t in sorted(targets)]"
@@ -41,6 +41,9 @@ thesis: ## Full thesis analysis including SHAP and Optuna
 
 check: ## Run all quality gates (artifacts, metrics, sync, fairness)
 	$(PYTHON) scripts/check.py all
+
+demo-check: ## Pre-demo readiness check (artifacts, model load, predictions, live server)
+	$(PYTHON) scripts/demo_check.py
 
 full-pipeline: train eval benchmark check ## Full refresh: train → eval → benchmark → check
 	@echo "full-pipeline complete — all checks passed."
