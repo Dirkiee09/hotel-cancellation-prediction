@@ -27,8 +27,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
-# Plain ASCII status markers — Windows terminals can choke on Unicode
-PASS = "[ OK ]"
+# Plain ASCII status markers — Windows terminals can choke on Unicode.
+# B105 suppressed below: bandit flags PASS as a "hardcoded password" purely
+# from the variable name; it is a UI status marker, not a credential.
+PASS = "[ OK ]"  # nosec B105
 FAIL = "[FAIL]"
 WARN = "[WARN]"
 
@@ -188,7 +190,9 @@ def check_predictions() -> bool:
 def check_live_server(port: int = 8000) -> bool:
     print(f"\n[4/4] Live server on :{port} (optional)")
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz", timeout=2) as resp:
+        # B310 suppressed below: hardcoded localhost URL, no user-controlled scheme.
+        url = f"http://127.0.0.1:{port}/healthz"
+        with urllib.request.urlopen(url, timeout=2) as resp:  # nosec B310
             data = json.load(resp)
         if data.get("status") == "ok":
             print(f"  {PASS} /healthz returned ok (service={data.get('service')})")
