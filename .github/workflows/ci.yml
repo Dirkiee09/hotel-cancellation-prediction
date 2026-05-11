@@ -5,6 +5,13 @@ on:
     branches: ["**"]
   pull_request:
 
+# Opt JavaScript actions into Node.js 24 immediately. GitHub will make this
+# the default in June 2026 and remove Node.js 20 from runners in September
+# 2026; this flag silences the deprecation warning until upstream actions
+# publish their Node 24 major releases.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   quality:
     runs-on: ubuntu-latest
