@@ -25,6 +25,14 @@ warnings.filterwarnings(
     message="X does not have valid feature names",
     category=UserWarning,
 )
+# SHAP 0.51 emits this on every TreeExplainer.shap_values() call for LightGBM.
+# It is informational ("output format changed to list of ndarray") and we already
+# handle both shapes in explain_prediction(). Suppress to keep server logs clean.
+warnings.filterwarnings(
+    "ignore",
+    message="LightGBM binary classifier with TreeExplainer",
+    category=UserWarning,
+)
 _LOGGED_ARTIFACT_DIRS: set[str] = set()
 
 # Shared singleton so FastAPI + Gradio share one copy in memory.
