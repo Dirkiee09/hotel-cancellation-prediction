@@ -2408,6 +2408,80 @@ def plot_top_correlations_bar(
     return top_corr.to_frame("correlation")
 
 
+def plot_metric_forest(
+    ci_df: pd.DataFrame,
+    fig_dir: Path,
+    fig_no: int | str = 6,
+    *,
+    point_col: str = "point_estimate",
+    lower_col: str = "ci_lower",
+    upper_col: str = "ci_upper",
+    metric_col: str = "metric",
+    title: str | None = None,
+    stem: str = "bootstrap_ci_forest",
+) -> None:
+    """Forest plot of point estimates with 95% CIs — one row per metric.
+
+    Visualises the bootstrap CI table produced by main_ci_table() so the
+    reader can see uncertainty bands rather than just reading the lower /
+    upper columns.  Used in 02_modeling section 2.7 (bootstrap confidence
+    intervals) and reusable from 07/09 for any per-metric CI table that
+    has columns (metric, point_estimate, ci_lower, ci_upper).
+    """
+    df = ci_df.copy().reset_index(drop=True)
+    if df.empty:
+        print("plot_metric_forest: empty input — skipping.")
+        return
+    n = len(df)
+    fig, ax = plt.subplots(figsize=(9, max(3.5, n * 0.55 + 1.2)))
+    y_pos = np.arange(n)
+
+    cap = 0.18
+    for i, row in df.iterrows():
+        lo, hi, pt = float(row[lower_col]), float(row[upper_col]), float(row[point_col])
+        # CI bar + end caps
+        ax.plot([lo, hi], [i, i], color="#4e79a7", linewidth=2.2, alpha=0.75)
+        ax.plot([lo, lo], [i - cap, i + cap], color="#4e79a7", linewidth=2.2)
+        ax.plot([hi, hi], [i - cap, i + cap], color="#4e79a7", linewidth=2.2)
+        # Annotation to the right of the upper end
+        ax.text(
+            hi + 0.012,
+            i,
+            f"{pt:.3f}  [{lo:.3f}, {hi:.3f}]",
+            va="center",
+            ha="left",
+            fontsize=9,
+            color="#333333",
+        )
+
+    # Point estimates as filled dots on top
+    ax.scatter(
+        df[point_col].astype(float),
+        y_pos,
+        color="#1b3a5c",
+        s=90,
+        zorder=5,
+        edgecolor="white",
+        linewidth=1.3,
+        label="Point estimate",
+    )
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(df[metric_col])
+    ax.set_xlabel("Metric value (95% bootstrap CI)")
+    ax.set_title(
+        title or f"Figure {fig_no}. Bootstrap 95% Confidence Intervals",
+        fontweight="bold",
+    )
+    ax.grid(True, axis="x", alpha=0.25)
+    upper_max = float(df[upper_col].max())
+    ax.set_xlim(0, max(1.0, upper_max * 1.22))
+    ax.invert_yaxis()  # first metric at the top
+    fig.tight_layout()
+    save_thesis_figure(fig, fig_no, stem, fig_dir)
+    plt.show()
+
+
 def plot_significance_bar(
     ctx: dict[str, Any],
     fig_dir: Path,
