@@ -123,13 +123,17 @@ def _hero_metrics_line() -> str:
 # Example scenarios for the "Try Examples" tab
 # ---------------------------------------------------------------------------
 
+# NOTE: arrival_date values MUST be ISO strings ("YYYY-MM-DD"), not date objects.
+# gr.DateTime in Gradio 6.x calls int()/arithmetic on its value during postprocess
+# and raises "datetime.date object cannot be interpreted as an integer" if passed
+# a raw date.  _form_defaults() already uses .isoformat() — keep these consistent.
 EXAMPLES: dict[str, dict[str, Any]] = {
     "high_risk": {
         "label": "🔴 High cancellation risk",
         "hint": "Long lead time, group booking, prior cancellation, no deposit.",
         "values": {
             "hotel": "City Hotel",
-            "arrival_date": date(2025, 10, 15),
+            "arrival_date": date(2025, 10, 15).isoformat(),
             "lead_time": 200,
             "weekend_nights": 0,
             "week_nights": 3,
@@ -159,7 +163,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
         ),
         "values": {
             "hotel": "City Hotel",
-            "arrival_date": date(2025, 9, 15),
+            "arrival_date": date(2025, 9, 15).isoformat(),
             "lead_time": 180,
             "weekend_nights": 2,
             "week_nights": 3,
@@ -186,7 +190,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
         "hint": "Repeated guest, short lead time, parking + special requests.",
         "values": {
             "hotel": "Resort Hotel",
-            "arrival_date": date(2025, 8, 5),
+            "arrival_date": date(2025, 8, 5).isoformat(),
             "lead_time": 5,
             "weekend_nights": 1,
             "week_nights": 2,
