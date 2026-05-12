@@ -46,14 +46,198 @@ DATA_PATH = PROJECT_ROOT / "data" / "hotel_bookings.csv"
 METRICS_PATH = PROJECT_ROOT / "reports" / "metrics.json"
 
 BACKGROUND_CSS = """
-.result-card { padding: 14px 18px; border-radius: 12px;
-               background: #f8fafc; border: 1px solid #e2e8f0; }
-.result-good { color: #16a34a; font-weight: 700; }
-.result-warn { color: #d97706; font-weight: 700; }
-.result-bad  { color: #dc2626; font-weight: 700; }
-.help-note   { background: #fef9c3; padding: 12px 14px;
-               border-left: 4px solid #ca8a04; border-radius: 6px;
-               margin: 10px 0; }
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+/* ---------- Page-level theming: lobby-cream backdrop, serif accents ---------- */
+.gradio-container {
+    background: linear-gradient(180deg, #FAF7F1 0%, #F1E9D7 100%) !important;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+    color: #2A2A2A !important;
+    max-width: 1320px !important;
+    margin: 0 auto !important;
+    padding: 18px 32px 60px !important;
+}
+
+/* ---------- Hospitality headings (Cormorant Garamond, brass rule under H1) -- */
+.gradio-container h1,
+.gradio-container h2,
+.gradio-container h3,
+.gradio-container h4 {
+    font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif !important;
+    color: #1B2D45 !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.01em !important;
+}
+.gradio-container h1 {
+    font-size: 2.6em !important;
+    border-bottom: 1px solid #B8924A;
+    padding-bottom: 0.25em;
+    margin-bottom: 0.15em;
+}
+.gradio-container h3 { font-size: 1.45em !important; color: #1B2D45 !important; }
+
+.hero-tagline {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-style: italic;
+    color: #6E5526;
+    font-size: 1.15em;
+    margin: -6px 0 18px 2px;
+    letter-spacing: 0.02em;
+}
+
+/* ---------- Card surfaces: form panels look like reservation slips --------- */
+.gradio-container .gr-form,
+.gradio-container .gr-box,
+.gradio-container .gr-panel {
+    background: rgba(255, 255, 255, 0.78) !important;
+    border-radius: 14px !important;
+    border: 1px solid #E4DAC4 !important;
+    box-shadow: 0 2px 10px rgba(27, 45, 69, 0.06) !important;
+}
+
+/* ---------- Buttons: navy "concierge desk" CTA, brass hover --------------- */
+.gradio-container button.lg,
+.gradio-container .gr-button-primary {
+    background: linear-gradient(180deg, #1B2D45 0%, #142337 100%) !important;
+    color: #FAF7F1 !important;
+    border: 1px solid #1B2D45 !important;
+    font-family: 'Inter', sans-serif !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+    font-weight: 500 !important;
+    box-shadow: 0 2px 6px rgba(27, 45, 69, 0.18) !important;
+    transition: all 180ms ease !important;
+}
+.gradio-container button.lg:hover,
+.gradio-container .gr-button-primary:hover {
+    background: linear-gradient(180deg, #B8924A 0%, #9D7A35 100%) !important;
+    border-color: #B8924A !important;
+    box-shadow: 0 3px 10px rgba(184, 146, 74, 0.35) !important;
+}
+.gradio-container .gr-button-secondary {
+    background: transparent !important;
+    color: #1B2D45 !important;
+    border: 1px solid #1B2D45 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
+    font-weight: 500 !important;
+}
+.gradio-container .gr-button-secondary:hover {
+    background: #1B2D45 !important;
+    color: #FAF7F1 !important;
+}
+
+/* ---------- Inputs: ivory fill, brass focus ring ------------------------- */
+.gradio-container input,
+.gradio-container textarea,
+.gradio-container select {
+    background: #FFFFFF !important;
+    border: 1px solid #D4C9B0 !important;
+    color: #1B2D45 !important;
+    border-radius: 6px !important;
+    font-family: 'Inter', sans-serif !important;
+}
+.gradio-container input:focus,
+.gradio-container textarea:focus,
+.gradio-container select:focus {
+    border-color: #B8924A !important;
+    box-shadow: 0 0 0 2px rgba(184, 146, 74, 0.22) !important;
+    outline: none !important;
+}
+.gradio-container label span {
+    color: #1B2D45 !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.02em !important;
+}
+
+/* ---------- Tabs: room-signage style ------------------------------------- */
+.gradio-container .tab-nav {
+    border-bottom: 1px solid #D4C9B0 !important;
+    margin-bottom: 14px !important;
+}
+.gradio-container .tab-nav button {
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.05em !important;
+    text-transform: uppercase !important;
+    color: #5C4423 !important;
+    padding: 10px 18px !important;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+}
+.gradio-container .tab-nav button.selected {
+    color: #1B2D45 !important;
+    border-bottom: 2px solid #B8924A !important;
+}
+
+/* ---------- Accordions: subtle reservation-folder feel ------------------- */
+.gradio-container .label-wrap {
+    background: rgba(255, 255, 255, 0.65) !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+}
+
+/* ---------- Result card: brass-trimmed assessment slip ------------------- */
+.result-card {
+    padding: 20px 24px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #FFFFFF 0%, #FAF7F1 100%);
+    border: 1px solid #E4DAC4;
+    box-shadow: 0 2px 8px rgba(27, 45, 69, 0.08);
+    border-left: 3px solid #B8924A;
+}
+.result-good {
+    color: #4A7C59 !important;
+    font-weight: 700;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 1.18em;
+}
+.result-warn {
+    color: #C9802F !important;
+    font-weight: 700;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 1.18em;
+}
+.result-bad {
+    color: #9B3232 !important;
+    font-weight: 700;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 1.18em;
+}
+
+/* ---------- Help/concierge memo callout ---------------------------------- */
+.help-note {
+    background: #FFF9E8;
+    padding: 14px 18px;
+    border-left: 3px solid #B8924A;
+    border-radius: 6px;
+    margin: 12px 0;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-style: italic;
+    color: #5C4423;
+    font-size: 1.05em;
+}
+
+/* ---------- Markdown tables in Help tab: tidy hotel rate-card feel ------- */
+.gradio-container table {
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.95em;
+}
+.gradio-container th {
+    background: #1B2D45 !important;
+    color: #FAF7F1 !important;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 500 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    padding: 8px 14px !important;
+}
+.gradio-container td {
+    padding: 8px 14px !important;
+    border-bottom: 1px solid #E4DAC4 !important;
+}
 """
 
 
@@ -594,8 +778,12 @@ in a browser — a green JSON `{"status":"ok"}` means the model is loaded and re
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="Booking Cancellation Predictor") as ui:
-        gr.Markdown("# 🏨 Hotel Booking Cancellation Predictor")
+    with gr.Blocks(title="Reservation Risk · Concierge Dashboard") as ui:
+        gr.Markdown("# 🏨 Reservation Risk · Concierge Dashboard")
+        gr.Markdown(
+            "<div class='hero-tagline'>Predicting cancellation risk at the moment of booking — "
+            "a calibrated, second opinion for the front desk.</div>"
+        )
         gr.Markdown(_hero_metrics_line())
 
         d = _form_defaults()
@@ -604,7 +792,7 @@ def build_ui() -> gr.Blocks:
             with gr.Row():
                 # ---------- Input column ----------
                 with gr.Column(scale=3):
-                    gr.Markdown("### Booking details")
+                    gr.Markdown("### Reservation details")
 
                     hotel = gr.Dropdown(_CAT["hotel"], label="Hotel", value=d["hotel"])
                     arrival_date = gr.DateTime(
@@ -755,9 +943,10 @@ def build_ui() -> gr.Blocks:
 
                 # ---------- Output column ----------
                 with gr.Column(scale=2):
-                    gr.Markdown("### Result")
+                    gr.Markdown("### Risk assessment")
                     headline_out = gr.Markdown(
-                        "_Run a prediction to see results._",
+                        "_Fill in the reservation details, then press "
+                        "**Predict** to receive a risk assessment._",
                         elem_classes=["result-card"],
                     )
                     details_out = gr.Markdown("")
@@ -804,11 +993,11 @@ def build_ui() -> gr.Blocks:
                 outputs=[*input_components, headline_out, details_out, raw_out],
             )
 
-        with gr.Tab("Try Examples"):
+        with gr.Tab("Sample reservations"):
             gr.Markdown("### Pre-loaded scenarios")
             gr.Markdown(
-                "Click any button to fill the form on the **Predict** tab, "
-                "then switch to that tab and press **Predict**."
+                "Pick a sample guest profile to fill the form on the **Predict** tab, "
+                "then switch over and press **Predict**."
             )
             for key, ex in EXAMPLES.items():
                 with gr.Row():
@@ -819,7 +1008,7 @@ def build_ui() -> gr.Blocks:
                         outputs=input_components,
                     )
 
-        with gr.Tab("Help & Troubleshooting"):
+        with gr.Tab("Guest book · Help"):
             gr.Markdown(HELP_MARKDOWN)
 
         # R7 — on page load, honour the ?demo=1 query param.
