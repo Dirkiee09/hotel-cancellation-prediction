@@ -19,10 +19,12 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import gradio as gr
+import numpy as np
 import pandas as pd
 from pydantic import ValidationError
 
@@ -44,6 +46,62 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = PROJECT_ROOT / "data" / "hotel_bookings.csv"
 METRICS_PATH = PROJECT_ROOT / "reports" / "metrics.json"
+TEST_PREDS_PATH = PROJECT_ROOT / "reports" / "test_predictions_for_powerbi.csv"
+
+
+@lru_cache(maxsize=1)
+def _load_cohort_probs() -> np.ndarray | None:
+    """Load and sort the held-out test-set cancel probabilities once.
+
+    Used for cohort-percentile lookup: at inference time we can answer
+    "this booking is riskier than X% of test bookings" with an O(log N)
+    np.searchsorted call.  The artifact is the standard
+    test_predictions_for_powerbi.csv (~12k rows), produced by
+    scripts/train.py — no new artifact required.
+
+    Returns None if the file is missing or malformed; callers must guard.
+    """
+    if not TEST_PREDS_PATH.exists():
+        return None
+    try:
+        df = pd.read_csv(TEST_PREDS_PATH, usecols=["cancel_probability"])
+        probs = df["cancel_probability"].dropna().to_numpy(dtype=float)
+        if probs.size == 0:
+            return None
+        return np.sort(probs)
+    except (OSError, ValueError, KeyError, pd.errors.ParserError) as exc:
+        logger.warning("cohort_probs_load_failed error=%s", exc)
+        return None
+
+
+def _cohort_percentile(prob: float) -> int | None:
+    """Percentile rank (0-100) of `prob` in the test-set distribution."""
+    sorted_probs = _load_cohort_probs()
+    if sorted_probs is None or sorted_probs.size == 0:
+        return None
+    idx = int(np.searchsorted(sorted_probs, prob, side="right"))
+    return int(round(idx / sorted_probs.size * 100))
+
+
+def _cohort_chip(prob: float) -> str:
+    """Render the cohort percentile as an inline chip.  Empty if unavailable."""
+    pct = _cohort_percentile(prob)
+    if pct is None:
+        return ""
+    # Phrase it relative to the population — easier mental anchor than the
+    # raw probability for non-technical readers.
+    if pct >= 50:
+        phrase = f"Riskier than ~{pct}% of bookings"
+    else:
+        phrase = f"Safer than ~{100 - pct}% of bookings"
+    return (
+        "<div class='cohort-chip'>"
+        f"<span class='cohort-label'>Cohort percentile</span>"
+        f"<span class='cohort-value'>{pct}th</span>"
+        f"<span class='cohort-phrase'>{phrase}</span>"
+        "</div>"
+    )
+
 
 BACKGROUND_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -769,6 +827,104 @@ body.dark .gradio-container, html.dark .gradio-container {
     font-size: 13px;
 }
 
+/* ---------- Cohort percentile chip (population-context trust signal) ----- */
+.cohort-chip {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 14px 0 0 0;
+    padding: 10px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    font-size: 12px;
+}
+.cohort-label {
+    color: var(--text-3);
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 10px;
+}
+.cohort-value {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+}
+.cohort-phrase {
+    color: var(--text-2);
+    flex: 1;
+}
+
+/* ---------- Waterfall summary header (above the factor bars) ------------- */
+.waterfall-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 14px 0;
+    padding: 10px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+.waterfall-segment {
+    color: var(--text-2);
+}
+.waterfall-segment .num {
+    color: var(--text-1);
+    font-weight: 600;
+}
+.waterfall-arrow {
+    color: var(--text-3);
+}
+.waterfall-delta {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 11px;
+}
+.waterfall-delta.up    { background: #FEF2F2; color: var(--bad); }
+.waterfall-delta.down  { background: #ECFDF5; color: var(--good); }
+.waterfall-delta.flat  { background: var(--surface-2); color: var(--text-3); }
+
+/* ---------- Loading skeleton (shimmer during scoring) -------------------- */
+@keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position:  200% 0; }
+}
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--border-soft) 0%,
+        #FFFFFF 50%,
+        var(--border-soft) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s linear infinite;
+    border-radius: var(--radius);
+    color: transparent !important;
+    border: 1px solid var(--border-soft) !important;
+}
+.skeleton-line {
+    height: 14px;
+    margin: 8px 0;
+}
+.skeleton-line.lg   { height: 44px; width: 60%; }
+.skeleton-line.sm   { height: 10px; width: 40%; }
+.skeleton-line.full { width: 100%; }
+.skeleton-label {
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 12px 0;
+}
+
 /* ---------- Help-note callout (kept for B1 zero-probability path) -------- */
 .help-note {
     background: #FFFBEB;
@@ -1129,6 +1285,54 @@ def _why_zero_note() -> str:
     )
 
 
+@lru_cache(maxsize=1)
+def _population_base_rate() -> float | None:
+    """Mean cancel probability across the held-out test set (empirical base rate).
+
+    Used as the "starting point" reference in the waterfall summary header.
+    None if cohort artifact is unavailable; callers must guard.
+    """
+    sorted_probs = _load_cohort_probs()
+    if sorted_probs is None or sorted_probs.size == 0:
+        return None
+    return float(sorted_probs.mean())
+
+
+def _waterfall_summary(prob: float) -> str:
+    """Render the 'population baseline → this booking' summary line.
+
+    Shows base rate vs predicted probability with the signed delta.  The
+    factor bars below explain *which* features drove that delta.  Not a
+    strict SHAP waterfall in probability space (SHAP additivity holds in
+    log-odds, not probabilities) — instead a population-relative anchor
+    so non-technical readers can frame the prediction in context.
+    """
+    base = _population_base_rate()
+    if base is None:
+        return ""
+    base_pct = base * 100.0
+    pred_pct = prob * 100.0
+    delta_pp = pred_pct - base_pct
+    if delta_pp > 0.5:
+        delta_cls, delta_label = "up", f"↑ +{delta_pp:.1f}pp"
+    elif delta_pp < -0.5:
+        delta_cls, delta_label = "down", f"↓ {delta_pp:.1f}pp"
+    else:
+        delta_cls, delta_label = "flat", f"≈ {delta_pp:+.1f}pp"
+    return (
+        "<div class='waterfall-summary'>"
+        "<span class='waterfall-segment'>"
+        "Base rate "
+        f"<span class='num'>{base_pct:.1f}%</span></span>"
+        "<span class='waterfall-arrow'>→</span>"
+        "<span class='waterfall-segment'>"
+        "This booking "
+        f"<span class='num'>{pred_pct:.2f}%</span></span>"
+        f"<span class='waterfall-delta {delta_cls}'>{delta_label}</span>"
+        "</div>"
+    )
+
+
 def _format_top_features(features: list[dict[str, object]]) -> str:
     """Render top contributing features as horizontal mini-bars."""
     if not features:
@@ -1361,6 +1565,7 @@ def predict_one(*args: Any) -> tuple[str, str, str]:
         "</div>"
         f"<div><span class='risk-badge {css}'>● {band} risk</span></div>"
         + _borderline_chip(prob)
+        + _cohort_chip(prob)
         + _decision_axis_html(prob, thr_f1, thr_hp, thr_cost)
         + "</div>"
     )
@@ -1371,6 +1576,7 @@ def predict_one(*args: Any) -> tuple[str, str, str]:
     if prob <= 0.0:
         parts.append(_why_zero_note())
     top = explain_prediction(feature_df, artifacts, top_n=5)
+    parts.append(_waterfall_summary(prob))
     parts.append(_format_top_features(top))
     parts.append(
         "<div class='policy-grid'>"
@@ -1417,19 +1623,39 @@ def _populate_from_example(key: str) -> tuple[Any, ...]:
     return tuple(v[k] for k in INPUT_KEYS)
 
 
+_SKELETON_HEADLINE = (
+    "<div class='prob-block'>"
+    "<p class='skeleton-label'>Scoring booking</p>"
+    "<div class='skeleton skeleton-line lg'>&nbsp;</div>"
+    "<div class='skeleton skeleton-line full'>&nbsp;</div>"
+    "<div class='skeleton skeleton-line sm'>&nbsp;</div>"
+    "</div>"
+)
+_SKELETON_DETAILS = (
+    "<div class='action-block'>"
+    "<p class='skeleton-label'>Computing explanation</p>"
+    "<div class='skeleton skeleton-line full'>&nbsp;</div>"
+    "<div class='skeleton skeleton-line full'>&nbsp;</div>"
+    "<div class='skeleton skeleton-line' style='width:75%'>&nbsp;</div>"
+    "</div>"
+)
+
+
 def _set_predicting_state() -> tuple[Any, str, str, str]:
-    """First step of the prediction click chain — disable the button."""
+    """First step of the prediction click chain — disable the button and
+    swap the headline / details panels for animated shimmer skeletons so
+    the user has visible feedback that scoring is in progress."""
     return (
-        gr.update(value="⏳ Predicting...", interactive=False),
-        "_Scoring booking — calibrator and SHAP explainer running..._",
-        "",
+        gr.update(value="Scoring…", interactive=False),
+        _SKELETON_HEADLINE,
+        _SKELETON_DETAILS,
         "",
     )
 
 
 def _set_ready_state() -> Any:
     """Final step of the prediction click chain — re-enable the button."""
-    return gr.update(value="Predict", interactive=True)
+    return gr.update(value="Predict cancellation risk", interactive=True)
 
 
 # ---------------------------------------------------------------------------
