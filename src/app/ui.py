@@ -46,197 +46,775 @@ DATA_PATH = PROJECT_ROOT / "data" / "hotel_bookings.csv"
 METRICS_PATH = PROJECT_ROOT / "reports" / "metrics.json"
 
 BACKGROUND_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-/* ---------- Page-level theming: lobby-cream backdrop, serif accents ---------- */
+/* =========================================================================
+   Design system — modern analytics SaaS (Stripe/Linear/Vercel-adjacent)
+   Single font, single accent, light surfaces, 8px spacing scale.
+   ========================================================================= */
+:root {
+    --bg:           #F8F7F4;
+    --surface:      #FFFFFF;
+    --surface-2:    #FCFBF9;
+    --border:       #E8E6E1;
+    --border-soft:  #F1EFEA;
+    --text-1:       #0F172A;
+    --text-2:       #475569;
+    --text-3:       #94A3B8;
+    --accent:       #0F766E;
+    --accent-dim:   #0D5752;
+    --accent-soft:  #CCFBF1;
+    --good:         #059669;
+    --warn:         #D97706;
+    --bad:          #DC2626;
+    --radius-sm:    6px;
+    --radius:       8px;
+    --radius-lg:    12px;
+    --shadow-1:     0 1px 2px rgba(15, 23, 42, 0.04);
+    --shadow-2:     0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+/* =========================================================================
+   Override Gradio's theme tokens so every component picks up our palette
+   regardless of system dark-mode detection.  These vars are referenced by
+   Gradio's internal Svelte-hashed classes, so editing them is the only
+   reliable way to repaint everything (forms, blocks, inputs, tabs, buttons).
+   We apply at .gradio-container scope so they win over Gradio's :root vars.
+   ========================================================================= */
+.gradio-container,
+.dark .gradio-container,
+.gradio-container.dark {
+    color-scheme: light !important;
+
+    /* --- Body & surface fills --- */
+    --body-background-fill: #F8F7F4 !important;
+    --background-fill-primary: #FFFFFF !important;
+    --background-fill-secondary: #FCFBF9 !important;
+    --block-background-fill: #FFFFFF !important;
+    --block-secondary-background-fill: #FCFBF9 !important;
+    --block-border-color: #E8E6E1 !important;
+    --block-border-width: 1px !important;
+    --block-radius: 12px !important;
+    --block-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+
+    /* --- Labels & text --- */
+    --block-label-background-fill: transparent !important;
+    --block-label-text-color: #475569 !important;
+    --block-label-text-weight: 500 !important;
+    --block-title-text-color: #0F172A !important;
+    --block-title-text-weight: 600 !important;
+    --body-text-color: #0F172A !important;
+    --body-text-color-subdued: #94A3B8 !important;
+    --body-text-weight: 400 !important;
+
+    /* --- Inputs --- */
+    --input-background-fill: #FFFFFF !important;
+    --input-background-fill-focus: #FFFFFF !important;
+    --input-border-color: #E8E6E1 !important;
+    --input-border-color-focus: #0F766E !important;
+    --input-border-width: 1px !important;
+    --input-shadow: none !important;
+    --input-shadow-focus: 0 0 0 3px rgba(15, 118, 110, 0.12) !important;
+    --input-radius: 8px !important;
+    --input-padding: 8px 12px !important;
+    --input-text-size: 14px !important;
+
+    /* --- Accent (teal) replaces Gradio's default orange --- */
+    --color-accent: #0F766E !important;
+    --color-accent-soft: #CCFBF1 !important;
+    --primary-50:  #F0FDFA !important;
+    --primary-100: #CCFBF1 !important;
+    --primary-200: #99F6E4 !important;
+    --primary-300: #5EEAD4 !important;
+    --primary-400: #2DD4BF !important;
+    --primary-500: #14B8A6 !important;
+    --primary-600: #0D9488 !important;
+    --primary-700: #0F766E !important;
+    --primary-800: #115E59 !important;
+    --primary-900: #134E4A !important;
+    --primary-950: #042F2E !important;
+
+    /* --- Neutral scale (warm light) replaces Gradio's defaults --- */
+    --neutral-50:  #FAFAF9 !important;
+    --neutral-100: #F5F5F4 !important;
+    --neutral-200: #E8E6E1 !important;
+    --neutral-300: #D6D3D1 !important;
+    --neutral-400: #A8A29E !important;
+    --neutral-500: #78716C !important;
+    --neutral-600: #57534E !important;
+    --neutral-700: #44403C !important;
+    --neutral-800: #292524 !important;
+    --neutral-900: #1C1917 !important;
+    --neutral-950: #0C0A09 !important;
+
+    /* --- Buttons --- */
+    --button-primary-background-fill: #0F766E !important;
+    --button-primary-background-fill-hover: #0D5752 !important;
+    --button-primary-text-color: #FFFFFF !important;
+    --button-primary-text-color-hover: #FFFFFF !important;
+    --button-primary-border-color: #0F766E !important;
+    --button-primary-border-color-hover: #0D5752 !important;
+    --button-secondary-background-fill: #FFFFFF !important;
+    --button-secondary-background-fill-hover: #FCFBF9 !important;
+    --button-secondary-text-color: #0F172A !important;
+    --button-secondary-text-color-hover: #0F172A !important;
+    --button-secondary-border-color: #E8E6E1 !important;
+    --button-secondary-border-color-hover: #94A3B8 !important;
+    --button-shadow: var(--shadow-1) !important;
+    --button-shadow-hover: var(--shadow-2) !important;
+    --button-large-radius: 8px !important;
+    --button-small-radius: 8px !important;
+
+    /* --- Borders --- */
+    --border-color-primary: #E8E6E1 !important;
+    --border-color-accent: #0F766E !important;
+}
+
+/* Force light color scheme for Gradio components even if the user's system
+   is in dark mode — Gradio's auto-detect adds a .dark class to body. */
+body.dark, html.dark { color-scheme: light !important; }
+body.dark .gradio-container, html.dark .gradio-container {
+    --body-background-fill: #F8F7F4 !important;
+    --block-background-fill: #FFFFFF !important;
+}
+
+/* ---------- Page ---------------------------------------------------------- */
 .gradio-container {
-    background: linear-gradient(180deg, #FAF7F1 0%, #F1E9D7 100%) !important;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
-    color: #2A2A2A !important;
-    max-width: 1320px !important;
+    background: var(--bg) !important;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+    color: var(--text-1) !important;
+    max-width: 1280px !important;
     margin: 0 auto !important;
-    padding: 18px 32px 60px !important;
+    padding: 32px 40px 64px !important;
+    font-size: 14px !important;
+    line-height: 1.5 !important;
 }
 
-/* ---------- Hospitality headings (Cormorant Garamond, brass rule under H1) -- */
-.gradio-container h1,
-.gradio-container h2,
-.gradio-container h3,
-.gradio-container h4 {
-    font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif !important;
-    color: #1B2D45 !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.01em !important;
-}
+/* ---------- Typography hierarchy ----------------------------------------- */
 .gradio-container h1 {
-    font-size: 2.6em !important;
-    border-bottom: 1px solid #B8924A;
-    padding-bottom: 0.25em;
-    margin-bottom: 0.15em;
+    font-size: 30px !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.02em !important;
+    color: var(--text-1) !important;
+    margin: 0 0 6px 0 !important;
+    line-height: 1.2 !important;
 }
-.gradio-container h3 { font-size: 1.45em !important; color: #1B2D45 !important; }
-
-.hero-tagline {
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-style: italic;
-    color: #6E5526;
-    font-size: 1.15em;
-    margin: -6px 0 18px 2px;
-    letter-spacing: 0.02em;
+.gradio-container h2 {
+    font-size: 20px !important;
+    font-weight: 600 !important;
+    color: var(--text-1) !important;
+    margin: 24px 0 12px 0 !important;
+}
+.gradio-container h3 {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.01em !important;
+    color: var(--text-1) !important;
+    margin: 0 0 12px 0 !important;
 }
 
-/* ---------- Card surfaces: form panels look like reservation slips --------- */
+/* Hero subtitle (right under H1) */
+.hero-subtitle {
+    color: var(--text-2);
+    font-size: 15px;
+    margin: 0 0 20px 0;
+    font-weight: 400;
+}
+
+/* ---------- KPI chip strip ----------------------------------------------- */
+.kpi-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 0 0 32px 0;
+}
+.kpi-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 10px;
+    background: var(--surface);
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-1);
+}
+.kpi-label {
+    color: var(--text-3);
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 10px;
+}
+.kpi-value {
+    color: var(--text-1);
+    font-weight: 600;
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+}
+.kpi-muted {
+    color: var(--text-3);
+    font-size: 13px;
+    margin: 0 0 24px 0;
+}
+
+/* ---------- Cards / form surfaces ---------------------------------------- */
 .gradio-container .gr-form,
 .gradio-container .gr-box,
-.gradio-container .gr-panel {
-    background: rgba(255, 255, 255, 0.78) !important;
-    border-radius: 14px !important;
-    border: 1px solid #E4DAC4 !important;
-    box-shadow: 0 2px 10px rgba(27, 45, 69, 0.06) !important;
+.gradio-container .gr-panel,
+.gradio-container .form {
+    background: var(--surface) !important;
+    border-radius: var(--radius-lg) !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: var(--shadow-1) !important;
 }
 
-/* ---------- Buttons: navy "concierge desk" CTA, brass hover --------------- */
-.gradio-container button.lg,
-.gradio-container .gr-button-primary {
-    background: linear-gradient(180deg, #1B2D45 0%, #142337 100%) !important;
-    color: #FAF7F1 !important;
-    border: 1px solid #1B2D45 !important;
+/* ---------- Buttons (scoped tightly so Reset stays ghosted) -------------- */
+.gradio-container button {
     font-family: 'Inter', sans-serif !important;
-    letter-spacing: 0.08em !important;
-    text-transform: uppercase !important;
     font-weight: 500 !important;
-    box-shadow: 0 2px 6px rgba(27, 45, 69, 0.18) !important;
-    transition: all 180ms ease !important;
+    font-size: 14px !important;
+    border-radius: var(--radius) !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    transition: all 150ms ease !important;
+    cursor: pointer !important;
 }
-.gradio-container button.lg:hover,
+/* Primary CTA — the strongest element on the page */
+.gradio-container button.primary,
+.gradio-container .gr-button-primary {
+    background: var(--accent) !important;
+    color: #FFFFFF !important;
+    border: 1px solid var(--accent) !important;
+    padding: 10px 18px !important;
+    min-height: 40px !important;
+    box-shadow: var(--shadow-1) !important;
+}
+.gradio-container button.primary:hover,
 .gradio-container .gr-button-primary:hover {
-    background: linear-gradient(180deg, #B8924A 0%, #9D7A35 100%) !important;
-    border-color: #B8924A !important;
-    box-shadow: 0 3px 10px rgba(184, 146, 74, 0.35) !important;
+    background: var(--accent-dim) !important;
+    border-color: var(--accent-dim) !important;
+    box-shadow: var(--shadow-2) !important;
+    transform: translateY(-1px);
 }
+/* Secondary / ghost — Reset, tab buttons, etc. */
+.gradio-container button.secondary,
 .gradio-container .gr-button-secondary {
-    background: transparent !important;
-    color: #1B2D45 !important;
-    border: 1px solid #1B2D45 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.08em !important;
-    font-weight: 500 !important;
+    background: var(--surface) !important;
+    color: var(--text-1) !important;
+    border: 1px solid var(--border) !important;
+    padding: 10px 16px !important;
+    min-height: 40px !important;
+    box-shadow: var(--shadow-1) !important;
 }
+.gradio-container button.secondary:hover,
 .gradio-container .gr-button-secondary:hover {
-    background: #1B2D45 !important;
-    color: #FAF7F1 !important;
+    background: var(--surface-2) !important;
+    border-color: var(--text-3) !important;
 }
 
-/* ---------- Inputs: ivory fill, brass focus ring ------------------------- */
-.gradio-container input,
+/* ---------- Inputs ------------------------------------------------------- */
+/* Scope to text-like inputs only — :not() exclusions prevent the rule from
+   stomping native checkbox / radio / range / file styling (which previously
+   made the "Repeated guest" checkbox render as a blank 36px square and
+   "disappear" when toggled).  */
+.gradio-container input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
 .gradio-container textarea,
 .gradio-container select {
-    background: #FFFFFF !important;
-    border: 1px solid #D4C9B0 !important;
-    color: #1B2D45 !important;
-    border-radius: 6px !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-1) !important;
+    border-radius: var(--radius) !important;
     font-family: 'Inter', sans-serif !important;
+    font-size: 14px !important;
+    padding: 8px 12px !important;
+    min-height: 36px !important;
+    box-sizing: border-box !important;
+    transition: border-color 150ms ease, box-shadow 150ms ease !important;
 }
-.gradio-container input:focus,
+.gradio-container input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):focus,
 .gradio-container textarea:focus,
 .gradio-container select:focus {
-    border-color: #B8924A !important;
-    box-shadow: 0 0 0 2px rgba(184, 146, 74, 0.22) !important;
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12) !important;
     outline: none !important;
 }
-.gradio-container label span {
-    color: #1B2D45 !important;
+
+/* Native checkbox / radio: keep browser-default rendering, just retint the
+   check/dot to our accent color so they stay visible against the cream bg.  */
+.gradio-container input[type="checkbox"],
+.gradio-container input[type="radio"] {
+    accent-color: var(--accent) !important;
+    width: 16px !important;
+    height: 16px !important;
+    min-height: 16px !important;
+    margin: 0 6px 0 0 !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+    box-shadow: none !important;
+    background: initial !important;
+    border: initial !important;
+    border-radius: initial !important;
+}
+.gradio-container label > span,
+.gradio-container .label-wrap > span,
+.gradio-container span[data-testid="block-label"] {
+    color: var(--text-2) !important;
     font-weight: 500 !important;
-    letter-spacing: 0.02em !important;
+    font-size: 13px !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+}
+/* Inline info-text under inputs ("info=" prop) */
+.gradio-container .info {
+    color: var(--text-3) !important;
+    font-size: 12px !important;
+    margin-top: 4px !important;
+    line-height: 1.4 !important;
 }
 
-/* ---------- Tabs: room-signage style ------------------------------------- */
-.gradio-container .tab-nav {
-    border-bottom: 1px solid #D4C9B0 !important;
-    margin-bottom: 14px !important;
+/* ---------- Tabs --------------------------------------------------------- */
+.gradio-container .tab-nav,
+.gradio-container .tab-buttons,
+.gradio-container [role="tablist"] {
+    border-bottom: 1px solid var(--border) !important;
+    margin-bottom: 24px !important;
+    gap: 4px !important;
+    background: transparent !important;
 }
-.gradio-container .tab-nav button {
+/* Reset Gradio's tab button styling — they share .button-like classes. */
+.gradio-container .tab-nav button,
+.gradio-container .tab-buttons button,
+.gradio-container [role="tab"] {
     font-family: 'Inter', sans-serif !important;
     font-weight: 500 !important;
-    letter-spacing: 0.05em !important;
-    text-transform: uppercase !important;
-    color: #5C4423 !important;
-    padding: 10px 18px !important;
+    font-size: 14px !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    color: var(--text-2) !important;
+    padding: 10px 14px !important;
+    margin: 0 !important;
     background: transparent !important;
     border: none !important;
     border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+    min-height: 0 !important;
+    box-shadow: none !important;
+    transition: color 150ms ease, border-color 150ms ease !important;
 }
-.gradio-container .tab-nav button.selected {
-    color: #1B2D45 !important;
-    border-bottom: 2px solid #B8924A !important;
+.gradio-container .tab-nav button:hover,
+.gradio-container .tab-buttons button:hover,
+.gradio-container [role="tab"]:hover {
+    color: var(--text-1) !important;
+    background: transparent !important;
+}
+.gradio-container .tab-nav button.selected,
+.gradio-container .tab-buttons button.selected,
+.gradio-container [role="tab"][aria-selected="true"] {
+    color: var(--accent) !important;
+    border-bottom: 2px solid var(--accent) !important;
+    background: transparent !important;
 }
 
-/* ---------- Accordions: subtle reservation-folder feel ------------------- */
-.gradio-container .label-wrap {
-    background: rgba(255, 255, 255, 0.65) !important;
-    border-radius: 8px !important;
-    padding: 8px 12px !important;
+/* ---------- Accordions --------------------------------------------------- */
+.gradio-container .accordion {
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    background: var(--surface) !important;
+    box-shadow: none !important;
+    margin: 8px 0 !important;
+}
+.gradio-container .accordion .label-wrap {
+    background: transparent !important;
+    border: none !important;
+    padding: 10px 14px !important;
+    font-weight: 500 !important;
+    color: var(--text-1) !important;
 }
 
-/* ---------- Result card: brass-trimmed assessment slip ------------------- */
+/* ---------- Risk assessment card --------------------------------------- */
 .result-card {
-    padding: 20px 24px;
-    border-radius: 12px;
-    background: linear-gradient(180deg, #FFFFFF 0%, #FAF7F1 100%);
-    border: 1px solid #E4DAC4;
-    box-shadow: 0 2px 8px rgba(27, 45, 69, 0.08);
-    border-left: 3px solid #B8924A;
-}
-.result-good {
-    color: #4A7C59 !important;
-    font-weight: 700;
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-size: 1.18em;
-}
-.result-warn {
-    color: #C9802F !important;
-    font-weight: 700;
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-size: 1.18em;
-}
-.result-bad {
-    color: #9B3232 !important;
-    font-weight: 700;
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-size: 1.18em;
+    background: var(--surface);
+    padding: 24px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-1);
 }
 
-/* ---------- Help/concierge memo callout ---------------------------------- */
-.help-note {
-    background: #FFF9E8;
-    padding: 14px 18px;
-    border-left: 3px solid #B8924A;
+/* Big probability number */
+.prob-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.prob-label {
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.prob-number {
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-1);
+}
+.prob-number.result-good { color: var(--good); }
+.prob-number.result-warn { color: var(--warn); }
+.prob-number.result-bad  { color: var(--bad); }
+
+/* Probability bar visual */
+.prob-bar {
+    background: var(--border-soft);
+    border-radius: 999px;
+    height: 6px;
+    overflow: hidden;
+    margin: 12px 0 14px 0;
+}
+.prob-bar-fill {
+    height: 100%;
+    transition: width 250ms ease;
+    border-radius: 999px;
+}
+.prob-bar-fill.result-good { background: var(--good); }
+.prob-bar-fill.result-warn { background: var(--warn); }
+.prob-bar-fill.result-bad  { background: var(--bad); }
+
+/* Risk badge pill */
+.risk-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.risk-badge.result-good { background: #ECFDF5; color: var(--good); border: 1px solid #A7F3D0; }
+.risk-badge.result-warn { background: #FFFBEB; color: var(--warn); border: 1px solid #FDE68A; }
+.risk-badge.result-bad  { background: #FEF2F2; color: var(--bad);  border: 1px solid #FECACA; }
+
+/* Recommended action callout */
+.action-block {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin: 18px 0;
+}
+.action-label {
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 4px 0;
+}
+.action-text {
+    color: var(--text-1);
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0;
+}
+
+/* Top factors — horizontal mini-bars */
+.factors-block { margin: 18px 0 8px 0; }
+.factors-title {
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 10px 0;
+}
+.factor-row {
+    display: grid;
+    grid-template-columns: 1fr 90px 56px;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border-soft);
+}
+.factor-row:last-child { border-bottom: none; }
+.factor-name {
+    color: var(--text-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.factor-name code {
+    background: var(--surface-2);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-2);
+}
+.factor-bar {
+    background: var(--border-soft);
+    border-radius: 999px;
+    height: 5px;
+    overflow: hidden;
+    position: relative;
+}
+.factor-bar-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    height: 5px;
+    border-radius: 999px;
+}
+.factor-bar-fill.cancel { background: var(--bad); right: 50%; }
+.factor-bar-fill.stay   { background: var(--good); left: 50%; }
+.factor-bar-mid {
+    position: absolute;
+    left: 50%;
+    top: -1px;
+    bottom: -1px;
+    width: 1px;
+    background: var(--border);
+}
+.factor-contrib {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-2);
+    font-size: 12px;
+}
+
+/* Policy decisions row — compact grid */
+.policy-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin: 18px 0 0 0;
+}
+.policy-cell {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+}
+.policy-name {
+    color: var(--text-3);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 4px 0;
+}
+.policy-decision {
+    color: var(--text-1);
+    font-size: 13px;
+    font-weight: 500;
+    margin: 0;
+}
+.policy-thr {
+    color: var(--text-3);
+    font-size: 11px;
+    margin: 4px 0 0 0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Risk-band color classes kept (referenced from _risk_band() in Python). */
+.result-good { color: var(--good); font-weight: 600; }
+.result-warn { color: var(--warn); font-weight: 600; }
+.result-bad  { color: var(--bad);  font-weight: 600; }
+
+/* ---------- Decision axis: the chart that justifies every policy call ---- */
+.decision-axis-block {
+    margin: 22px 0 6px 0;
+}
+.axis-block-label {
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 22px 0;
+}
+.axis-strip {
+    position: relative;
+    height: 14px;
+    background: var(--border-soft);
+    border-radius: 999px;
+    margin: 0 14px;
+}
+/* Risk-band tinted zones (Low / Medium / High) */
+.band-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    height: 100%;
+}
+.band-zone.low  { background: rgba(5, 150, 105, 0.18); border-radius: 999px 0 0 999px; }
+.band-zone.med  { background: rgba(217, 119, 6, 0.18); }
+.band-zone.high { background: rgba(220, 38, 38, 0.18); border-radius: 0 999px 999px 0; }
+
+/* Vertical tick marks for the 3 policy thresholds */
+.thr-tick {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    background: var(--text-2);
+    border-radius: 1px;
+    transform: translateX(-1px);
+}
+.thr-tick.cost { background: #64748B; }
+.thr-tick.f1   { background: #475569; }
+.thr-tick.hp   { background: #1E293B; }
+
+/* The prominent prediction marker (circle on the axis + label balloon above) */
+.axis-marker {
+    position: absolute;
+    top: -5px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 3px solid #FFFFFF;
+    box-shadow: 0 2px 6px rgba(15, 118, 110, 0.35);
+    transform: translateX(-50%);
+    z-index: 3;
+}
+.marker-label {
+    position: absolute;
+    bottom: 34px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent);
+    color: #FFFFFF;
+    padding: 3px 8px;
     border-radius: 6px;
-    margin: 12px 0;
-    font-family: 'Cormorant Garamond', Georgia, serif;
-    font-style: italic;
-    color: #5C4423;
-    font-size: 1.05em;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 4px rgba(15, 118, 110, 0.25);
+}
+.marker-label::after {
+    /* downward-pointing arrow under the label */
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--accent);
 }
 
-/* ---------- Markdown tables in Help tab: tidy hotel rate-card feel ------- */
+/* Tick labels (0% / 40% / 70% / 100%) under the strip */
+.axis-ticks-row {
+    position: relative;
+    height: 16px;
+    margin: 8px 14px 0;
+    font-variant-numeric: tabular-nums;
+}
+.axis-ticks-row span {
+    position: absolute;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: var(--text-3);
+    white-space: nowrap;
+}
+
+/* Legend showing what each tick means */
+.thr-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 14px 14px 0;
+    padding: 10px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    font-size: 11px;
+    color: var(--text-2);
+}
+.thr-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.thr-legend-swatch {
+    display: inline-block;
+    width: 2px;
+    height: 10px;
+    border-radius: 1px;
+}
+.thr-legend-swatch.cost { background: #64748B; }
+.thr-legend-swatch.f1   { background: #475569; }
+.thr-legend-swatch.hp   { background: #1E293B; }
+.thr-legend-swatch.you  { background: var(--accent); border-radius: 50%; width: 8px; height: 8px; }
+
+/* Borderline indicator: surfaced when prob is within 5pp of a band threshold */
+.borderline-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 6px 10px;
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
+    color: #92400E;
+    border-radius: var(--radius);
+    font-size: 12px;
+    font-weight: 500;
+}
+.borderline-chip::before {
+    content: '⚠';
+    font-size: 13px;
+}
+
+/* ---------- Help-note callout (kept for B1 zero-probability path) -------- */
+.help-note {
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+    color: #92400E;
+}
+
+/* ---------- Help-tab Markdown tables ------------------------------------- */
 .gradio-container table {
     border-collapse: collapse;
     margin: 12px 0;
-    font-size: 0.95em;
+    font-size: 13px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
 }
 .gradio-container th {
-    background: #1B2D45 !important;
-    color: #FAF7F1 !important;
-    font-family: 'Inter', sans-serif !important;
+    background: var(--surface-2) !important;
+    color: var(--text-2) !important;
     font-weight: 500 !important;
+    font-size: 11px !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    padding: 8px 14px !important;
+    letter-spacing: 0.06em !important;
+    padding: 8px 12px !important;
+    text-align: left !important;
+    border-bottom: 1px solid var(--border) !important;
 }
 .gradio-container td {
-    padding: 8px 14px !important;
-    border-bottom: 1px solid #E4DAC4 !important;
+    padding: 8px 12px !important;
+    border-bottom: 1px solid var(--border-soft) !important;
+    color: var(--text-1) !important;
+}
+.gradio-container tr:last-child td { border-bottom: none !important; }
+
+/* ---------- Code blocks: subtle, not in-your-face ------------------------ */
+.gradio-container code {
+    background: var(--surface-2);
+    color: var(--text-1);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    font-family: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
 }
 """
 
@@ -288,19 +866,45 @@ _CAT = _load_categorical_choices()
 
 
 def _hero_metrics_line() -> str:
+    """Render the headline metrics as compact KPI chips.
+
+    Four chips when calibration is available: ROC-AUC, PR-AUC, F1, ECE.
+    ECE (expected calibration error) is the small one panelists care about
+    most for a calibrated classifier — the average gap between predicted
+    and observed cancellation frequency, in probability units.  Surfacing
+    it next to the discriminative metrics signals "the % we show below
+    is trustworthy, not just a ranking."
+    """
     if METRICS_PATH.exists():
         try:
             data = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
             mf = data.get("max_f1", {})
             roc, pr, f1 = mf.get("roc_auc"), mf.get("pr_auc"), mf.get("f1")
+            cal_test = data.get("calibration", {}).get("test", {})
+            ece = cal_test.get("ece_calibrated")
             if roc is not None and pr is not None and f1 is not None:
+                chips = [
+                    ("ROC-AUC", f"{float(roc):.3f}"),
+                    ("PR-AUC", f"{float(pr):.3f}"),
+                    ("F1", f"{float(f1):.3f}"),
+                ]
+                if ece is not None:
+                    chips.append(("Calibration (ECE)", f"{float(ece):.3f}"))
                 return (
-                    f"**Model performance** — ROC-AUC {float(roc):.3f} · "
-                    f"PR-AUC {float(pr):.3f} · F1 {float(f1):.3f}"
+                    "<div class='kpi-row'>"
+                    + "".join(
+                        f"<span class='kpi-chip'><span class='kpi-label'>{label}</span>"
+                        f"<span class='kpi-value'>{value}</span></span>"
+                        for label, value in chips
+                    )
+                    + "</div>"
                 )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             logger.warning("hero_metrics_load_failed error=%s", exc)
-    return "**Model performance** — metrics not available (run `python scripts/train.py`)."
+    return (
+        "<p class='kpi-muted'>Model metrics not available — "
+        "run <code>python scripts/train.py</code>.</p>"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -331,7 +935,6 @@ EXAMPLES: dict[str, dict[str, Any]] = {
             "customer_type": "Transient",
             "reserved_room_type": "A",
             "deposit_type": "No Deposit",
-            "is_repeated_guest": False,
             "previous_cancellations": 1,
             "previous_bookings_not_canceled": 0,
             "adr": 80.0,
@@ -361,7 +964,6 @@ EXAMPLES: dict[str, dict[str, Any]] = {
             "customer_type": "Transient",
             "reserved_room_type": "A",
             "deposit_type": "No Deposit",
-            "is_repeated_guest": False,
             "previous_cancellations": 0,
             "previous_bookings_not_canceled": 0,
             "adr": 100.0,
@@ -388,7 +990,6 @@ EXAMPLES: dict[str, dict[str, Any]] = {
             "customer_type": "Transient",
             "reserved_room_type": "A",
             "deposit_type": "No Deposit",
-            "is_repeated_guest": True,
             "previous_cancellations": 0,
             "previous_bookings_not_canceled": 10,
             "adr": 90.0,
@@ -414,7 +1015,6 @@ INPUT_KEYS: tuple[str, ...] = (
     "customer_type",
     "reserved_room_type",
     "deposit_type",
-    "is_repeated_guest",
     "previous_cancellations",
     "previous_bookings_not_canceled",
     "adr",
@@ -443,30 +1043,61 @@ def _coerce_date(value: Any) -> date:
     raise ValueError("Arrival date is required.")
 
 
+def _to_int(value: Any, default: int = 0) -> int:
+    """Coerce a Gradio Number value to int, defaulting if the user cleared it.
+
+    gr.Number passes ``None`` when the field is empty; passing that straight to
+    ``int()`` raises ``TypeError: int() argument must be a real number...``.
+    """
+    if value is None or value == "":
+        return default
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_float(value: Any, default: float = 0.0) -> float:
+    """Coerce a Gradio Number value to float with a safe default on empty/None."""
+    if value is None or value == "":
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _build_booking(values: dict[str, Any]) -> BookingRequest:
     payload: dict[str, Any] = {
         "hotel": values["hotel"],
-        "lead_time": int(values["lead_time"]),
+        "lead_time": _to_int(values["lead_time"]),
         "arrival_date": _coerce_date(values["arrival_date"]),
-        "stays_in_weekend_nights": int(values["weekend_nights"]),
-        "stays_in_week_nights": int(values["week_nights"]),
-        "adults": max(1, int(values["adults"])),
-        "children": int(values["children"]),
-        "babies": int(values["babies"]),
+        "stays_in_weekend_nights": _to_int(values["weekend_nights"]),
+        "stays_in_week_nights": _to_int(values["week_nights"]),
+        "adults": max(1, _to_int(values["adults"], default=1)),
+        "children": _to_int(values["children"]),
+        "babies": _to_int(values["babies"]),
         "meal": values["meal"] or None,
         "country": (str(values["country"]).strip().upper() or None) if values["country"] else None,
         "market_segment": values["market_segment"] or None,
         "distribution_channel": values["distribution_channel"] or None,
-        "is_repeated_guest": int(bool(values["is_repeated_guest"])),
-        "previous_cancellations": int(values["previous_cancellations"]),
-        "previous_bookings_not_canceled": int(values["previous_bookings_not_canceled"]),
+        # is_repeated_guest is derived, not user-supplied: any prior history
+        # (a previous cancellation OR a previous successful stay) marks the
+        # booker as a returning guest.  Eliminates the redundant checkbox and
+        # prevents the user from entering inconsistent values.
+        "previous_cancellations": _to_int(values["previous_cancellations"]),
+        "previous_bookings_not_canceled": _to_int(values["previous_bookings_not_canceled"]),
+        "is_repeated_guest": int(
+            _to_int(values["previous_cancellations"]) > 0
+            or _to_int(values["previous_bookings_not_canceled"]) > 0
+        ),
         "reserved_room_type": values["reserved_room_type"] or None,
         "deposit_type": values["deposit_type"] or None,
         "agent": "Direct",
         "customer_type": values["customer_type"] or None,
-        "adr": float(values["adr"]),
-        "required_car_parking_spaces": int(values["parking"]),
-        "total_of_special_requests": int(values["special_requests"]),
+        "adr": _to_float(values["adr"]),
+        "required_car_parking_spaces": _to_int(values["parking"]),
+        "total_of_special_requests": _to_int(values["special_requests"]),
     }
     return BookingRequest.model_validate(payload)
 
@@ -499,20 +1130,172 @@ def _why_zero_note() -> str:
 
 
 def _format_top_features(features: list[dict[str, object]]) -> str:
+    """Render top contributing features as horizontal mini-bars."""
     if not features:
-        return "_Feature attributions not available for this prediction._"
-    lines = ["**Top contributing features:**"]
+        return (
+            "<div class='factors-block'>"
+            "<p class='factors-title'>Top contributing factors</p>"
+            "<p style='color:var(--text-3);font-size:13px;margin:0;'>"
+            "Feature attributions not available for this prediction.</p>"
+            "</div>"
+        )
+
+    # Normalize all contributions against the largest absolute value for
+    # bar widths — gives a relative sense of which factor dominated.
+    contribs: list[float] = []
     for item in features:
-        feat = item.get("feature", "?")
-        val = item.get("value")
-        contrib_raw = item.get("contribution", 0.0)
         try:
-            contrib = float(contrib_raw)  # type: ignore[arg-type]
+            contribs.append(float(item.get("contribution", 0.0)))  # type: ignore[arg-type]
         except (TypeError, ValueError):
-            contrib = 0.0
-        direction = "↑ cancel" if contrib > 0 else "↓ stay"
-        lines.append(f"- `{feat}` = `{val}` ({direction}, {contrib:+.3f})")
-    return "\n".join(lines)
+            contribs.append(0.0)
+    peak = max((abs(c) for c in contribs), default=1.0) or 1.0
+
+    rows: list[str] = []
+    for item, contrib in zip(features, contribs):
+        feat = str(item.get("feature", "?"))
+        val = item.get("value")
+        width_pct = min(48.0, abs(contrib) / peak * 48.0)
+        side_cls = "cancel" if contrib > 0 else "stay"
+        if side_cls == "cancel":
+            fill_style = f"width:{width_pct:.1f}%; right:50%;"
+        else:
+            fill_style = f"width:{width_pct:.1f}%; left:50%;"
+        rows.append(
+            "<div class='factor-row'>"
+            f"<div class='factor-name'>{feat} <code>{val}</code></div>"
+            "<div class='factor-bar'>"
+            "<div class='factor-bar-mid'></div>"
+            f"<div class='factor-bar-fill {side_cls}' style='{fill_style}'></div>"
+            "</div>"
+            f"<div class='factor-contrib'>{contrib:+.3f}</div>"
+            "</div>"
+        )
+    return (
+        "<div class='factors-block'>"
+        "<p class='factors-title'>Top contributing factors</p>" + "".join(rows) + "</div>"
+    )
+
+
+def _recommended_action(prob: float, band: str) -> str:
+    """Business-meaningful next step for the front desk, keyed off risk band."""
+    if prob <= 0.0:
+        action = "No action needed — model is highly confident this guest will arrive."
+    elif band == "High":
+        action = (
+            "Request a deposit or reconfirm by phone before arrival. "
+            "Hold back-up inventory for over-sell protection."
+        )
+    elif band == "Medium":
+        action = (
+            "Schedule a courtesy reminder closer to arrival. " "Monitor for further risk signals."
+        )
+    else:  # Low
+        action = "No outreach needed at this time."
+    return (
+        "<div class='action-block'>"
+        "<p class='action-label'>Recommended action</p>"
+        f"<p class='action-text'>{action}</p>"
+        "</div>"
+    )
+
+
+def _decision_axis_html(prob: float, thr_f1: float, thr_hp: float, thr_cost: float) -> str:
+    """Render the horizontal 0-100% axis showing every decision boundary.
+
+    Justification chart: places the prediction on the same scale as the three
+    UI risk bands (Low/Medium/High) AND the three policy thresholds (Cost /
+    Balanced / High-precision).  A single glance proves every policy decision
+    below follows from the math — left of a tick = "stay", right = "cancel".
+    """
+    prob_pct = max(0.0, min(100.0, prob * 100.0))
+    med_pct = RISK_TIER_MEDIUM_THRESHOLD * 100.0
+    high_pct = RISK_TIER_HIGH_THRESHOLD * 100.0
+    cost_pct = max(0.0, min(100.0, thr_cost * 100.0))
+    f1_pct = max(0.0, min(100.0, thr_f1 * 100.0))
+    hp_pct = max(0.0, min(100.0, thr_hp * 100.0))
+    return (
+        "<div class='decision-axis-block'>"
+        "<p class='axis-block-label'>Where this prediction falls</p>"
+        "<div class='axis-strip'>"
+        # risk-band tinted zones
+        f"<div class='band-zone low'  style='left:0%; width:{med_pct:.1f}%'></div>"
+        f"<div class='band-zone med'  style='left:{med_pct:.1f}%; "
+        f"width:{high_pct - med_pct:.1f}%'></div>"
+        f"<div class='band-zone high' style='left:{high_pct:.1f}%; "
+        f"width:{100 - high_pct:.1f}%'></div>"
+        # policy threshold tick marks
+        f"<div class='thr-tick cost' style='left:{cost_pct:.1f}%' "
+        f"title='Cost-optimal threshold: {thr_cost:.2f}'></div>"
+        f"<div class='thr-tick f1'   style='left:{f1_pct:.1f}%' "
+        f"title='Balanced (max-F1) threshold: {thr_f1:.2f}'></div>"
+        f"<div class='thr-tick hp'   style='left:{hp_pct:.1f}%' "
+        f"title='High-precision threshold: {thr_hp:.2f}'></div>"
+        # prediction marker (with label balloon above)
+        f"<div class='axis-marker' style='left:{prob_pct:.1f}%'>"
+        f"<span class='marker-label'>{prob_pct:.2f}%</span>"
+        "</div>"
+        "</div>"
+        # axis tick labels below
+        "<div class='axis-ticks-row'>"
+        "<span style='left:0%'>0%</span>"
+        f"<span style='left:{med_pct:.1f}%'>{int(med_pct)}%</span>"
+        f"<span style='left:{high_pct:.1f}%'>{int(high_pct)}%</span>"
+        "<span style='left:100%'>100%</span>"
+        "</div>"
+        # legend for the four marker types
+        "<div class='thr-legend'>"
+        "<span class='thr-legend-item'>"
+        "<span class='thr-legend-swatch you'></span>This booking"
+        "</span>"
+        "<span class='thr-legend-item'>"
+        f"<span class='thr-legend-swatch cost'></span>Cost-opt ({thr_cost:.2f})"
+        "</span>"
+        "<span class='thr-legend-item'>"
+        f"<span class='thr-legend-swatch f1'></span>Balanced ({thr_f1:.2f})"
+        "</span>"
+        "<span class='thr-legend-item'>"
+        f"<span class='thr-legend-swatch hp'></span>High-prec ({thr_hp:.2f})"
+        "</span>"
+        "</div>"
+        "</div>"
+    )
+
+
+def _borderline_chip(prob: float, margin_pp: float = 5.0) -> str:
+    """Show a small warning when prob is within `margin_pp` of a risk-band boundary.
+
+    Tells the operator the call could flip with small input changes — useful
+    framing for cases like prob=39.2% sitting just below Medium=40%.
+    """
+    pct = prob * 100.0
+    if pct <= 0.0:
+        return ""
+    boundaries = [
+        ("Medium", RISK_TIER_MEDIUM_THRESHOLD * 100.0),
+        ("High", RISK_TIER_HIGH_THRESHOLD * 100.0),
+    ]
+    closest_label, closest_diff = "", 9999.0
+    for label, b in boundaries:
+        diff = abs(pct - b)
+        if diff < closest_diff:
+            closest_label, closest_diff = label, diff
+    if closest_diff > margin_pp:
+        return ""
+    direction = (
+        "below"
+        if pct
+        < (
+            RISK_TIER_MEDIUM_THRESHOLD * 100.0
+            if closest_label == "Medium"
+            else RISK_TIER_HIGH_THRESHOLD * 100.0
+        )
+        else "above"
+    )
+    return (
+        f"<div><span class='borderline-chip'>"
+        f"Borderline · {closest_diff:.1f}pp {direction} the {closest_label}-risk threshold"
+        f"</span></div>"
+    )
 
 
 def predict_one(*args: Any) -> tuple[str, str, str]:
@@ -559,25 +1342,55 @@ def predict_one(*args: Any) -> tuple[str, str, str]:
     pct_str = _format_pct(prob)
     band, css = _risk_band(prob)
 
-    verdict_f1 = "❗ Likely to cancel" if prob >= thr_f1 else "✅ Likely to stay"
-    verdict_hp = "❗ Cancel (high-confidence)" if prob >= thr_hp else "✅ Stay (high-confidence)"
-    verdict_cost = "⚠ Flag for outreach" if prob >= thr_cost else "✅ No outreach needed"
+    verdict_f1 = "Likely to cancel" if prob >= thr_f1 else "Likely to stay"
+    verdict_hp = "Cancel (high-confidence)" if prob >= thr_hp else "Stay (high-confidence)"
+    verdict_cost = "Flag for outreach" if prob >= thr_cost else "No outreach needed"
 
+    # Headline = big probability number + horizontal bar + risk badge pill
+    # + decision-axis viz + (conditional) borderline indicator.  The axis is
+    # the central "justify-the-results" chart: it visually positions the
+    # prediction against every UI band AND every policy threshold, so the
+    # three decisions in the policy grid below need no further explanation.
+    bar_pct = max(0.0, min(100.0, prob * 100.0))
     headline = (
-        f"### Predicted cancellation risk: " f"<span class='{css}'>{pct_str}</span> · **{band}**"
+        "<div class='prob-block'>"
+        "<p class='prob-label'>Cancellation probability</p>"
+        f"<div class='prob-number {css}'>{pct_str}</div>"
+        "<div class='prob-bar'>"
+        f"<div class='prob-bar-fill {css}' style='width:{bar_pct:.1f}%'></div>"
+        "</div>"
+        f"<div><span class='risk-badge {css}'>● {band} risk</span></div>"
+        + _borderline_chip(prob)
+        + _decision_axis_html(prob, thr_f1, thr_hp, thr_cost)
+        + "</div>"
     )
 
-    parts: list[str] = [
-        f"**Balanced policy @ {thr_f1:.2f}:** {verdict_f1}",
-        f"**High-precision policy @ {thr_hp:.2f}:** {verdict_hp}",
-        f"**Cost-optimal policy @ {thr_cost:.2f}:** {verdict_cost}",
-        "",
-    ]
+    # Details = recommended action + top-factor bars + zero-note (if applicable)
+    # + compact 3-up policy grid.
+    parts: list[str] = [_recommended_action(prob, band)]
     if prob <= 0.0:
         parts.append(_why_zero_note())
-
     top = explain_prediction(feature_df, artifacts, top_n=5)
     parts.append(_format_top_features(top))
+    parts.append(
+        "<div class='policy-grid'>"
+        "<div class='policy-cell'>"
+        "<p class='policy-name'>Balanced</p>"
+        f"<p class='policy-decision'>{verdict_f1}</p>"
+        f"<p class='policy-thr'>threshold {thr_f1:.2f}</p>"
+        "</div>"
+        "<div class='policy-cell'>"
+        "<p class='policy-name'>High-precision</p>"
+        f"<p class='policy-decision'>{verdict_hp}</p>"
+        f"<p class='policy-thr'>threshold {thr_hp:.2f}</p>"
+        "</div>"
+        "<div class='policy-cell'>"
+        "<p class='policy-name'>Cost-optimal</p>"
+        f"<p class='policy-decision'>{verdict_cost}</p>"
+        f"<p class='policy-thr'>threshold {thr_cost:.2f}</p>"
+        "</div>"
+        "</div>"
+    )
 
     raw = {
         "probability": prob,
@@ -778,11 +1591,11 @@ in a browser — a green JSON `{"status":"ok"}` means the model is loaded and re
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="Reservation Risk · Concierge Dashboard") as ui:
-        gr.Markdown("# 🏨 Reservation Risk · Concierge Dashboard")
+    with gr.Blocks(title="Hotel Booking Risk") as ui:
+        gr.Markdown("# Hotel Booking Risk")
         gr.Markdown(
-            "<div class='hero-tagline'>Predicting cancellation risk at the moment of booking — "
-            "a calibrated, second opinion for the front desk.</div>"
+            "<p class='hero-subtitle'>Calibrated cancellation predictions at the moment "
+            "of reservation, with explainable contributing factors.</p>"
         )
         gr.Markdown(_hero_metrics_line())
 
@@ -910,18 +1723,15 @@ def build_ui() -> gr.Blocks:
                                 "signals HIGH cancel rate, not low."
                             ),
                         )
-                        is_repeated_guest = gr.Checkbox(
-                            label="Repeated guest",
-                            value=d["is_repeated_guest"],
-                        )
                         previous_cancellations = gr.Number(
                             label="Previous cancellations",
                             value=d["previous_cancellations"],
                             precision=0,
                             minimum=0,
                             info=(
-                                "Prior cancellations by this guest. "
-                                "Even 1 dramatically increases risk."
+                                "Prior cancellations by this guest. Even 1 dramatically "
+                                "increases risk. Leaving this and 'Previous bookings' both "
+                                "at 0 marks the booker as a new guest."
                             ),
                         )
                         previous_bookings_not_canceled = gr.Number(
@@ -929,6 +1739,11 @@ def build_ui() -> gr.Blocks:
                             value=d["previous_bookings_not_canceled"],
                             precision=0,
                             minimum=0,
+                            info=(
+                                "Prior successful stays. Any value > 0 here OR in "
+                                "'Previous cancellations' flags the booker as a "
+                                "returning guest in the model input."
+                            ),
                         )
                         parking = gr.Number(
                             label="Parking spaces requested",
@@ -938,19 +1753,43 @@ def build_ui() -> gr.Blocks:
                         )
 
                     with gr.Row():
-                        predict_btn = gr.Button("Predict", variant="primary", size="lg", scale=3)
-                        reset_btn = gr.Button("Reset", variant="secondary", size="lg", scale=1)
+                        predict_btn = gr.Button(
+                            "Predict cancellation risk",
+                            variant="primary",
+                            size="lg",
+                            scale=4,
+                        )
+                        reset_btn = gr.Button("Reset", variant="secondary", size="sm", scale=1)
 
                 # ---------- Output column ----------
                 with gr.Column(scale=2):
                     gr.Markdown("### Risk assessment")
                     headline_out = gr.Markdown(
-                        "_Fill in the reservation details, then press "
-                        "**Predict** to receive a risk assessment._",
+                        # Skeleton placeholder — same structure the prediction
+                        # will fill in, so the panel doesn't feel empty.
+                        "<div class='prob-block'>"
+                        "<p class='prob-label'>Cancellation probability</p>"
+                        "<div class='prob-number' style='color:var(--text-3);'>—%</div>"
+                        "<div class='prob-bar'>"
+                        "<div class='prob-bar-fill' "
+                        "style='width:0%;background:var(--border);'></div>"
+                        "</div>"
+                        "<div><span class='risk-badge' style='background:var(--surface-2);"
+                        "color:var(--text-3);border:1px solid var(--border);'>"
+                        "● Awaiting input</span></div>"
+                        "</div>",
                         elem_classes=["result-card"],
                     )
-                    details_out = gr.Markdown("")
-                    with gr.Accordion("Raw response (JSON)", open=False):
+                    details_out = gr.Markdown(
+                        "<div class='action-block'>"
+                        "<p class='action-label'>Recommended action</p>"
+                        "<p class='action-text' style='color:var(--text-3);'>"
+                        "Fill in the reservation details on the left, then press "
+                        "<b>Predict</b> to receive a calibrated risk assessment, "
+                        "the top contributing factors, and the recommended next step."
+                        "</p></div>"
+                    )
+                    with gr.Accordion("Technical details (JSON)", open=False):
                         raw_out = gr.Code(label="response", language="json")
 
             input_components = [
@@ -969,7 +1808,6 @@ def build_ui() -> gr.Blocks:
                 customer_type,
                 reserved_room_type,
                 deposit_type,
-                is_repeated_guest,
                 previous_cancellations,
                 previous_bookings_not_canceled,
                 adr,
@@ -993,7 +1831,7 @@ def build_ui() -> gr.Blocks:
                 outputs=[*input_components, headline_out, details_out, raw_out],
             )
 
-        with gr.Tab("Sample reservations"):
+        with gr.Tab("Examples"):
             gr.Markdown("### Pre-loaded scenarios")
             gr.Markdown(
                 "Pick a sample guest profile to fill the form on the **Predict** tab, "
@@ -1008,7 +1846,7 @@ def build_ui() -> gr.Blocks:
                         outputs=input_components,
                     )
 
-        with gr.Tab("Guest book · Help"):
+        with gr.Tab("Help"):
             gr.Markdown(HELP_MARKDOWN)
 
         # R7 — on page load, honour the ?demo=1 query param.
