@@ -999,6 +999,29 @@ _FALLBACK_CHOICES: dict[str, list[str]] = {
     "country": ["PRT", "GBR", "FRA", "ESP", "DEU", "ITA", "USA", "BRA", "IRL"],
 }
 
+# Travel-agent dropdown choices (label → raw model-known agent ID).
+# `agent` is the model's #3 most important feature (7.7% of LightGBM splits);
+# cancel rates vary 11× across agents (6.6% to 73.5%), so this dropdown has a
+# real impact on the prediction. The 14 IDs below are exactly the agents the
+# OneHotEncoder learned during training (others are dropped via min_freq=0.01
+# and silently become "unknown" at inference).
+_AGENT_CHOICES: list[tuple[str, str]] = [
+    ("0 — Direct booking (no agent)", "0"),
+    ("9 — Major OTA (most common, ~42% cancel)", "9"),
+    ("240 — Major OTA (~39% cancel)", "240"),
+    ("1 — Wholesaler (high risk, ~74% cancel)", "1"),
+    ("14 — Travel agency (~18% cancel)", "14"),
+    ("7 — Travel agency (~13% cancel)", "7"),
+    ("6 — Travel agency (~31% cancel)", "6"),
+    ("250 — Travel agency (~18% cancel)", "250"),
+    ("241 — Travel agency (~14% cancel)", "241"),
+    ("28 — Loyal corporate (~7% cancel)", "28"),
+    ("8 — Travel agency (~28% cancel)", "8"),
+    ("3 — Travel agency (~58% cancel)", "3"),
+    ("37 — Travel agency (~58% cancel)", "37"),
+    ("40 — Loyal corporate (~8% cancel)", "40"),
+]
+
 
 def _load_categorical_choices() -> dict[str, list[str]]:
     cols = list(_FALLBACK_CHOICES.keys())
@@ -1091,6 +1114,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
             "customer_type": "Transient",
             "reserved_room_type": "A",
             "deposit_type": "No Deposit",
+            "agent": "1",  # high-risk wholesaler (~74% cancel) - amplifies risk
             "previous_cancellations": 1,
             "previous_bookings_not_canceled": 0,
             "adr": 80.0,
@@ -1120,6 +1144,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
             "customer_type": "Transient",
             "reserved_room_type": "A",
             "deposit_type": "No Deposit",
+            "agent": "9",  # most common OTA agent (~42% cancel) - typical online booking
             "previous_cancellations": 0,
             "previous_bookings_not_canceled": 0,
             "adr": 100.0,
@@ -1146,6 +1171,7 @@ EXAMPLES: dict[str, dict[str, Any]] = {
             "customer_type": "Transient",
             "reserved_room_type": "A",
             "deposit_type": "No Deposit",
+            "agent": "0",  # direct booking (no agent, ~25% cancel) - lowest-risk channel
             "previous_cancellations": 0,
             "previous_bookings_not_canceled": 10,
             "adr": 90.0,
@@ -1171,6 +1197,7 @@ INPUT_KEYS: tuple[str, ...] = (
     "customer_type",
     "reserved_room_type",
     "deposit_type",
+    "agent",
     "previous_cancellations",
     "previous_bookings_not_canceled",
     "adr",
@@ -1249,7 +1276,10 @@ def _build_booking(values: dict[str, Any]) -> BookingRequest:
         ),
         "reserved_room_type": values["reserved_room_type"] or None,
         "deposit_type": values["deposit_type"] or None,
-        "agent": "Direct",
+        # `agent` arrives as a raw ID string (e.g., "9", "0", "240") matching
+        # the values the OneHotEncoder saw during training. Sending an unknown
+        # value like "Direct" would silently zero out the model's #3 feature.
+        "agent": values["agent"] or "0",
         "customer_type": values["customer_type"] or None,
         "adr": _to_float(values["adr"]),
         "required_car_parking_spaces": _to_int(values["parking"]),
@@ -1696,6 +1726,9 @@ def _form_defaults() -> dict[str, Any]:
         "deposit_type": "No Deposit"
         if "No Deposit" in _CAT["deposit_type"]
         else _CAT["deposit_type"][0],
+        # Default agent = "0" (Direct booking, no agent) - sensible for a fresh
+        # form where the user hasn't specified a travel-agent channel yet.
+        "agent": "0",
         "is_repeated_guest": False,
         "previous_cancellations": 0,
         "previous_bookings_not_canceled": 0,
@@ -1909,6 +1942,16 @@ def build_ui() -> gr.Blocks:
                             label="Distribution channel",
                             value=d["distribution_channel"],
                         )
+                        agent = gr.Dropdown(
+                            _AGENT_CHOICES,
+                            label="Travel agent ID",
+                            value=d["agent"],
+                            info=(
+                                "Model's #3 most important feature. Cancel rates vary "
+                                "from 7% (loyal corporate) to 74% (high-risk wholesaler) "
+                                "across agents. Pick '0' for a direct booking with no agent."
+                            ),
+                        )
                         customer_type = gr.Dropdown(
                             _CAT["customer_type"],
                             label="Customer type",
@@ -2034,6 +2077,7 @@ def build_ui() -> gr.Blocks:
                 customer_type,
                 reserved_room_type,
                 deposit_type,
+                agent,
                 previous_cancellations,
                 previous_bookings_not_canceled,
                 adr,
