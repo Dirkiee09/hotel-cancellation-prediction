@@ -77,12 +77,15 @@ def train_xgb(
     y_val: ArrayLike | None = None,
     scale_pos_weight: float | None = None,
     params: dict[str, Any] | None = None,
+    early_stopping_rounds: int | None = None,
 ) -> XGBClassifier:
     config = get_default_xgb_params()
     if params:
         config.update(params)
     if scale_pos_weight is not None:
         config["scale_pos_weight"] = scale_pos_weight
+    if early_stopping_rounds is not None:
+        config["early_stopping_rounds"] = early_stopping_rounds
 
     model = XGBClassifier(**config)
 
@@ -99,6 +102,7 @@ def train_lgbm(
     X_val: ArrayLike | None = None,
     y_val: ArrayLike | None = None,
     params: dict[str, Any] | None = None,
+    early_stopping_rounds: int | None = None,
 ) -> Any:
     if lgb is None:  # pragma: no cover - dependency dependent
         raise ImportError("lightgbm is not installed")
@@ -106,14 +110,20 @@ def train_lgbm(
     config = get_default_lgbm_params()
     if params:
         config.update(params)
+
+    callbacks = []
+    if early_stopping_rounds is not None:
+        callbacks.append(lgb.early_stopping(stopping_rounds=early_stopping_rounds))
+
     model = lgb.LGBMClassifier(**config)
 
     if X_val is not None and y_val is not None:
+        callbacks.append(lgb.log_evaluation(period=0))
         model.fit(
             X_train,
             y_train,
             eval_set=[(X_val, y_val)],
-            callbacks=[lgb.log_evaluation(period=0)],
+            callbacks=callbacks,
         )
     else:
         model.fit(X_train, y_train)
