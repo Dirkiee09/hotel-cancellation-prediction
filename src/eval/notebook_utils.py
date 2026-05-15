@@ -2452,7 +2452,7 @@ def plot_metric_forest(
     pad_right = max(span * 0.30, 0.05)  # extra right padding for annotations
 
     cap = 0.18
-    for i, row in df.iterrows():
+    for i, (_, row) in enumerate(df.iterrows()):
         lo, hi, pt = float(row[lower_col]), float(row[upper_col]), float(row[point_col])
         is_sig = bool(row[sig_col]) if sig_col and sig_col in df.columns else False
         ci_color = "#e15759" if is_sig else "#4e79a7"
@@ -2695,13 +2695,27 @@ def plot_parallel_coordinates(
     fig, ax = plt.subplots(figsize=(max(8, n_cols * 1.6), 6))
     x_pos = np.arange(n_cols)
 
+    # Distinct fallback colours for the no-highlight case so each model line is
+    # visually separable in the legend. Used positionally; PALETTE is keyed by
+    # metric/family name and can't be indexed by integer position.
+    _LINE_CYCLE = [
+        "#4e79a7",
+        "#f28e2b",
+        "#e15759",
+        "#76b7b2",
+        "#59a14f",
+        "#edc949",
+        "#af7aa1",
+        "#ff9da7",
+    ]
+
     # Two-pass draw: greyed lines first, highlighted last
-    for i, row in data.iterrows():
+    for i, (_, row) in enumerate(data.iterrows()):
         label = str(row[label_col])
         is_hl = highlight is not None and label == str(highlight)
         if is_hl:
             continue  # draw last
-        color = PALETTE[i % len(PALETTE)] if highlight is None else "#cccccc"
+        color = _LINE_CYCLE[i % len(_LINE_CYCLE)] if highlight is None else "#cccccc"
         ax.plot(
             x_pos,
             normed.iloc[i].to_numpy(),
@@ -2715,8 +2729,14 @@ def plot_parallel_coordinates(
         )
 
     if highlight is not None:
-        hl_rows = data[data[label_col].astype(str) == str(highlight)]
-        for i, row in hl_rows.iterrows():
+        # Iterate the full data once and draw highlight matches on top. Using
+        # enumerate gives a positional `i` for `normed.iloc[i]` rather than the
+        # original index — important because `hl_rows` filtering would keep the
+        # parent index, breaking the positional lookup if any caller passes a
+        # non-default-indexed DataFrame.
+        for i, (_, row) in enumerate(data.iterrows()):
+            if str(row[label_col]) != str(highlight):
+                continue
             ax.plot(
                 x_pos,
                 normed.iloc[i].to_numpy(),
@@ -2738,7 +2758,7 @@ def plot_parallel_coordinates(
 
     # Light vertical lines at each axis
     for xp in x_pos:
-        ax.axvline(xp, color="#888888", linewidth=0.6, alpha=0.4)
+        ax.axvline(float(xp), color="#888888", linewidth=0.6, alpha=0.4)
 
     ax.set_title(
         title or f"Figure {fig_no}. Multi-Criteria Model Comparison",
