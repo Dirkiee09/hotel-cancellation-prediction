@@ -84,6 +84,7 @@ files = [
   "src/eval/benchmark.py",
   "src/eval/statistical.py",
   "src/eval/thesis.py",
+  "src/eval/notebook_utils.py",
   "scripts/train.py",
   "scripts/benchmark.py",
   "scripts/check.py",
