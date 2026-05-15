@@ -39,6 +39,7 @@ from src.serving.inference import (
     get_cached_artifacts,
     predict_proba,
 )
+from src.serving.prediction_log import export_to_csv, log_prediction
 from src.utils.thresholds import resolve_thresholds
 
 logger = logging.getLogger(__name__)
@@ -1645,6 +1646,39 @@ def predict_one(*args: Any) -> tuple[str, str, str]:
         "top_features": top,
         "scored_utc": datetime.now(timezone.utc).isoformat(),
     }
+
+    # Persist the prediction to the SQLite audit log + refresh the CSV so the
+    # Power BI dashboard sees the new row on its next refresh. The Gradio
+    # button calls predict_proba() directly (not the HTTP /predict endpoint),
+    # so the FastAPI BackgroundTasks logging path doesn't fire here — we
+    # have to log explicitly. Wrapped in try/except so any persistence
+    # failure (disk full, locked DB, etc.) never breaks the UI render.
+    try:
+        if prob >= RISK_TIER_HIGH_THRESHOLD:
+            risk_tier = "high"
+        elif prob >= RISK_TIER_MEDIUM_THRESHOLD:
+            risk_tier = "medium"
+        else:
+            risk_tier = "low"
+        response_for_log = {
+            "probability": prob,
+            "label_high_precision": int(prob >= thr_hp),
+            "label_max_f1": int(prob >= thr_f1),
+            "label_cost_sensitive": int(prob >= thr_cost),
+            "risk_tier": risk_tier,
+            "threshold_high_precision": thr_hp,
+            "threshold_max_f1": thr_f1,
+            "threshold_cost_sensitive": thr_cost,
+            "cost_threshold_source": "ui",
+            "cost_threshold_fallback_used": False,
+            "alerts": [],
+            "top_features": top,
+        }
+        log_prediction(booking.model_dump(mode="json"), response_for_log)
+        export_to_csv()  # keep predictions_live.csv in sync for Power BI
+    except Exception:
+        logger.exception("ui_prediction_log_failed (non-fatal)")
+
     return headline, "\n".join(parts), json.dumps(raw, indent=2, default=str)
 
 

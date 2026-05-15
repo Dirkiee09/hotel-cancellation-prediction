@@ -15,7 +15,7 @@ from src.config import (
     RISK_TIER_MEDIUM_THRESHOLD,
 )
 from src.serving.inference import explain_prediction, get_cached_artifacts, predict_proba
-from src.serving.prediction_log import log_prediction
+from src.serving.prediction_log import export_to_csv, log_prediction
 from src.utils.thresholds import resolve_thresholds
 
 from .ui import BACKGROUND_CSS, build_ui
@@ -167,12 +167,20 @@ def predict(payload: BookingRequest, background_tasks: BackgroundTasks):
     # Persist the (request, response) pair to SQLite asynchronously so the
     # response is never delayed by disk I/O. log_prediction is non-raising;
     # if the DB is unavailable the API keeps serving but a WARNING is logged.
-    background_tasks.add_task(
-        log_prediction,
-        payload.model_dump(mode="json"),
-        response.model_dump(),
-        PREDICTION_LOG_DB,
-    )
+    # Auto-refresh the CSV after each write so Power BI dashboards see new
+    # predictions on their next refresh without a manual export step.
+    def _persist() -> None:
+        log_prediction(
+            payload.model_dump(mode="json"),
+            response.model_dump(),
+            PREDICTION_LOG_DB,
+        )
+        try:
+            export_to_csv()
+        except Exception:
+            logger.exception("predict_csv_export_failed (non-fatal)")
+
+    background_tasks.add_task(_persist)
 
     return response
 

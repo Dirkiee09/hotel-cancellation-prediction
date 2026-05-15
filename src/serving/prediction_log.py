@@ -208,3 +208,47 @@ def count_predictions(db_path: Path = PREDICTION_LOG_DB) -> int:
     with sqlite3.connect(db_path) as conn:
         cur = conn.execute("SELECT COUNT(*) FROM predictions")
         return int(cur.fetchone()[0])
+
+
+def export_to_csv(
+    db_path: Path | None = None,
+    csv_path: Path | None = None,
+    since: str | None = None,
+) -> int:
+    """Materialise the predictions table to CSV for Power BI.
+
+    Returns the number of rows exported. Returns 0 if the DB is missing
+    or the (filtered) table is empty. Imports pandas lazily so callers
+    that don't need export aren't forced to pay the import cost.
+    """
+    from src.config import PREDICTION_LOG_CSV  # local import: avoids cycle
+
+    db = db_path if db_path is not None else PREDICTION_LOG_DB
+    csv = csv_path if csv_path is not None else PREDICTION_LOG_CSV
+
+    if not db.exists():
+        return 0
+
+    import pandas as pd  # local import: keeps log_prediction lightweight
+
+    where = ""
+    params: tuple = ()
+    if since is not None:
+        where = "WHERE timestamp_utc >= ?"
+        params = (since,)
+
+    with sqlite3.connect(db) as conn:
+        # `where` is a literal string from this module; `since` is bound
+        # via params, never interpolated.
+        df = pd.read_sql(
+            f"SELECT * FROM predictions {where} ORDER BY timestamp_utc",  # nosec B608
+            conn,
+            params=params,
+        )
+
+    if df.empty:
+        return 0
+
+    csv.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(csv, index=False)
+    return len(df)

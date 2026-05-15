@@ -26,16 +26,14 @@ and the top SHAP-contributing features as a JSON column.
 from __future__ import annotations
 
 import argparse
-import sqlite3
 import sys
 from pathlib import Path
-
-import pandas as pd
 
 # Allow `python scripts/export_predictions.py` from the repo root without `pip install -e .`
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.config import PREDICTION_LOG_CSV, PREDICTION_LOG_DB  # noqa: E402
+from src.serving.prediction_log import export_to_csv  # noqa: E402
 
 
 def export(
@@ -43,35 +41,16 @@ def export(
     csv_path: Path = PREDICTION_LOG_CSV,
     since: str | None = None,
 ) -> int:
-    """Write the predictions table to CSV. Returns the number of rows exported."""
+    """CLI wrapper around export_to_csv that prints a status line."""
     if not db_path.exists():
         print(f"No prediction log found at {db_path}. Nothing to export.")
         return 0
-
-    where = ""
-    params: tuple = ()
-    if since is not None:
-        where = "WHERE timestamp_utc >= ?"
-        params = (since,)
-
-    with sqlite3.connect(db_path) as conn:
-        # `where` is a literal string from this module (either "" or
-        # "WHERE timestamp_utc >= ?"); the only user-controlled value (`since`)
-        # is bound via the params tuple, not interpolated into the SQL.
-        df = pd.read_sql(
-            f"SELECT * FROM predictions {where} ORDER BY timestamp_utc",  # nosec B608
-            conn,
-            params=params,
-        )
-
-    if df.empty:
+    n = export_to_csv(db_path=db_path, csv_path=csv_path, since=since)
+    if n == 0:
         print(f"Predictions table is empty (since={since!r}). Nothing to export.")
-        return 0
-
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(csv_path, index=False)
-    print(f"Exported {len(df):,} predictions to {csv_path}")
-    return len(df)
+    else:
+        print(f"Exported {n:,} predictions to {csv_path}")
+    return n
 
 
 def reset(db_path: Path = PREDICTION_LOG_DB) -> None:
