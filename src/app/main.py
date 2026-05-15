@@ -5,11 +5,17 @@ from __future__ import annotations
 import logging
 
 import gradio as gr
-from fastapi import FastAPI, HTTPException, status
+from fastapi import BackgroundTasks, FastAPI, HTTPException, status
 
 from src.app.schemas import BookingRequest, ModelInfoResponse, PredictionResponse
-from src.config import MODEL_SELECTION_POLICY, RISK_TIER_HIGH_THRESHOLD, RISK_TIER_MEDIUM_THRESHOLD
+from src.config import (
+    MODEL_SELECTION_POLICY,
+    PREDICTION_LOG_DB,
+    RISK_TIER_HIGH_THRESHOLD,
+    RISK_TIER_MEDIUM_THRESHOLD,
+)
 from src.serving.inference import explain_prediction, get_cached_artifacts, predict_proba
+from src.serving.prediction_log import log_prediction
 from src.utils.thresholds import resolve_thresholds
 
 from .ui import BACKGROUND_CSS, build_ui
@@ -98,7 +104,7 @@ def model_info():
 
 
 @app.post("/predict", response_model=PredictionResponse)
-def predict(payload: BookingRequest):
+def predict(payload: BookingRequest, background_tasks: BackgroundTasks):
     try:
         artifacts = get_artifacts()
     except FileNotFoundError as exc:
@@ -143,7 +149,7 @@ def predict(payload: BookingRequest):
     # Compute per-prediction feature explanations (non-blocking — empty list on failure)
     top_features = explain_prediction(feature_df, artifacts, top_n=5)
 
-    return PredictionResponse(
+    response = PredictionResponse(
         probability=prob,
         label_high_precision=int(prob >= thr_hp),
         label_max_f1=int(prob >= thr_f1),
@@ -157,6 +163,18 @@ def predict(payload: BookingRequest):
         alerts=alerts,
         top_features=top_features,
     )
+
+    # Persist the (request, response) pair to SQLite asynchronously so the
+    # response is never delayed by disk I/O. log_prediction is non-raising;
+    # if the DB is unavailable the API keeps serving but a WARNING is logged.
+    background_tasks.add_task(
+        log_prediction,
+        payload.model_dump(mode="json"),
+        response.model_dump(),
+        PREDICTION_LOG_DB,
+    )
+
+    return response
 
 
 def mount_gradio(app_: FastAPI) -> FastAPI:

@@ -4,7 +4,7 @@ else
     PYTHON := .venv/bin/python
 endif
 
-.PHONY: install-dev lint format typecheck test security train eval benchmark thesis check demo-check full-pipeline clean help
+.PHONY: install-dev lint format typecheck test security train eval benchmark thesis check demo-check full-pipeline export-predictions clean help
 
 help: ## Show this help message
 	@$(PYTHON) -c "import re, sys; lines = open('Makefile').readlines(); targets = [(m.group(1), m.group(2)) for l in lines if (m := re.match(r'^([a-zA-Z_-]+):.*?## (.*)$$', l))]; [print(f'  \033[36m{t[0]:<24}\033[0m {t[1]}') for t in sorted(targets)]"
@@ -47,6 +47,9 @@ demo-check: ## Pre-demo readiness check (artifacts, model load, predictions, liv
 
 full-pipeline: train eval benchmark check ## Full refresh: train → eval → benchmark → check
 	@echo "full-pipeline complete — all checks passed."
+
+export-predictions: ## Export predictions.sqlite → predictions_live.csv for Power BI
+	$(PYTHON) scripts/export_predictions.py
 
 clean: ## Remove all caches and build artifacts
 	$(PYTHON) -c "import shutil, pathlib; [shutil.rmtree(d, ignore_errors=True) for d in ['.mypy_cache','.pytest_cache','.ruff_cache','htmlcov','build','dist'] + [str(p) for p in pathlib.Path('.').glob('*.egg-info')]]; pathlib.Path('.coverage').unlink(missing_ok=True)"
