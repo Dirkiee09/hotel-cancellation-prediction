@@ -45,6 +45,9 @@ reports/figures/*
 data/*.csv
 !data/.gitkeep
 
+# Live prediction log (written by FastAPI /predict, read by Power BI)
+data/predictions/
+
 # Secrets
 .env
 .env.*
