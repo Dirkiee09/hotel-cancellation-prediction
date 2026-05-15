@@ -5,14 +5,16 @@ Usage:
     python scripts/export_predictions.py --since 2026-05-01  # filter window
     python scripts/export_predictions.py --reset          # drop the DB (cleanup)
 
-The CSV at PREDICTION_LOG_CSV is what Power BI Desktop loads. The SQLite
-file at PREDICTION_LOG_DB is the source of truth — never edit the CSV
-directly; it is regenerated on every export.
+Default paths (both git-ignored, configured in src/config.py):
+    DB:  data/predictions/predictions.sqlite (source of truth)
+    CSV: data/predictions/predictions_live.csv (Power BI consumes this)
+
+Never edit the CSV directly; it is regenerated on every export.
 
 Power BI connection recipe:
     1. Open Power BI Desktop
     2. Home > Get Data > Text/CSV
-    3. Browse to <repo>/reports/predictions_live.csv
+    3. Browse to <repo>/data/predictions/predictions_live.csv
     4. Load
     5. After new predictions arrive, run this script and click Refresh in Power BI
 

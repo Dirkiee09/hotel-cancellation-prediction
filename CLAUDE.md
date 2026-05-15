@@ -297,11 +297,11 @@ Thread safety: _ARTIFACTS singleton protected by _ARTIFACTS_LOCK
   → safe for multi-worker uvicorn deployments
 
 Prediction audit log [src/serving/prediction_log.py]
-  ├── SQLite at reports/predictions.sqlite — one row per /predict call
+  ├── SQLite at data/predictions/predictions.sqlite — one row per /predict call
   ├── 41-column schema: timestamp_utc + every BookingRequest field +
   │   every PredictionResponse field + top_features (JSON)
   ├── Non-raising: BackgroundTask path, errors logged at WARNING only
-  └── Exported via `make export-predictions` → reports/predictions_live.csv
+  └── Exported via `make export-predictions` → data/predictions/predictions_live.csv
         ↓ Power BI Desktop reads the CSV (no ODBC driver required)
 ```
 
@@ -310,7 +310,7 @@ Prediction audit log [src/serving/prediction_log.py]
 1. Run the server: `python demo/start_server.py`
 2. Make a few predictions through the Gradio UI (or hit `/predict` directly)
 3. Run `make export-predictions` (or `python scripts/export_predictions.py`)
-4. In Power BI Desktop → **Home > Get Data > Text/CSV** → pick `reports/predictions_live.csv` → Load
+4. In Power BI Desktop → **Home > Get Data > Text/CSV** → pick `data/predictions/predictions_live.csv` → Load
 5. After every new batch of predictions, re-run the export script and click **Refresh** in Power BI
 
 The SQLite file is the source of truth. The CSV is regenerated on every export. Both are git-ignored.
@@ -388,7 +388,7 @@ modelling assumption. DT is shallow enough to be printed in full in the thesis a
 | Regression results | `reports/regression_results.csv` (columns: Model, Train RMSE, Val RMSE, Test RMSE, …) |
 | Publication figures | `reports/figures/thesis/fig_NN_*.{png,pdf}` |
 | Test predictions | `reports/test_predictions_for_powerbi.csv` (written by `scripts/train.py` only — single source of truth) |
-| Live prediction log | `reports/predictions.sqlite` (one row per `/predict` call) + `reports/predictions_live.csv` (PowerBI-ready export) |
+| Live prediction log | `data/predictions/predictions.sqlite` (one row per `/predict` call) + `data/predictions/predictions_live.csv` (PowerBI-ready export) |
 | Segment metrics | `reports/segment_metrics.csv` |
 | Champion summary | `reports/champion_summary.json` (champion family, runner-up, PR-AUC gap, selected_at) |
 
@@ -412,8 +412,8 @@ artifact has exactly one writer; multiple consumers are normal.
 | `reports/model_selection_summary.json` | `src/pipelines/train.py` | Thesis Notebook 02, `scripts/check.py sync` |
 | `reports/segment_metrics.csv` / `.json` | `src/pipelines/train.py` | Notebooks 05/07, `scripts/check.py fairness` |
 | `reports/test_predictions_for_powerbi.csv` | `src/pipelines/train.py` | Notebook 08 monitoring, PowerBI |
-| `reports/predictions.sqlite` | FastAPI `/predict` (via BackgroundTasks → `src/serving/prediction_log.py`) | `scripts/export_predictions.py` |
-| `reports/predictions_live.csv` | `scripts/export_predictions.py` | Power BI Desktop dashboard |
+| `data/predictions/predictions.sqlite` | FastAPI `/predict` (via BackgroundTasks → `src/serving/prediction_log.py`) | `scripts/export_predictions.py` |
+| `data/predictions/predictions_live.csv` | `scripts/export_predictions.py` | Power BI Desktop dashboard |
 | `reports/benchmarks/01_*.csv` … `16_*.csv` | `scripts/benchmark.py` | Notebook 07, `scripts/check.py sync` |
 | `reports/thesis/*.json` | `src/eval/thesis.py` | Notebooks 03/05, `scripts/check.py sync` |
 

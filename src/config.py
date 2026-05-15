@@ -126,9 +126,11 @@ SEGMENT_METRIC_GATES = {
 # Every successful /predict call appends one row to PREDICTION_LOG_DB. The
 # export script materialises it as a CSV that Power BI Desktop can read with
 # no ODBC drivers required. Both files are git-ignored; the DB is the source
-# of truth and the CSV is regenerated on demand.
-PREDICTION_LOG_DB = REPORTS_DIR / "predictions.sqlite"
-PREDICTION_LOG_CSV = REPORTS_DIR / "predictions_live.csv"
+# of truth and the CSV is regenerated on demand. Lives under data/predictions/
+# (a dedicated subfolder co-located with the source dataset for easy access)
+# rather than reports/, which is cluttered with training-time artifacts.
+PREDICTION_LOG_DB = PROJECT_ROOT / "data" / "predictions" / "predictions.sqlite"
+PREDICTION_LOG_CSV = PROJECT_ROOT / "data" / "predictions" / "predictions_live.csv"
 
 # Reproducibility controls
 REPRO_TOLERANCE = 1e-6  # Relaxed for cross-platform reproducibility
