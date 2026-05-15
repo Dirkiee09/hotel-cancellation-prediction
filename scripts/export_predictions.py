@@ -53,8 +53,11 @@ def export(
         params = (since,)
 
     with sqlite3.connect(db_path) as conn:
+        # `where` is a literal string from this module (either "" or
+        # "WHERE timestamp_utc >= ?"); the only user-controlled value (`since`)
+        # is bound via the params tuple, not interpolated into the SQL.
         df = pd.read_sql(
-            f"SELECT * FROM predictions {where} ORDER BY timestamp_utc",
+            f"SELECT * FROM predictions {where} ORDER BY timestamp_utc",  # nosec B608
             conn,
             params=params,
         )

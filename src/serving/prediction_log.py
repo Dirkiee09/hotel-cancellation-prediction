@@ -187,7 +187,10 @@ def log_prediction(
 
         columns = ", ".join(row.keys())
         placeholders = ", ".join(f":{k}" for k in row.keys())
-        sql = f"INSERT INTO predictions ({columns}) VALUES ({placeholders})"
+        # The column names are literals from _INPUT_COLUMNS / _OUTPUT_COLUMNS /
+        # _JSON_COLUMNS tuples defined in this module — no user input touches
+        # the SQL string itself. All values are bound via :name placeholders.
+        sql = f"INSERT INTO predictions ({columns}) VALUES ({placeholders})"  # nosec B608
 
         with sqlite3.connect(db_path) as conn:
             cur = conn.execute(sql, row)
