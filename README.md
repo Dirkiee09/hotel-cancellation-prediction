@@ -34,7 +34,10 @@ Use `make help` to see all available targets.
 | `make thesis` | Full thesis analysis (SHAP, CI, Optuna) |
 | `make check` | All quality gates (artifacts, metrics, sync, fairness) |
 | `make full-pipeline` | train → eval → benchmark → check |
-| `uvicorn src.app.main:app --host 0.0.0.0 --port 8000` | Start API + Gradio UI |
+| `make export-predictions` | Export `predictions.sqlite` → `predictions_live.csv` for Power BI |
+| `python demo/start_server.py` | Bullet-proof launcher: verifies artifacts + polls /healthz + opens browser |
+| `python scripts/seed_demo_predictions.py` | Seed 30 varied prediction scenarios into the live log (for dashboard demos) |
+| `python scripts/compute_live_drift.py` | Compute live-vs-baseline PSI drift metrics for the Power BI monitoring page |
 
 ## Data
 - Raw dataset: `data/hotel_bookings.csv`
@@ -75,6 +78,50 @@ Endpoints:
 - `POST /predict` prediction API
 - `GET /ui` Gradio interface
 
+## Power BI Dashboard
+
+Every successful `/predict` call (HTTP or Gradio UI) appends one row to a
+SQLite audit log and refreshes a Power BI-friendly CSV. The dashboard
+visualises live predictions alongside the held-out test-set baseline.
+
+**Pipeline**:
+```
+FastAPI /predict   or   Gradio "Predict" button
+     ↓ (auto)
+data/predictions/predictions.sqlite   (one row per prediction)
+     ↓ (auto)
+data/predictions/predictions_live.csv (Power BI consumes this)
+```
+
+**60-second setup**:
+1. `python demo/start_server.py` — start the server
+2. Make ~30 predictions through the Gradio UI (or run `python scripts/seed_demo_predictions.py` for 30 pre-built scenarios)
+3. Open Power BI Desktop → **Home > Get Data > Text/CSV** → pick `data/predictions/predictions_live.csv` → **Load**
+4. After each new prediction, click **Refresh** in Power BI — new rows appear automatically
+
+**Dashboard data sources** (each is a separate Power BI table):
+
+| Path | Role |
+|------|------|
+| `data/predictions/predictions_live.csv` | Live operational predictions (auto-refreshed) |
+| `data/predictions/drift_metrics.csv` | PSI drift metrics from `compute_live_drift.py` |
+| `reports/test_predictions_for_powerbi.csv` | 11,922 holdout predictions with `is_canceled` outcomes (for calibration + backtest visuals) |
+| `reports/segment_metrics.csv` | Per-segment ROC-AUC + thresholds (for fairness matrix) |
+| `reports/thesis/shap_feature_importance.csv` | Global SHAP feature ranking (for explainability page) |
+| `reports/metrics.json` | Champion model headline metrics (for KPI cards) |
+
+**Recommended pages** (see `C:\Users\dirkv\.claude\plans\misty-hugging-wirth.md` or the dashboard guide for full specs):
+1. **Risk Overview** — KPI cards, risk-tier donut, probability histogram
+2. **Action List** — filterable table of high-risk predictions with SHAP explanations
+3. **Risk Patterns** — customer_type × market_segment heatmap, cancel rate by deposit/agent
+4. **Policy Comparison** — counts flagged by each of the 3 threshold policies
+5. **Explainability** — global SHAP bar + per-prediction feature contributions
+6. **Business Impact** — revenue at risk by tier/segment/country
+7. **Trustworthiness** — calibration reliability scatter + per-segment ROC-AUC matrix
+8. **Monitoring** — PSI heatmap, drift zone bar (`drift_metrics.csv`)
+
+**Refreshing drift metrics**: run `python scripts/compute_live_drift.py` before opening Power BI to update the monitoring page.
+
 ## Quality Gates
 ```bash
 make lint typecheck test    # ruff + mypy + pytest (≥80% coverage)
@@ -109,3 +156,11 @@ docker compose run --rm train python scripts/train.py --max-rows 10000
 
 ## Generated Files
 Artifacts and reports are generated outputs and git-ignored by default.
+
+Three directories carry runtime state:
+
+| Directory | Lifecycle | Examples |
+|-----------|-----------|----------|
+| `artifacts/` | `make train` regenerates everything from scratch | model pipeline, calibrator, thresholds, feature columns |
+| `reports/` | `make train` / `make benchmark` / `make thesis` regenerate | metrics JSON, 16 benchmark CSVs, thesis figures, segment metrics |
+| `data/predictions/` | Append-only during serving; `--reset` to wipe | SQLite audit log + Power BI CSV + drift metrics |
