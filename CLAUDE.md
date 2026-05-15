@@ -414,6 +414,7 @@ artifact has exactly one writer; multiple consumers are normal.
 | `reports/test_predictions_for_powerbi.csv` | `src/pipelines/train.py` | Notebook 08 monitoring, PowerBI |
 | `data/predictions/predictions.sqlite` | FastAPI `/predict` (via BackgroundTasks → `src/serving/prediction_log.py`) | `scripts/export_predictions.py` |
 | `data/predictions/predictions_live.csv` | `scripts/export_predictions.py` | Power BI Desktop dashboard |
+| `data/predictions/drift_metrics.csv` | `scripts/compute_live_drift.py` (compares live vs `reports/test_predictions_for_powerbi.csv` via `src/utils/drift.py`) | Power BI Page 8 (monitoring) |
 | `reports/benchmarks/01_*.csv` … `16_*.csv` | `scripts/benchmark.py` | Notebook 07, `scripts/check.py sync` |
 | `reports/thesis/*.json` | `src/eval/thesis.py` | Notebooks 03/05, `scripts/check.py sync` |
 
