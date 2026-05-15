@@ -1114,7 +1114,7 @@ def grouped_permutation_stats(
             return name
 
         group_map = {c: feature_group(c) for c in repeat_df.columns}
-        grouped_repeat = repeat_df.T.groupby(group_map).sum().T  # type: ignore[arg-type]
+        grouped_repeat = repeat_df.T.groupby(group_map).sum().T  # type: ignore[arg-type, unused-ignore]
     except Exception:
         # Fallback for preprocessors that do not expose transformed feature names.
         # In this mode, importance is already at original feature granularity.
@@ -1395,7 +1395,7 @@ def load_shap_context(ctx: dict[str, Any]) -> dict[str, Any]:
         pd.DataFrame({"feature_name": feature_names, "group": groups, "mean_abs_shap": mean_abs})
         .groupby("group", as_index=False)["mean_abs_shap"]
         .sum()
-        .sort_values("mean_abs_shap", ascending=False)  # type: ignore[call-overload]
+        .sort_values("mean_abs_shap", ascending=False)  # type: ignore[call-overload, unused-ignore]
         .reset_index(drop=True)
     )
 
@@ -1859,7 +1859,7 @@ def plot_split_feature_importance(
     grouped = (
         fi_df.groupby("group", as_index=False)["importance"]
         .sum()
-        .sort_values("importance", ascending=False)  # type: ignore[call-overload]
+        .sort_values("importance", ascending=False)  # type: ignore[call-overload, unused-ignore]
         .reset_index(drop=True)
     )
 
