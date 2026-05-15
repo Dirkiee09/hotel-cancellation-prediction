@@ -415,6 +415,8 @@ artifact has exactly one writer; multiple consumers are normal.
 | `data/predictions/predictions.sqlite` | FastAPI `/predict` (via BackgroundTasks → `src/serving/prediction_log.py`) | `scripts/export_predictions.py` |
 | `data/predictions/predictions_live.csv` | `scripts/export_predictions.py` | Power BI Desktop dashboard |
 | `data/predictions/drift_metrics.csv` | `scripts/compute_live_drift.py` (compares live vs `reports/test_predictions_for_powerbi.csv` via `src/utils/drift.py`) | Power BI Page 8 (monitoring) |
+| `reports/adr_test_predictions.csv` | `scripts/export_adr_predictions.py` (loads `artifacts/adr_regressor.pkl`, predicts on the test split defined by `artifacts/adr_regressor_metadata.pkl`) | Power BI Page 5 (ADR Forecasting): scatter, histogram, monthly line |
+| `reports/adr_segment_performance.csv` | `scripts/export_adr_predictions.py` (aggregates RMSE/MAE per hotel × room_type, min 50 rows) | Power BI Page 5 (ADR Forecasting): segment RMSE heatmap |
 | `reports/benchmarks/01_*.csv` … `16_*.csv` | `scripts/benchmark.py` | Notebook 07, `scripts/check.py sync` |
 | `reports/thesis/*.json` | `src/eval/thesis.py` | Notebooks 03/05, `scripts/check.py sync` |
 
