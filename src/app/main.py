@@ -14,7 +14,12 @@ from src.config import (
     RISK_TIER_HIGH_THRESHOLD,
     RISK_TIER_MEDIUM_THRESHOLD,
 )
-from src.serving.inference import explain_prediction, get_cached_artifacts, predict_proba
+from src.serving.inference import (
+    explain_prediction,
+    get_cached_artifacts,
+    predict_adr,
+    predict_proba,
+)
 from src.serving.prediction_log import export_to_csv, log_prediction
 from src.utils.thresholds import resolve_thresholds
 
@@ -149,6 +154,15 @@ def predict(payload: BookingRequest, background_tasks: BackgroundTasks):
     # Compute per-prediction feature explanations (non-blocking — empty list on failure)
     top_features = explain_prediction(feature_df, artifacts, top_n=5)
 
+    # Live ADR forecast — None when the ADR regressor isn't loaded. adr_residual
+    # only makes sense when both the model output and the user-entered ADR are
+    # available (and non-zero), so it's gated on both being present.
+    predicted_adr_value = predict_adr(payload.model_dump(exclude={"arrival_date"}), artifacts)
+    entered_adr = payload.adr
+    adr_residual: float | None = None
+    if predicted_adr_value is not None and entered_adr is not None:
+        adr_residual = round(float(entered_adr) - predicted_adr_value, 2)
+
     response = PredictionResponse(
         probability=prob,
         label_high_precision=int(prob >= thr_hp),
@@ -162,6 +176,8 @@ def predict(payload: BookingRequest, background_tasks: BackgroundTasks):
         cost_threshold_fallback_used=bool(cost_fallback),
         alerts=alerts,
         top_features=top_features,
+        predicted_adr=predicted_adr_value,
+        adr_residual=adr_residual,
     )
 
     # Persist the (request, response) pair to SQLite asynchronously so the

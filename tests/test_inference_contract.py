@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 import src.app.main as app_main
 import src.serving.inference as inference_mod
 from src.app.schemas import BookingRequest
-from src.serving.inference import load_artifacts, predict_proba
+from src.serving.inference import load_artifacts, predict_adr, predict_proba
 
 
 def test_predict_endpoint_contract_with_arrival_date(
@@ -257,3 +257,61 @@ def test_healthz_returns_503_when_thresholds_missing(monkeypatch, trained_artifa
     response = client.get("/healthz")
     assert response.status_code == 503
     assert "thresholds.json" in response.json()["detail"]
+
+
+def test_predict_adr_returns_none_without_regressor(trained_artifacts_dir, sample_record) -> None:
+    """predict_adr is best-effort: returns None when the ADR regressor is absent.
+
+    The training-pipeline fixture doesn't build the ADR regressor, so this is
+    the production-realistic path for clean checkouts.
+    """
+    artifacts = load_artifacts(trained_artifacts_dir)
+    assert artifacts.adr_regressor is None  # fixture invariant
+    assert predict_adr(sample_record, artifacts) is None
+
+
+def test_predict_adr_returns_none_when_regressor_explicitly_unset(
+    trained_artifacts_dir, sample_record
+) -> None:
+    """Even if metadata exists but regressor is None, the function must not crash."""
+    artifacts = load_artifacts(trained_artifacts_dir)
+    artifacts.adr_regressor = None
+    artifacts.adr_metadata = {"features": ["lead_time"]}
+    assert predict_adr(sample_record, artifacts) is None
+
+
+def test_predict_endpoint_exposes_adr_fields(
+    monkeypatch, trained_artifacts_dir, sample_record
+) -> None:
+    """The response schema must always include predicted_adr / adr_residual keys.
+
+    With no regressor loaded, both are None (not absent). This stable shape
+    makes the Power BI CSV column set deterministic regardless of which
+    artifacts are present.
+    """
+    artifacts = load_artifacts(trained_artifacts_dir)
+    monkeypatch.setattr(inference_mod, "_CACHED_ARTIFACTS", artifacts)
+    client = TestClient(app_main.app)
+
+    payload = {k: v for k, v in sample_record.items() if k in BookingRequest.model_fields}
+    year = int(payload["arrival_date_year"])
+    month_name = str(payload["arrival_date_month"])
+    day = int(payload["arrival_date_day_of_month"])
+    month_num = datetime.strptime(month_name, "%B").month
+    payload["arrival_date"] = datetime(year, month_num, day).isoformat()
+    for key in (
+        "arrival_date_year",
+        "arrival_date_month",
+        "arrival_date_week_number",
+        "arrival_date_day_of_month",
+    ):
+        payload.pop(key, None)
+
+    response = client.post("/predict", json=payload)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "predicted_adr" in body
+    assert "adr_residual" in body
+    # Without an ADR regressor in this fixture, both fields are None.
+    assert body["predicted_adr"] is None
+    assert body["adr_residual"] is None

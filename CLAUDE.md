@@ -298,12 +298,37 @@ Thread safety: _ARTIFACTS singleton protected by _ARTIFACTS_LOCK
 
 Prediction audit log [src/serving/prediction_log.py]
   ├── SQLite at data/predictions/predictions.sqlite — one row per /predict call
-  ├── 41-column schema: timestamp_utc + every BookingRequest field +
-  │   every PredictionResponse field + top_features (JSON)
+  ├── 43-column schema: timestamp_utc + every BookingRequest field +
+  │   every PredictionResponse field + top_features (JSON) +
+  │   predicted_adr + adr_residual (live ADR forecast columns)
+  ├── Schema migration: init_db() runs PRAGMA-driven idempotent ALTER TABLE
+  │   to add new columns to pre-existing DBs (see _NULLABLE_ADDITIONS)
   ├── Non-raising: BackgroundTask path, errors logged at WARNING only
   └── Exported via `make export-predictions` → data/predictions/predictions_live.csv
         ↓ Power BI Desktop reads the CSV (no ODBC driver required)
 ```
+
+### Live ADR forecast (per /predict)
+
+Every successful /predict (HTTP or Gradio) now calls the ADR regressor
+alongside the cancellation classifier and writes two extra columns to the
+prediction log:
+
+| Field | Meaning |
+|-------|---------|
+| `predicted_adr` | What the ADR model expects this booking to charge (EUR) |
+| `adr_residual`  | `entered_adr - predicted_adr` — positive means priced above the model's expectation |
+
+**Caveat to flag in thesis writeup**: the ADR regressor was trained with four
+post-booking features (`is_canceled`, `assigned_room_type`, `booking_changes`,
+`days_in_waiting_list`) that aren't known at booking time. Live inference
+passes placeholders (`0` / `reserved_room_type` / `0` / `0`), so live
+`predicted_adr` is slightly less accurate than the published test-set
+RMSE = 44.31. The methodologically clean fix is retraining on booking-time
+features only; the live-integration story is the value today.
+
+Loading is best-effort: if `artifacts/adr_regressor.pkl` is absent, both
+fields default to `None` and the cancellation /predict path is unaffected.
 
 ### Power BI dashboard setup (60-second recipe)
 
@@ -412,8 +437,8 @@ artifact has exactly one writer; multiple consumers are normal.
 | `reports/model_selection_summary.json` | `src/pipelines/train.py` | Thesis Notebook 02, `scripts/check.py sync` |
 | `reports/segment_metrics.csv` / `.json` | `src/pipelines/train.py` | Notebooks 05/07, `scripts/check.py fairness` |
 | `reports/test_predictions_for_powerbi.csv` | `src/pipelines/train.py` | Notebook 08 monitoring, PowerBI |
-| `data/predictions/predictions.sqlite` | FastAPI `/predict` (via BackgroundTasks → `src/serving/prediction_log.py`) | `scripts/export_predictions.py` |
-| `data/predictions/predictions_live.csv` | `scripts/export_predictions.py` | Power BI Desktop dashboard |
+| `data/predictions/predictions.sqlite` | FastAPI `/predict` (via BackgroundTasks → `src/serving/prediction_log.py`) + Gradio `predict_one` (inline). Both paths also compute `predicted_adr` + `adr_residual` via `predict_adr()` when the ADR regressor is loaded. | `scripts/export_predictions.py` |
+| `data/predictions/predictions_live.csv` | `scripts/export_predictions.py` (auto-refreshed after every prediction). Includes live `predicted_adr` and `adr_residual` columns. | Power BI Desktop dashboard — Page 4 (Revenue) AND Page 5 (live ADR) |
 | `data/predictions/drift_metrics.csv` | `scripts/compute_live_drift.py` (compares live vs `reports/test_predictions_for_powerbi.csv` via `src/utils/drift.py`) | Power BI Page 8 (monitoring) |
 | `reports/adr_test_predictions.csv` | `scripts/export_adr_predictions.py` (loads `artifacts/adr_regressor.pkl`, predicts on the test split defined by `artifacts/adr_regressor_metadata.pkl`) | Power BI Page 5 (ADR Forecasting): scatter, histogram, monthly line |
 | `reports/adr_segment_performance.csv` | `scripts/export_adr_predictions.py` (aggregates RMSE/MAE per hotel × room_type, min 50 rows) | Power BI Page 5 (ADR Forecasting): segment RMSE heatmap |

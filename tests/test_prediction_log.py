@@ -74,6 +74,8 @@ _RESPONSE_FIXTURE: dict = {
         {"feature": "lead_time", "value": 60, "contribution": 0.21},
         {"feature": "agent", "value": "9", "contribution": 0.13},
     ],
+    "predicted_adr": 92.5,
+    "adr_residual": 12.5,
 }
 
 
@@ -159,6 +161,76 @@ def test_all_columns_schema_matches_table(tmp_path: Path) -> None:
 
 def test_count_predictions_returns_zero_when_db_missing(tmp_path: Path) -> None:
     assert count_predictions(tmp_path / "does_not_exist.sqlite") == 0
+
+
+def test_log_prediction_persists_adr_columns(tmp_path: Path) -> None:
+    """predicted_adr and adr_residual must round-trip through SQLite."""
+    db = tmp_path / "predictions.sqlite"
+    log_prediction(_REQUEST_FIXTURE, _RESPONSE_FIXTURE, db)
+    with sqlite3.connect(db) as conn:
+        predicted_adr, adr_residual = conn.execute(
+            "SELECT predicted_adr, adr_residual FROM predictions"
+        ).fetchone()
+    assert predicted_adr == 92.5
+    assert adr_residual == 12.5
+
+
+def test_log_prediction_handles_none_adr(tmp_path: Path) -> None:
+    """When the ADR regressor isn't loaded, the columns persist as SQL NULL."""
+    db = tmp_path / "predictions.sqlite"
+    response_no_adr = dict(_RESPONSE_FIXTURE)
+    response_no_adr["predicted_adr"] = None
+    response_no_adr["adr_residual"] = None
+    log_prediction(_REQUEST_FIXTURE, response_no_adr, db)
+    with sqlite3.connect(db) as conn:
+        predicted_adr, adr_residual = conn.execute(
+            "SELECT predicted_adr, adr_residual FROM predictions"
+        ).fetchone()
+    assert predicted_adr is None
+    assert adr_residual is None
+
+
+def test_migrate_schema_adds_missing_columns(tmp_path: Path) -> None:
+    """Older DBs (without predicted_adr / adr_residual) auto-migrate on next init_db.
+
+    Regression guard: if init_db only created tables but didn't ALTER existing
+    ones, deployments that upgraded across this commit would silently drop
+    ADR data on every log_prediction call.
+    """
+    db = tmp_path / "predictions.sqlite"
+
+    # Create a DB with the OLD schema (no predicted_adr / adr_residual).
+    legacy_sql = """
+    CREATE TABLE predictions (
+        prediction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp_utc TEXT NOT NULL,
+        probability REAL,
+        risk_tier TEXT,
+        alerts TEXT,
+        top_features TEXT
+    );
+    """
+    with sqlite3.connect(db) as conn:
+        conn.execute(legacy_sql)
+        conn.commit()
+        # Sanity: the new columns do NOT exist yet
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(predictions)")}
+        assert "predicted_adr" not in cols
+        assert "adr_residual" not in cols
+
+    # Run init_db — should add both columns without dropping any data.
+    init_db(db)
+    with sqlite3.connect(db) as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(predictions)")}
+        assert "predicted_adr" in cols
+        assert "adr_residual" in cols
+
+    # Calling init_db again must be idempotent.
+    init_db(db)
+    with sqlite3.connect(db) as conn:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(predictions)")}
+        assert "predicted_adr" in cols
+        assert "adr_residual" in cols
 
 
 def test_predict_endpoint_persists_row(

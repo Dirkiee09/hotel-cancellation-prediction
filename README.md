@@ -87,11 +87,17 @@ visualises live predictions alongside the held-out test-set baseline.
 **Pipeline**:
 ```
 FastAPI /predict   or   Gradio "Predict" button
-     ↓ (auto)
-data/predictions/predictions.sqlite   (one row per prediction)
+     ↓ (auto — calls BOTH cancellation classifier AND ADR regressor)
+data/predictions/predictions.sqlite   (one row per prediction; includes
+                                       predicted_adr + adr_residual columns)
      ↓ (auto)
 data/predictions/predictions_live.csv (Power BI consumes this)
 ```
+
+Every prediction now includes a **live ADR forecast** (what the regressor expects
+the booking to charge) alongside the cancellation probability. Power BI Page 5
+("ADR Forecasting") can read these live columns from `predictions_live.csv`
+instead of the static test-set CSV.
 
 **60-second setup**:
 1. `python demo/start_server.py` — start the server
