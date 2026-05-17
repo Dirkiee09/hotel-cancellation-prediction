@@ -37,6 +37,7 @@ from src.config import (
 from src.serving.inference import (
     explain_prediction,
     get_cached_artifacts,
+    predict_adr,
     predict_proba,
 )
 from src.serving.prediction_log import export_to_csv, log_prediction
@@ -1660,6 +1661,14 @@ def predict_one(*args: Any) -> tuple[str, str, str]:
             risk_tier = "medium"
         else:
             risk_tier = "low"
+        # Live ADR forecast — mirrors the /predict endpoint so the Power BI
+        # CSV gets the same enriched columns regardless of how the prediction
+        # was triggered (HTTP API or Gradio button).
+        predicted_adr_value = predict_adr(record, artifacts)
+        entered_adr = booking.adr
+        adr_residual: float | None = None
+        if predicted_adr_value is not None and entered_adr is not None:
+            adr_residual = round(float(entered_adr) - predicted_adr_value, 2)
         response_for_log = {
             "probability": prob,
             "label_high_precision": int(prob >= thr_hp),
@@ -1673,6 +1682,8 @@ def predict_one(*args: Any) -> tuple[str, str, str]:
             "cost_threshold_fallback_used": False,
             "alerts": [],
             "top_features": top,
+            "predicted_adr": predicted_adr_value,
+            "adr_residual": adr_residual,
         }
         log_prediction(booking.model_dump(mode="json"), response_for_log)
         export_to_csv()  # keep predictions_live.csv in sync for Power BI

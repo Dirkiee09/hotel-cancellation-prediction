@@ -78,6 +78,11 @@ _OUTPUT_COLUMNS = (
     "threshold_cost_sensitive",
     "cost_threshold_source",
     "cost_threshold_fallback_used",
+    # Live ADR regressor outputs — predicted_adr is what the ADR model expects
+    # this booking to charge; adr_residual = entered_adr - predicted_adr,
+    # surfacing pricing anomalies for the Power BI dashboard.
+    "predicted_adr",
+    "adr_residual",
 )
 
 # JSON-serialized complex columns (lists / nested dicts)
@@ -127,10 +132,31 @@ CREATE TABLE IF NOT EXISTS predictions (
     threshold_cost_sensitive REAL,
     cost_threshold_source TEXT,
     cost_threshold_fallback_used INTEGER,
+    predicted_adr REAL,
+    adr_residual REAL,
     alerts TEXT,
     top_features TEXT
 );
 """
+
+# Columns added after the initial schema shipped. Any DB created with an older
+# build of this module is missing these; _migrate_schema() adds them on next
+# open. ALTER TABLE ADD COLUMN with a default NULL is constant-time in SQLite,
+# so this is safe to run on every connection.
+_NULLABLE_ADDITIONS: tuple[tuple[str, str], ...] = (
+    ("predicted_adr", "REAL"),
+    ("adr_residual", "REAL"),
+)
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Add any columns missing from older DB files. Idempotent."""
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(predictions)")}
+    for col, sqltype in _NULLABLE_ADDITIONS:
+        if col not in existing:
+            # Column names are module constants, not user input — safe to interpolate.
+            conn.execute(f"ALTER TABLE predictions ADD COLUMN {col} {sqltype}")  # nosec B608
+
 
 _CREATE_INDEX_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_timestamp ON predictions (timestamp_utc);",
@@ -139,10 +165,15 @@ _CREATE_INDEX_SQL = (
 
 
 def init_db(db_path: Path = PREDICTION_LOG_DB) -> None:
-    """Create the predictions table and indexes if they don't exist."""
+    """Create the predictions table and indexes if they don't exist.
+
+    Also migrates any pre-existing DB that's missing columns added in later
+    versions (see _NULLABLE_ADDITIONS).
+    """
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute(_CREATE_TABLE_SQL)
+        _migrate_schema(conn)
         for stmt in _CREATE_INDEX_SQL:
             conn.execute(stmt)
         conn.commit()

@@ -63,6 +63,8 @@ class ModelArtifacts:
         thresholds,
         metadata,
         is_pipeline: bool,
+        adr_regressor: Any = None,
+        adr_metadata: dict[str, Any] | None = None,
     ):
         self.model = model
         self.preprocessor = preprocessor
@@ -71,6 +73,11 @@ class ModelArtifacts:
         self.thresholds = thresholds
         self.metadata = metadata
         self.is_pipeline = is_pipeline
+        # Optional ADR regressor — used for the live "predicted ADR" column on
+        # every /predict call. None if artifacts/adr_regressor.pkl is absent
+        # (cancellation predictions are unaffected in that case).
+        self.adr_regressor = adr_regressor
+        self.adr_metadata = adr_metadata or {}
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -148,6 +155,25 @@ def load_artifacts(artifacts_dir: Path = ARTIFACTS_DIR) -> ModelArtifacts:
                 calibrator_path,
                 exc,
             )
+
+    # Optional ADR regressor — best-effort load, never fatal.
+    adr_regressor: Any = None
+    adr_metadata: dict[str, Any] = {}
+    adr_path = artifacts_dir / "adr_regressor.pkl"
+    adr_metadata_path = artifacts_dir / "adr_regressor_metadata.pkl"
+    if adr_path.exists() and adr_metadata_path.exists():
+        try:
+            adr_regressor = joblib.load(adr_path)
+            adr_metadata = joblib.load(adr_metadata_path)
+        except Exception as exc:
+            logger.warning(
+                "Failed to load ADR regressor %s: %s. Live ADR forecasts disabled.",
+                adr_path,
+                exc,
+            )
+            adr_regressor = None
+            adr_metadata = {}
+
     return ModelArtifacts(
         model,
         preprocessor,
@@ -156,6 +182,8 @@ def load_artifacts(artifacts_dir: Path = ARTIFACTS_DIR) -> ModelArtifacts:
         thresholds,
         metadata,
         is_pipeline=hasattr(model, "named_steps"),
+        adr_regressor=adr_regressor,
+        adr_metadata=adr_metadata,
     )
 
 
@@ -204,6 +232,60 @@ def predict_proba(records: Any, artifacts: ModelArtifacts) -> tuple[list[float],
     if artifacts.calibrator is not None:
         probs = np.clip(artifacts.calibrator.predict(probs), 0.0, 1.0)
     return probs.tolist(), df
+
+
+# Placeholders for ADR features that the regressor was trained on but that are
+# NOT known at booking time. These are post-booking signals (whether the guest
+# eventually cancelled, what room they were actually assigned, how many times
+# they modified the booking, etc.). Passing zeros / sensible defaults lets the
+# regressor produce a live forecast — at the cost of slightly degraded accuracy
+# vs the training-time test RMSE. Documented in CLAUDE.md.
+_ADR_BOOKING_TIME_DEFAULTS: dict[str, Any] = {
+    "is_canceled": 0,
+    "booking_changes": 0,
+    "days_in_waiting_list": 0,
+}
+
+
+def predict_adr(record: dict[str, Any], artifacts: ModelArtifacts) -> float | None:
+    """Predict ADR for one booking using the trained ADR regressor.
+
+    Returns None when the ADR regressor isn't loaded or the prediction fails —
+    never raises, so a degraded ADR path can't break /predict.
+
+    Note: the ADR regressor was trained with post-booking features (is_canceled,
+    assigned_room_type, booking_changes, days_in_waiting_list) that aren't
+    available at booking time. We substitute sensible defaults:
+        * is_canceled = 0           (booking just made, not yet cancelled)
+        * assigned_room_type = reserved_room_type  (no upgrade yet)
+        * booking_changes = 0       (no modifications yet)
+        * days_in_waiting_list = 0  (immediate confirmation assumed)
+    """
+    if artifacts.adr_regressor is None or not artifacts.adr_metadata:
+        return None
+    try:
+        features = artifacts.adr_metadata.get("features") or []
+        if not features:
+            return None
+        row: dict[str, Any] = {**record}
+        # Apply booking-time defaults for features the request doesn't carry.
+        for key, default in _ADR_BOOKING_TIME_DEFAULTS.items():
+            row.setdefault(key, default)
+        # assigned_room_type defaults to the reserved type (most common case
+        # at booking time — upgrades / downgrades happen on arrival).
+        if "assigned_room_type" not in row or row["assigned_room_type"] is None:
+            row["assigned_room_type"] = row.get("reserved_room_type")
+        # company is optional in BookingRequest — let the model's pipeline
+        # handle missingness via its imputer.
+        X = pd.DataFrame([{feat: row.get(feat) for feat in features}])
+        pred = float(artifacts.adr_regressor.predict(X)[0])
+        if not np.isfinite(pred):
+            return None
+        # Clip to the same valid range used elsewhere for ADR sanity.
+        return round(max(0.0, pred), 2)
+    except Exception as exc:
+        logger.debug("predict_adr_failed (non-fatal): %s", exc)
+        return None
 
 
 def explain_prediction(

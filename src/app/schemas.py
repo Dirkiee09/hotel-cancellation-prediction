@@ -176,6 +176,22 @@ class PredictionResponse(BaseModel):
             "Each entry has 'feature', 'value', and 'contribution' keys."
         ),
     )
+    predicted_adr: Optional[float] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Predicted average daily rate from the ADR regressor (if loaded). "
+            "None when the regressor artifact is unavailable."
+        ),
+    )
+    adr_residual: Optional[float] = Field(
+        default=None,
+        description=(
+            "Difference between the entered ADR and the model's predicted ADR. "
+            "Positive = priced above model expectation; negative = priced below. "
+            "None when either ADR is unavailable."
+        ),
+    )
 
 
 class ModelInfoResponse(BaseModel):
