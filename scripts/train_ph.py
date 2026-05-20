@@ -2,14 +2,16 @@
 
 This is a side-experiment that demonstrates methodological portability to a
 different geography (Philippines vs. Portugal) and property type (single
-resort vs. mixed city/resort). It uses ONLY the 8 raw features both datasets
-share, so the model deliberately operates with a weakened predictor set.
+resort vs. mixed city/resort). The real PMS export ships with deposit_type
+and total_of_special_requests — two top-10 Portugal SHAP features that the
+earlier synthetic CSV lacked — so the PH feature set now matches Portugal
+more closely.
 
 **Caveats baked into the output JSON**:
-- n_train ≈ 240, n_val ≈ 30, n_test ≈ 30 — bootstrap CIs span ±15 pp
+- n_total ≈ 193; bootstrap 95% CIs on PR-AUC span roughly ±15 pp at this size
 - No rolling-origin CV (insufficient data for the project's standard 3 folds)
-- No deposit_type, market_segment, country, agent, previous_cancellations
-  — these were among the top SHAP features on the Portugal model
+- Still missing market_segment, country, agent, customer_type, and
+  previous_cancellations — the real PMS export does not record these
 
 Usage:
     python scripts/train_ph.py
@@ -77,7 +79,7 @@ from src.models.metrics import (
     safe_pr_auc,
     safe_roc_auc,
 )
-from src.models.train import is_lightgbm_available, train_gb, train_lgbm
+from src.models.train import is_lightgbm_available, train_gb, train_lgbm, train_xgb
 from src.utils import configure_logging
 from src.utils.reproducibility import set_global_seed
 from src.utils.thresholds import (
@@ -472,6 +474,206 @@ def _cost_sensitivity_sweep_ph(
     return pd.DataFrame(rows)
 
 
+def _compute_model_family_comparison_ph(
+    X_train_t: np.ndarray,
+    y_train: pd.Series,
+    X_val_t: np.ndarray,
+    y_val: pd.Series,
+    X_test_t: np.ndarray,
+    y_test: pd.Series,
+) -> tuple[dict[str, Any], pd.DataFrame]:
+    """Fit LightGBM + XGBoost + GradientBoosting on the same split.
+
+    Returns (metrics_payload, per_row_predictions_df) for the model-selection
+    and cross-model-comparison notebooks. Bootstrap CIs are reported alongside
+    point estimates so the small-N noise is visible.
+    """
+    rng = np.random.default_rng(RANDOM_STATE)
+    families: dict[str, Any] = {}
+
+    def _fit(family: str, fn: Any) -> Any:
+        m = fn(X_train_t, y_train)
+        val_raw = m.predict_proba(X_val_t)[:, 1]
+        test_raw = m.predict_proba(X_test_t)[:, 1]
+        # Calibrate per-family so comparisons use the same probability
+        # transform as the main pipeline (isotonic on val set).
+        y_val_arr = y_val.to_numpy().astype(int)
+        if len(np.unique(y_val_arr)) >= 2:
+            cal = IsotonicRegression(out_of_bounds="clip")
+            cal.fit(val_raw, y_val_arr)
+            val_cal = np.clip(cal.predict(val_raw), 0.0, 1.0)
+            test_cal = np.clip(cal.predict(test_raw), 0.0, 1.0)
+        else:
+            val_cal = val_raw
+            test_cal = test_raw
+        return {
+            "family": family,
+            "model": m,
+            "val_probs": val_cal,
+            "test_probs": test_cal,
+        }
+
+    if is_lightgbm_available():
+        families["lightgbm"] = _fit("lightgbm", train_lgbm)
+    families["xgboost"] = _fit("xgboost", train_xgb)
+    families["gradient_boosting"] = _fit("gradient_boosting", train_gb)
+
+    y_test_arr = y_test.to_numpy().astype(int)
+    metrics: dict[str, Any] = {}
+    for family, blob in families.items():
+        test_probs = blob["test_probs"]
+        # Bootstrap CIs for PR-AUC (200 resamples; small N keeps it fast).
+        n_test = len(y_test_arr)
+        boot_pr = []
+        for _ in range(200):
+            idx = rng.integers(0, n_test, size=n_test)
+            yi = y_test_arr[idx]
+            pi = test_probs[idx]
+            if len(np.unique(yi)) > 1:
+                boot_pr.append(float(safe_pr_auc(yi, pi)))
+        boot_pr_arr = np.array(boot_pr) if boot_pr else np.array([float("nan")])
+        metrics[family] = {
+            "roc_auc_test": float(safe_roc_auc(y_test_arr, test_probs)),
+            "pr_auc_test": float(safe_pr_auc(y_test_arr, test_probs)),
+            "pr_auc_ci_low": float(np.nanquantile(boot_pr_arr, 0.025)),
+            "pr_auc_ci_high": float(np.nanquantile(boot_pr_arr, 0.975)),
+            "ece_test": float(expected_calibration_error(y_test_arr, test_probs, bins=10)),
+        }
+
+    # Pairwise delta vs champion (LightGBM if available, else first family).
+    champion = "lightgbm" if "lightgbm" in metrics else next(iter(metrics))
+    paired_deltas: dict[str, Any] = {}
+    for family in metrics:
+        if family == champion:
+            continue
+        delta_boot = []
+        for _ in range(200):
+            idx = rng.integers(0, len(y_test_arr), size=len(y_test_arr))
+            yi = y_test_arr[idx]
+            if len(np.unique(yi)) < 2:
+                continue
+            pa = families[champion]["test_probs"][idx]
+            pb = families[family]["test_probs"][idx]
+            delta_boot.append(float(safe_pr_auc(yi, pa) - safe_pr_auc(yi, pb)))
+        d_arr = np.array(delta_boot) if delta_boot else np.array([float("nan")])
+        paired_deltas[family] = {
+            "delta_pr_auc_mean": float(np.nanmean(d_arr)),
+            "delta_pr_auc_ci_low": float(np.nanquantile(d_arr, 0.025)),
+            "delta_pr_auc_ci_high": float(np.nanquantile(d_arr, 0.975)),
+            "significant": bool(
+                not (
+                    float(np.nanquantile(d_arr, 0.025)) <= 0 <= float(np.nanquantile(d_arr, 0.975))
+                )
+            ),
+        }
+
+    payload = {
+        "champion": champion,
+        "per_family_metrics": metrics,
+        "paired_deltas_vs_champion": paired_deltas,
+        "n_test": int(len(y_test_arr)),
+        "n_bootstrap": 200,
+    }
+
+    # Per-row test predictions for cross-model plots (Notebook 09).
+    pred_rows: list[dict[str, Any]] = []
+    for i, y_true in enumerate(y_test_arr):
+        row: dict[str, Any] = {"row_idx": int(i), "y_true": int(y_true)}
+        for family, blob in families.items():
+            row[f"prob_{family}"] = float(blob["test_probs"][i])
+        pred_rows.append(row)
+    predictions_df = pd.DataFrame(pred_rows)
+
+    return payload, predictions_df
+
+
+def _train_adr_regressor_ph(
+    train_df: pd.DataFrame,
+    val_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+) -> tuple[Any, dict[str, Any], pd.DataFrame] | None:
+    """Fit a tabular ADR regressor on PH features.
+
+    Notebook 04 uses this for the ADR forecasting story. Returns
+    (pipeline, metrics_payload, test_predictions_df), or None if any split
+    is missing the adr column.
+
+    NB: this is tabular regression, NOT time series. 193 rows over 3 years
+    means monthly aggregates are too noisy for SARIMA/Prophet — that
+    caveat is documented in Notebook 04's narrative.
+    """
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+    if "adr" not in train_df.columns:
+        return None
+
+    # ADR-regressor feature set excludes adr itself and any derived feature
+    # that leaks adr (adr_per_person, revenue_at_risk).
+    leaky = {"adr", "adr_per_person", "revenue_at_risk"}
+    feature_cols = [c for c in PH_BOOKING_TIME_FEATURES if c not in leaky]
+
+    cat_cols = [c for c in PH_CATEGORICAL_COLS if c in feature_cols]
+    num_cols = sorted(c for c in feature_cols if c not in cat_cols)
+    cat_pipe = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="constant", fill_value="UNKNOWN")),
+            (
+                "to_str",
+                FunctionTransformer(cast_to_str, validate=False, feature_names_out="one-to-one"),
+            ),
+            (
+                "onehot",
+                OneHotEncoder(sparse_output=False, min_frequency=1, handle_unknown="ignore"),
+            ),
+        ]
+    )
+    num_pipe = Pipeline(steps=[("imputer", SimpleImputer(strategy="median"))])
+    pre = ColumnTransformer(transformers=[("cat", cat_pipe, cat_cols), ("num", num_pipe, num_cols)])
+
+    model = HistGradientBoostingRegressor(
+        max_iter=200, max_depth=4, learning_rate=0.05, random_state=RANDOM_STATE
+    )
+    pipeline = Pipeline(steps=[("preprocessor", pre), ("model", model)])
+
+    X_train = train_df[feature_cols]
+    y_train_adr = train_df["adr"].astype(float)
+    X_val = val_df[feature_cols]
+    y_val_adr = val_df["adr"].astype(float)
+    X_test = test_df[feature_cols]
+    y_test_adr = test_df["adr"].astype(float)
+
+    pipeline.fit(X_train, y_train_adr)
+
+    def _metrics(y_true: pd.Series, y_pred: np.ndarray) -> dict[str, float]:
+        return {
+            "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+            "mae": float(mean_absolute_error(y_true, y_pred)),
+            "r2": float(r2_score(y_true, y_pred)),
+        }
+
+    metrics_payload: dict[str, Any] = {
+        "n_train": int(len(X_train)),
+        "n_val": int(len(X_val)),
+        "n_test": int(len(X_test)),
+        "feature_count": len(feature_cols),
+        "feature_cols": feature_cols,
+        "train": _metrics(y_train_adr, pipeline.predict(X_train)),
+        "val": _metrics(y_val_adr, pipeline.predict(X_val)),
+        "test": _metrics(y_test_adr, pipeline.predict(X_test)),
+        "trained_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
+
+    test_predictions = test_df.copy()
+    test_predictions["adr_actual"] = y_test_adr.values
+    test_predictions["adr_predicted"] = pipeline.predict(X_test)
+    test_predictions["adr_residual"] = (
+        test_predictions["adr_actual"] - test_predictions["adr_predicted"]
+    )
+
+    return pipeline, metrics_payload, test_predictions
+
+
 def _build_ph_preprocessor() -> Pipeline:
     """PH-specific preprocessor: one categorical (room type) + numerics."""
     cat_pipeline = Pipeline(
@@ -503,7 +705,8 @@ def _split_ph_time_aware(
     """Chronological 80/10/10 split using the parsed arrival date.
 
     Mirrors src/features/build.py:split_time_aware but does not depend on
-    MIN_TRAIN_ROWS guards (which would reject n=300).
+    MIN_TRAIN_ROWS guards (which assume Portugal-scale data and would
+    reject the small PH sample).
     """
     if "arrival_date_year" not in df.columns:
         raise ValueError("DataFrame must contain arrival_date_year; run clean_raw_ph first.")
@@ -691,9 +894,10 @@ def run_ph_training_pipeline() -> dict[str, Any]:
         [
             f"n_test = {len(test_df)} rows; bootstrap 95% CIs on PR-AUC "
             "span roughly ±15 percentage points at this sample size",
-            "Feature set excludes deposit_type, market_segment, country, "
-            "agent, customer_type, previous_cancellations — these were among "
-            "the top SHAP features on the Portugal model",
+            "Feature set includes deposit_type and total_of_special_requests "
+            "(two top-10 Portugal SHAP features) but still excludes "
+            "market_segment, country, agent, customer_type, and "
+            "previous_cancellations — the real PMS export does not capture them",
             "No rolling-origin CV (insufficient data for the project's standard "
             "3 folds); metrics use a single chronological 80/10/10 split",
             "Constant-variance columns (Meals = 100% 'Breakfast (Complimentary)', "
@@ -736,9 +940,34 @@ def run_ph_training_pipeline() -> dict[str, Any]:
     shap_result = _compute_shap_ph(model, preprocessor, X_test_t)
     cost_sensitivity_df = _cost_sensitivity_sweep_ph(y_test, test_probs, test_df)
 
+    # 3-way model-family comparison (LightGBM vs XGBoost vs GradientBoosting).
+    # Consumed by Notebooks 07 (model selection) and 09 (model comparison).
+    family_payload, family_predictions_df = _compute_model_family_comparison_ph(
+        X_train_t, y_train, X_val_t, y_val, X_test_t, y_test
+    )
+    logger.info(
+        "ph_family_comparison_complete champion=%s n_families=%d",
+        family_payload["champion"],
+        len(family_payload["per_family_metrics"]),
+    )
+
+    # Tabular ADR regressor — consumed by Notebook 04 (ADR forecasting).
+    adr_result = _train_adr_regressor_ph(train_df, val_df, test_df)
+    if adr_result is not None:
+        adr_pipeline, adr_metrics_payload, adr_predictions_df = adr_result
+        logger.info(
+            "ph_adr_regressor_complete test_rmse=%.2f test_r2=%.3f",
+            adr_metrics_payload["test"]["rmse"],
+            adr_metrics_payload["test"]["r2"],
+        )
+
+    n_total = len(train_df) + len(val_df) + len(test_df)
     champion_summary = {
         "champion_model": model_family,
-        "selected_by": "single chronological 80/10/10 split (N=300 too small for rolling-origin)",
+        "selected_by": (
+            f"single chronological 80/10/10 split (N={n_total} too small "
+            "for rolling-origin selection)"
+        ),
         "selected_at": datetime.now(tz=timezone.utc).isoformat(),
         "test_roc_auc": metrics_payload["roc_auc_test"],
         "test_pr_auc": metrics_payload["pr_auc_test"],
@@ -750,9 +979,10 @@ def run_ph_training_pipeline() -> dict[str, Any]:
         },
         "feature_set_size": len(feature_cols),
         "feature_set_note": (
-            "PH reduced 8-raw-feature set (vs Portugal 32 raw); top Portugal "
-            "predictors (deposit_type, country, agent, market_segment) are not "
-            "available in the PH PMS export."
+            "PH 10-raw-feature set (vs Portugal 32 raw); includes deposit_type "
+            "and total_of_special_requests but still excludes country, "
+            "market_segment, customer_type, agent, and previous_cancellations "
+            "(not captured by the PMS export)."
         ),
         "n_train": metrics_payload["n_train"],
         "n_val": metrics_payload["n_val"],
@@ -812,6 +1042,16 @@ def run_ph_training_pipeline() -> dict[str, Any]:
     test_export.to_csv(PH_REPORTS_DIR / "ph_test_predictions.csv", index=False)
 
     sweep_df.to_csv(PH_REPORTS_DIR / "ph_threshold_sweep.csv", index=False)
+
+    # Model-family comparison artefacts (Notebooks 07 + 09).
+    _save_json(PH_REPORTS_DIR / "model_family_comparison.json", family_payload)
+    family_predictions_df.to_csv(PH_REPORTS_DIR / "model_family_predictions.csv", index=False)
+
+    # ADR regressor artefacts (Notebook 04).
+    if adr_result is not None:
+        joblib.dump(adr_pipeline, PH_ARTIFACTS_DIR / "ph_adr_regressor.pkl")
+        _save_json(PH_REPORTS_DIR / "ph_adr_regressor_metrics.json", adr_metrics_payload)
+        adr_predictions_df.to_csv(PH_REPORTS_DIR / "ph_adr_test_predictions.csv", index=False)
 
     logger.info(
         "ph_training_complete artifacts_dir=%s rows_train=%d rows_val=%d rows_test=%d "
