@@ -563,3 +563,149 @@ After training, check `reports/metrics.json` for observed performance, then upda
 - `ADR_MAX_VALID` and `FP_INTERVENTION_COST` in `config.py` (currency-dependent)
 - `METRIC_GATES` in `config.py` (after first training run)
 - Notebook markdown narrative (search for "Portugal", "EUR", "PRT" in notebook cells)
+
+---
+
+## PH Sub-Study — Philippine Resort Dataset (Notebooks Under `notebooks/ph/`)
+
+A parallel sub-study at `scripts/train_ph.py` re-fits the methodology on a
+**300-row Philippine resort dataset**
+(`data/Punta_Villa_Resort_2022_2024.csv`, 2022-2024) using only the 8
+booking-time features both datasets share. **This is NOT part of CI, `make`, or
+the Portugal pipeline.** It runs as a separate manual command and produces a
+6-notebook PH suite under `notebooks/ph/`.
+
+### Why it exists
+The thesis claims rest on methodology (rolling-origin selection, isotonic
+calibration, cost-sensitive thresholds). The PH sub-study tests how that
+methodology behaves on a smaller, geographically different dataset — and
+surfaces two methodological contributions: (1) a pre-flight check for
+archetype-organized datasets (high duplicate-cluster rate + consistent
+labels per cluster), and (2) the chronological-twin effect on test metrics
+under that cluster structure.
+
+### What runs it
+```bash
+python scripts/train_ph.py        # regenerate artifacts/ph/ + reports/ph/
+# then execute the PH notebook suite manually or via:
+for nb in notebooks/ph/*.ipynb; do
+    jupyter nbconvert --to notebook --execute "$nb" --output "$nb"
+done
+```
+
+### Live PH server (parallel to Portugal's :8000 / :7860)
+
+A standalone FastAPI + Gradio server lives at `src/app/ph_main.py`. Two ways to launch:
+
+```bash
+# Recommended — bullet-proof launcher (artifact check, readiness poll, browser open)
+python demo/start_server.py          # Portugal at :8000
+python demo/start_server_ph.py       # PH at :8001 (runs side-by-side)
+
+# Or invoke uvicorn directly
+uvicorn src.app.main:app --port 8000        # Portugal
+uvicorn src.app.ph_main:app --port 8001     # PH
+```
+
+Each launcher: verifies trained artifacts exist before spawning, refuses to
+start if the port is taken, polls `/healthz` until the model loads, opens
+the browser to `/ui`, and tails the uvicorn log on failure. PH log goes to
+`.gradio/uvicorn_ph.log`; Portugal log goes to `.gradio/uvicorn.log`.
+
+The PH server is intentionally simpler than the Portugal one:
+- No SQLite prediction logging, no Power BI export
+- No ADR forecasting (PH has no ADR regressor trained)
+- No `cost_sensitive` threshold policy (PH has only `max_f1` + `high_precision`)
+- Prominent dataset-caveat banner in `/`, `/model-info`, `/predict` alerts, and Gradio UI
+
+The PH and Portugal servers share zero mutable state: each caches its own
+artifact singleton (`_CACHED_PH_ARTIFACTS` vs `_CACHED_ARTIFACTS`), so they can
+run side-by-side for a defense demo.
+
+### What it produces
+
+| Path | Content |
+|---|---|
+| `artifacts/ph/ph_model.pkl` | sklearn Pipeline (preprocessor + LightGBM) |
+| `artifacts/ph/ph_calibrator.pkl` | Isotonic calibrator fit on val set |
+| `artifacts/ph/ph_thresholds.json` | max_f1 + high_precision thresholds |
+| `artifacts/ph/ph_feature_columns.json` | Reduced 16-feature list |
+| `artifacts/ph/ph_model_metadata.json` | Lineage + cleaning + caveats |
+| `artifacts/ph/cost_threshold_sweep.csv` | FP-cost sensitivity grid |
+| `reports/ph/ph_transferability.json` | Test metrics + `dataset_diagnostics` block |
+| `reports/ph/ph_test_predictions.csv` | Per-row predictions for the notebooks |
+| `reports/ph/ph_threshold_sweep.csv` | Validation threshold sweep |
+| `reports/ph/champion_summary.json` | Selection lineage for the PH champion |
+| `reports/ph/baseline_comparison.json` | Dummy/LR/DT/GaussianNB vs LightGBM |
+| `reports/ph/learning_curves.json` | Train/val PR-AUC at 10/25/50/75/100% |
+| `reports/ph/expanding_window_cv.json` | 3-fold expanding-window CV |
+| `reports/ph/shap_analysis.json` | TreeSHAP top features |
+| `reports/ph/shap_feature_importance.csv` | Per-raw-feature mean(|SHAP|) |
+| `reports/ph/shap_summary_plot.png` | SHAP beeswarm |
+
+### Notebook suite (`notebooks/ph/`)
+
+Non-contiguous numbering deliberately matches Portugal numbering so the prof can
+mentally pair "Portugal 03 ↔ PH 03".
+
+| Notebook | Status | Notes |
+|---|---|---|
+| `01_eda.ipynb` | NEW | PH-specific categorical structure, dataset cluster characterization, room-type analysis |
+| `02_modeling.ipynb` | NEW | Champion summary, ROC/PR, calibration, confusion matrix, threshold sweep, memorization signature |
+| `03_deep_analysis.ipynb` | NEW (light) | Cost curve, learning curves, expanding-window CV, baseline comparison |
+| `05_explainability.ipynb` | NEW | SHAP feature importance, beeswarm, 3 individual examples, Portugal vs PH SHAP comparison |
+| `10_sensitivity_analysis.ipynb` | NEW | Cost sensitivity, data hunger, threshold policy trade-offs |
+| `11_transferability.ipynb` | MOVED (reframed) | Dataset cluster characterization + chronological-twin effect + thesis framing |
+| `README.md` | NEW | Suite overview + omission rationale |
+
+### Notebooks deliberately NOT mirrored
+
+- **04 (ADR forecasting)** — 300 rows over 3 years too thin for time-series story
+- **06 (business analytics)** — requires segment breakdowns (country, market segment, customer type) PH cannot provide
+- **07 (model selection)** — rolling-origin selection on 300 rows gives bootstrap CIs ±15pp wide
+- **08 (monitoring)** — requires live production deployment data (does not exist for PH)
+- **09 (model comparison)** — same reason as 07
+
+### Headline finding (dataset cluster structure)
+After feature engineering, **77% of PH rows share an identical feature vector
+with another row**, and **100% of those duplicate clusters share a single
+label**. The Philippine resort dataset is organized around a small set of
+recurring booking archetypes — a structural property of the data rather than
+a quality concern. The chronological 80/10/10 split lands 100% of test rows
+next to an identical train/val twin, which produces inflated test metrics
+(PR-AUC = 1.000) via memorization across twins, not generalization to unseen
+customers.
+
+### Defense-grade framing
+The sub-study is reported in the thesis as a methodology contribution:
+
+> *"We attempted a transferability probe on a 300-row Philippine resort dataset.
+> The dataset is organized around recurring booking archetypes — a structural
+> property visible in the duplicate-cluster diagnostics. Documenting this
+> characterization is more valuable than reporting the surface metrics: it
+> formalises a pre-flight check (`duplicate_rate` ≥ 0.30 +
+> `clusters_with_consistent_labels_pct` ≥ 0.90 ⇒ archetype-organized dataset)
+> that should run before any transferability claim, and it bounds the
+> generalization claims our methodology can credibly support across geographies."*
+
+### What is deliberately NOT done
+- The PH model is **not** added to `make benchmark`, `make thesis`, or CI
+- `scripts/check.py` does not validate `artifacts/ph/` or `reports/ph/`
+- The Portugal pipeline never imports `src/data/load_ph.py`
+- The PH metric gates (`PH_METRIC_GATES` in `config.py`) are directional,
+  not regression-detection gates
+- No `Makefile` target — invocation stays manual via `python scripts/train_ph.py`
+
+### Tied artifacts
+- `notebooks/ph/*.ipynb` — 6-notebook PH suite (described above)
+- `notebooks/ph/README.md` — suite overview
+- `tests/test_load_ph.py` — 9 smoke tests for the data layer
+- `src/data/load_ph.py` — thin loader
+- `src/utils/validate_data.py::clean_raw_ph` — normalisation step
+- `src/eval/notebook_utils.py::load_ph_context` — PH-side context loader
+- `src/serving/inference_ph.py` — PH-side prediction (parallel to `inference.py`)
+- `src/app/ph_schemas.py` — `PHBookingRequest` Pydantic model (8 raw fields)
+- `src/app/ph_main.py` — FastAPI server (port 8001)
+- `src/app/ph_ui.py` — Gradio UI (mounted at `/ui` and standalone on 7861)
+- `src/config.py::PH_*` constants — feature list, target column, paths
+- `reports/figures/thesis/ph/` — PH-specific figures (PNG + PDF)
