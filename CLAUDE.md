@@ -568,21 +568,27 @@ After training, check `reports/metrics.json` for observed performance, then upda
 
 ## PH Sub-Study — Philippine Resort Dataset (Notebooks Under `notebooks/ph/`)
 
-A parallel sub-study at `scripts/train_ph.py` re-fits the methodology on a
-**300-row Philippine resort dataset**
-(`data/Punta_Villa_Resort_2022_2024.csv`, 2022-2024) using only the 8
-booking-time features both datasets share. **This is NOT part of CI, `make`, or
-the Portugal pipeline.** It runs as a separate manual command and produces a
-6-notebook PH suite under `notebooks/ph/`.
+A parallel sub-study at `scripts/train_ph.py` re-fits the methodology on the
+**real Punta Villa Resort PMS export**
+(`data/Punta_Villa_Resort_PH_Dataset.csv`, 193 real bookings, 2022-2025).
+The real PMS export ships with `deposit_type` and `total_of_special_requests`
+— two top-10 Portugal SHAP features the earlier exploratory dataset
+deliberately lacked — so the PH feature menu now closely mirrors Portugal's.
+**This is NOT part of CI, `make`, or the Portugal pipeline.** It runs as a
+separate manual command and produces a 6-notebook PH suite under
+`notebooks/ph/`.
 
 ### Why it exists
 The thesis claims rest on methodology (rolling-origin selection, isotonic
 calibration, cost-sensitive thresholds). The PH sub-study tests how that
 methodology behaves on a smaller, geographically different dataset — and
-surfaces two methodological contributions: (1) a pre-flight check for
-archetype-organized datasets (high duplicate-cluster rate + consistent
-labels per cluster), and (2) the chronological-twin effect on test metrics
-under that cluster structure.
+surfaces two methodological contributions: (1) a generic pre-flight check
+that flags datasets organized around recurring booking archetypes (where
+chronological splitting would leak twins across the train/test boundary),
+and (2) a feature-availability mapping that bounds what a reduced-PMS-schema
+operator can credibly model. The pre-flight check runs on the real export
+and confirms the methodology operates honestly — the diagnostic does NOT
+fire, so reported metrics are honest small-sample estimates.
 
 ### What runs it
 ```bash
@@ -613,10 +619,11 @@ the browser to `/ui`, and tails the uvicorn log on failure. PH log goes to
 `.gradio/uvicorn_ph.log`; Portugal log goes to `.gradio/uvicorn.log`.
 
 The PH server is intentionally simpler than the Portugal one:
-- No SQLite prediction logging, no Power BI export
+- SQLite prediction logging + auto-CSV export available (parallel to Portugal,
+  writes to `data/predictions/ph_predictions.sqlite` and `ph_predictions_live.csv`)
 - No ADR forecasting (PH has no ADR regressor trained)
-- No `cost_sensitive` threshold policy (PH has only `max_f1` + `high_precision`)
-- Prominent dataset-caveat banner in `/`, `/model-info`, `/predict` alerts, and Gradio UI
+- No `cost_sensitive` threshold policy (n_val ≈ 19 is too small to fit a reliable cost curve)
+- Prominent small-sample caveat banner in `/`, `/model-info`, `/predict` alerts, and Gradio UI
 
 The PH and Portugal servers share zero mutable state: each caches its own
 artifact singleton (`_CACHED_PH_ARTIFACTS` vs `_CACHED_ARTIFACTS`), so they can
@@ -629,7 +636,7 @@ run side-by-side for a defense demo.
 | `artifacts/ph/ph_model.pkl` | sklearn Pipeline (preprocessor + LightGBM) |
 | `artifacts/ph/ph_calibrator.pkl` | Isotonic calibrator fit on val set |
 | `artifacts/ph/ph_thresholds.json` | max_f1 + high_precision thresholds |
-| `artifacts/ph/ph_feature_columns.json` | Reduced 16-feature list |
+| `artifacts/ph/ph_feature_columns.json` | 18-feature list (incl. deposit_type, total_of_special_requests) |
 | `artifacts/ph/ph_model_metadata.json` | Lineage + cleaning + caveats |
 | `artifacts/ph/cost_threshold_sweep.csv` | FP-cost sensitivity grid |
 | `reports/ph/ph_transferability.json` | Test metrics + `dataset_diagnostics` block |
@@ -642,6 +649,11 @@ run side-by-side for a defense demo.
 | `reports/ph/shap_analysis.json` | TreeSHAP top features |
 | `reports/ph/shap_feature_importance.csv` | Per-raw-feature mean(|SHAP|) |
 | `reports/ph/shap_summary_plot.png` | SHAP beeswarm |
+| `reports/ph/model_family_comparison.json` | 3-way calibrated metrics + paired bootstrap deltas (NB 07/09) |
+| `reports/ph/model_family_predictions.csv` | Per-row test predictions for LGBM/XGB/GB (NB 09) |
+| `artifacts/ph/ph_adr_regressor.pkl` | HistGradientBoosting ADR regressor (NB 04) |
+| `reports/ph/ph_adr_regressor_metrics.json` | ADR regressor train/val/test RMSE/MAE/R² (NB 04) |
+| `reports/ph/ph_adr_test_predictions.csv` | Per-row ADR predictions + residuals (NB 04) |
 
 ### Notebook suite (`notebooks/ph/`)
 
@@ -650,43 +662,56 @@ mentally pair "Portugal 03 ↔ PH 03".
 
 | Notebook | Status | Notes |
 |---|---|---|
-| `01_eda.ipynb` | NEW | PH-specific categorical structure, dataset cluster characterization, room-type analysis |
-| `02_modeling.ipynb` | NEW | Champion summary, ROC/PR, calibration, confusion matrix, threshold sweep, memorization signature |
+| `01_eda.ipynb` | NEW | PH categorical structure, pre-flight duplicate-cluster diagnostic, deposit/special-requests distributions |
+| `02_modeling.ipynb` | NEW | Champion summary, ROC/PR, calibration, confusion matrix, threshold sweep, feature importance |
 | `03_deep_analysis.ipynb` | NEW (light) | Cost curve, learning curves, expanding-window CV, baseline comparison |
+| `04_adr_forecasting.ipynb` | NEW | Tabular ADR regressor (no time-series — N too small), feature importance, residual analysis |
 | `05_explainability.ipynb` | NEW | SHAP feature importance, beeswarm, 3 individual examples, Portugal vs PH SHAP comparison |
+| `06_business_analytics.ipynb` | NEW | Cancellation rate / revenue exposure by deposit, room type, lead-time band; monthly revenue-at-risk |
+| `07_model_selection.ipynb` | NEW | 3-way calibrated comparison (LGBM/XGB/GB), bootstrap CIs, paired delta forest |
+| `08_model_monitoring.ipynb` | NEW | Runnable monitoring template — baseline + live `/predict` log, PSI drift, risk-tier mix |
+| `09_model_comparison.ipynb` | NEW | Per-row probability spread, family-disagreement table, mean-of-3 ensemble vs champion |
 | `10_sensitivity_analysis.ipynb` | NEW | Cost sensitivity, data hunger, threshold policy trade-offs |
-| `11_transferability.ipynb` | MOVED (reframed) | Dataset cluster characterization + chronological-twin effect + thesis framing |
-| `README.md` | NEW | Suite overview + omission rationale |
+| `11_transferability.ipynb` | NEW (real-data reframe) | Pre-flight diagnostic outcome + real-data metrics + defense framing |
+| `README.md` | NEW | Suite overview + small-N caveat narrative |
 
-### Notebooks deliberately NOT mirrored
+### All Portugal notebooks now have a PH counterpart
 
-- **04 (ADR forecasting)** — 300 rows over 3 years too thin for time-series story
-- **06 (business analytics)** — requires segment breakdowns (country, market segment, customer type) PH cannot provide
-- **07 (model selection)** — rolling-origin selection on 300 rows gives bootstrap CIs ±15pp wide
-- **08 (monitoring)** — requires live production deployment data (does not exist for PH)
-- **09 (model comparison)** — same reason as 07
+The PH suite mirrors Portugal 01 through 10 plus the methodology
+contribution in 11. Each PH notebook reports the result of running the
+same methodology on n ≈ 193 real PMS rows; small-N caveats (±15-30 pp
+bootstrap CIs, family CIs that overlap, overfit ADR regressor) are
+called out in each notebook rather than hidden by omission.
 
-### Headline finding (dataset cluster structure)
-After feature engineering, **77% of PH rows share an identical feature vector
-with another row**, and **100% of those duplicate clusters share a single
-label**. The Philippine resort dataset is organized around a small set of
-recurring booking archetypes — a structural property of the data rather than
-a quality concern. The chronological 80/10/10 split lands 100% of test rows
-next to an identical train/val twin, which produces inflated test metrics
-(PR-AUC = 1.000) via memorization across twins, not generalization to unseen
-customers.
+### Headline real-data findings (2026-05-20 retrain on real PMS export)
+| Metric | Real PH (193) | Portugal (119k) |
+|---|---|---|
+| Train / Val / Test | 154 / 19 / 20 | 95k / 12k / 12k |
+| Test ROC-AUC | ≈ 0.61 | 0.86 |
+| Test PR-AUC | ≈ 0.54 | 0.76 |
+| Top SHAP feature | `deposit_type` | `lead_time` |
+| Duplicate rate (pre-flight) | **~0 %** — diagnostic does NOT fire | ~0 % |
+
+Bootstrap 95 % CIs on PR-AUC span roughly ±15 percentage points at n_test = 20,
+so the PH metrics are *directional*, not headlines. The PR-AUC gap to Portugal
+is the expected cost of (a) ~500× fewer training rows, (b) a narrower feature
+menu (still no country/market_segment/agent/customer_type/previous_cancellations),
+and (c) different geography/property type.
 
 ### Defense-grade framing
-The sub-study is reported in the thesis as a methodology contribution:
+The sub-study is reported in the thesis as a methodology-survives-transfer
+result with two contributions:
 
-> *"We attempted a transferability probe on a 300-row Philippine resort dataset.
-> The dataset is organized around recurring booking archetypes — a structural
-> property visible in the duplicate-cluster diagnostics. Documenting this
-> characterization is more valuable than reporting the surface metrics: it
-> formalises a pre-flight check (`duplicate_rate` ≥ 0.30 +
-> `clusters_with_consistent_labels_pct` ≥ 0.90 ⇒ archetype-organized dataset)
-> that should run before any transferability claim, and it bounds the
-> generalization claims our methodology can credibly support across geographies."*
+> *"We re-ran the methodology on a 193-row real-data Philippine resort sub-study.
+> The generic pre-flight duplicate-cluster diagnostic (`duplicate_rate ≥ 0.30`
+> AND `clusters_with_consistent_labels_pct ≥ 0.90`) ran on the new export
+> and did not fire — the methodology operates honestly on this data, and
+> reported test metrics measure generalization rather than memorization
+> across chronological twins. The PR-AUC gap to Portugal (0.54 vs 0.76) is
+> the expected cost of ~500× less training data and a narrower feature menu.
+> The defensible claim is 'same methodology, weaker model' — exactly what a
+> transferability probe should produce when the destination dataset is
+> genuinely smaller and feature-poorer."*
 
 ### What is deliberately NOT done
 - The PH model is **not** added to `make benchmark`, `make thesis`, or CI
@@ -704,7 +729,7 @@ The sub-study is reported in the thesis as a methodology contribution:
 - `src/utils/validate_data.py::clean_raw_ph` — normalisation step
 - `src/eval/notebook_utils.py::load_ph_context` — PH-side context loader
 - `src/serving/inference_ph.py` — PH-side prediction (parallel to `inference.py`)
-- `src/app/ph_schemas.py` — `PHBookingRequest` Pydantic model (8 raw fields)
+- `src/app/ph_schemas.py` — `PHBookingRequest` Pydantic model (10 raw fields incl. deposit_type + special_requests)
 - `src/app/ph_main.py` — FastAPI server (port 8001)
 - `src/app/ph_ui.py` — Gradio UI (mounted at `/ui` and standalone on 7861)
 - `src/config.py::PH_*` constants — feature list, target column, paths
