@@ -152,6 +152,8 @@ def _engineer_ph_features(raw: dict[str, Any]) -> pd.DataFrame:
         "Babies": raw.get("babies", 0),
         "ADR_Rate": raw.get("adr", 0.0),
         "Room_Type": raw.get("reserved_room_type", "Standard Room"),
+        "Deposit_Type": raw.get("deposit_type", "No Deposit"),
+        "Special_Requests": int(raw.get("total_of_special_requests", 0) or 0),
         "Booking_Status": "Checked-in",  # placeholder, cleaned out
         "Arrival_Date": raw.get("arrival_date"),
         # Constants the cleaner expects but drops anyway

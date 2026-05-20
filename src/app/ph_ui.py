@@ -42,30 +42,34 @@ logger = logging.getLogger(__name__)
 
 DATASET_BANNER_HTML = """
 <div style="
-    border-left: 6px solid #d97706;
-    background: #fef3c7;
+    border-left: 6px solid #2563eb;
+    background: #dbeafe;
     padding: 14px 18px;
     border-radius: 6px;
     margin-bottom: 14px;
     font-family: ui-sans-serif, system-ui, sans-serif;
 ">
-    <strong style="font-size: 1.05rem; color: #92400e;">
-        Philippine dataset sub-study — demonstration server
+    <strong style="font-size: 1.05rem; color: #1e3a8a;">
+        Philippine resort sub-study — real-data demonstration server
     </strong>
-    <p style="margin: 8px 0 0; color: #78350f; line-height: 1.45;">
+    <p style="margin: 8px 0 0; color: #1e3a8a; line-height: 1.45;">
         This server runs the PH cancellation model trained on the
-        <strong>Philippine resort dataset (300 booking records, 2022-2024)</strong>.
-        The dataset's cluster structure (repeated booking archetypes
-        appearing across the chronological split) inflates test-set scores
-        via memorization — PR-AUC = 1.000 reflects archetype recall, not
-        novel-customer generalization. Use this for thesis demonstration only.
+        <strong>real Punta Villa Resort PMS export (193 booking records,
+        2022-2025)</strong>. The dataset is small (n_test ≈ 20 rows) and
+        bootstrap CIs on PR-AUC span roughly ±15 percentage points, so
+        treat the displayed metrics as directional rather than as
+        production-grade headlines.
     </p>
 </div>
 """
 
 
-def _load_room_type_choices() -> list[str]:
-    """Read distinct reserved_room_type values from the saved test predictions."""
+def _load_categorical_choices(*column_aliases: str, fallback: list[str]) -> list[str]:
+    """Read distinct values for a column from test predictions or raw CSV.
+
+    Tries each candidate column name in turn (the cleaned report uses
+    the project-canonical name, the raw CSV uses the PMS export name).
+    """
     candidates: list[Path] = [
         PH_REPORTS_DIR / "ph_test_predictions.csv",
         PH_DATA_PATH,
@@ -77,15 +81,25 @@ def _load_room_type_choices() -> list[str]:
             df = pd.read_csv(path)
         except Exception:  # pragma: no cover — defensive
             continue
-        for col in ("reserved_room_type", "Room_Type_Reserved"):
+        for col in column_aliases:
             if col in df.columns:
                 values = sorted({str(v).strip() for v in df[col].dropna() if str(v).strip()})
                 if values:
                     return values
-    return ["A", "B", "C"]
+    return fallback
 
 
-_ROOM_TYPES = _load_room_type_choices()
+_ROOM_TYPES = _load_categorical_choices(
+    "reserved_room_type",
+    "Room_Type",
+    "Room_Type_Reserved",
+    fallback=["Standard Room", "De Luxe Room", "Group Room", "Presidential Room"],
+)
+_DEPOSIT_TYPES = _load_categorical_choices(
+    "deposit_type",
+    "Deposit_Type",
+    fallback=["No Deposit", "Partial", "Non-Refundable"],
+)
 
 
 def _format_pct(prob: float) -> str:
@@ -142,6 +156,8 @@ def _predict_via_ui(
     babies: float,
     adr: float,
     reserved_room_type: str,
+    deposit_type: str,
+    total_of_special_requests: float,
 ) -> tuple[str, str, str]:
     """Glue the Gradio inputs to the predict_ph() pipeline."""
     try:
@@ -165,6 +181,8 @@ def _predict_via_ui(
             babies=int(babies),
             adr=float(adr),
             reserved_room_type=str(reserved_room_type),
+            deposit_type=str(deposit_type),
+            total_of_special_requests=int(total_of_special_requests),
         )
     except (ValueError, TypeError) as exc:
         return f"<div style='color:#dc2626'>Invalid input: {exc}</div>", "", ""
@@ -220,13 +238,14 @@ def _predict_via_ui(
 
 def build_ph_ui() -> gr.Blocks:
     """Construct the PH Gradio Blocks UI."""
-    with gr.Blocks(title="PH Cancellation — Philippine Dataset Sub-Study") as demo:
+    with gr.Blocks(title="PH Cancellation — Philippine Resort Sub-Study") as demo:
         gr.HTML(DATASET_BANNER_HTML)
         gr.Markdown(
-            "# PH Cancellation Predictor — Philippine Dataset Sub-Study\n\n"
+            "# PH Cancellation Predictor — Philippine Resort Sub-Study\n\n"
             "Enter a booking below and the model returns a cancellation "
             "probability, a risk tier (low/medium/high), and which features "
-            "pushed the prediction in which direction."
+            "pushed the prediction in which direction. Backed by the real "
+            "Punta Villa Resort PMS export (193 bookings, 2022-2025)."
         )
 
         with gr.Row():
@@ -235,7 +254,7 @@ def build_ph_ui() -> gr.Blocks:
                 lead_time = gr.Number(label="Lead time (days)", value=30, precision=0, minimum=0)
                 arrival_date_str = gr.Textbox(
                     label="Arrival date (YYYY-MM-DD)",
-                    value="2024-12-15",
+                    value="2025-12-15",
                 )
                 with gr.Row():
                     weekend_nights = gr.Number(
@@ -246,11 +265,22 @@ def build_ph_ui() -> gr.Blocks:
                     adults = gr.Number(label="Adults", value=2, precision=0, minimum=1)
                     children = gr.Number(label="Children", value=0, precision=0, minimum=0)
                     babies = gr.Number(label="Babies", value=0, precision=0, minimum=0)
-                adr = gr.Number(label="ADR (PHP)", value=4500.0, minimum=0)
+                adr = gr.Number(label="ADR (PHP)", value=3500.0, minimum=0)
                 reserved_room_type = gr.Dropdown(
                     label="Reserved room type",
                     choices=_ROOM_TYPES,
                     value=_ROOM_TYPES[0] if _ROOM_TYPES else None,
+                )
+                deposit_type = gr.Dropdown(
+                    label="Deposit policy",
+                    choices=_DEPOSIT_TYPES,
+                    value=_DEPOSIT_TYPES[0] if _DEPOSIT_TYPES else None,
+                )
+                total_of_special_requests = gr.Number(
+                    label="Special requests",
+                    value=0,
+                    precision=0,
+                    minimum=0,
                 )
                 submit = gr.Button("Predict", variant="primary")
 
@@ -274,19 +304,20 @@ def build_ph_ui() -> gr.Blocks:
                 babies,
                 adr,
                 reserved_room_type,
+                deposit_type,
+                total_of_special_requests,
             ],
             outputs=[result_summary, thresholds_block, features_block],
         )
 
         gr.Markdown(
             "---\n"
-            "**Why these results look the way they do**: the Philippine "
-            "dataset's cluster structure means bookings that match a "
-            "training archetype receive deterministic predictions "
-            "(probability near 0 or 1). For novel bookings that don't match "
-            "any archetype, the model extrapolates without a meaningful "
-            "confidence signal — interpret the output as a demonstration of "
-            "the pipeline, not as a production prediction."
+            "**How to read these results**: the model was trained on 193 "
+            "real bookings (n_test ≈ 20); bootstrap 95 % CIs on PR-AUC span "
+            "roughly ±15 percentage points. Treat the probability as a "
+            "directional signal rather than a calibrated production "
+            "prediction. The top contributing features below show which "
+            "fields of *this specific booking* pushed the score up or down."
         )
 
     return demo

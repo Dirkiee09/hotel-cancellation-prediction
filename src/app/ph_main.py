@@ -42,22 +42,22 @@ from src.serving.prediction_log_ph import export_ph_to_csv, log_ph_prediction
 logger = logging.getLogger(__name__)
 
 DATASET_CAVEAT = (
-    "This server runs the PH sub-study model trained on the Philippine "
-    "resort dataset (300 booking records, 2022-2024). The dataset's "
-    "cluster structure (repeated booking archetypes across the chronological "
-    "split) causes predictions to reflect memorization rather than "
-    "novel-customer generalization. Use for thesis demonstration only."
+    "This server runs the PH sub-study model trained on the real Punta Villa "
+    "Resort PMS export (193 booking records, 2022-2025). The training set is "
+    "small (n_test ≈ 20 rows) so bootstrap 95% CIs on PR-AUC span roughly "
+    "±15 percentage points — treat displayed metrics as directional rather "
+    "than as production-grade headlines."
 )
 
 app = FastAPI(
-    title="Hotel Cancellation — Philippine Dataset Sub-Study",
+    title="Hotel Cancellation — Philippine Resort Sub-Study",
     description=(
-        "Demonstration server for the Philippine dataset sub-study.\n\n"
+        "Demonstration server for the Philippine resort sub-study.\n\n"
         f"⚠️ **{DATASET_CAVEAT}**\n\n"
         "See `CLAUDE.md` § *PH Sub-Study* and "
         "`notebooks/ph/11_transferability.ipynb` for the full context."
     ),
-    version="0.1.0",
+    version="0.2.0",
 )
 
 

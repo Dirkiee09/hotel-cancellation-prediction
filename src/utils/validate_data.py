@@ -151,27 +151,36 @@ def validate_raw(df: pd.DataFrame) -> ValidationResult:
 
 
 # ── Philippine transferability probe ─────────────────────────────────
-# These helpers normalise the PH raw export (Punta_Villa_Resort_2022_2024.csv)
-# to the project's canonical column shape, so downstream feature engineering
-# (add_derived_booking_features) can be reused. The PH pipeline lives in
-# scripts/train_ph.py; this module just provides the data layer.
+# These helpers normalise the real Punta Villa Resort PMS export to the
+# project's canonical column shape, so downstream feature engineering
+# (add_derived_booking_features) can be reused. The real export ships
+# with deposit_type and total_of_special_requests — both top-10 Portugal
+# SHAP features that the earlier synthetic CSV deliberately lacked.
+# The PH pipeline lives in scripts/train_ph.py; this module just
+# provides the data layer.
 
 
 def clean_raw_ph(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
     """Normalise PH raw data to the project's canonical column shape.
 
     Steps:
-        1. Rename PH columns to project-canonical names (Lead_Time_Days
-           -> lead_time, etc.) via ``PH_COLUMN_RENAMES``.
-        2. Binarise ``Booking_Status`` ("Cancelled" -> 1, "Checked-in" -> 0)
-           into ``is_canceled``.
-        3. Parse ``Arrival_Date`` into year/month/day_of_month columns and
+        1. Drop redundant / leaky / collision-prone raw columns that the
+           real PMS export adds (Total_Cost is leaky; Arrival_Year/Month/
+           DayOfWeek and Total_Guests are re-derived; Is_Canceled would
+           collide with the canonical ``is_canceled`` derived in step 3).
+        2. Rename PH source columns to project-canonical names via
+           ``PH_COLUMN_RENAMES`` (Lead_Time_Days -> lead_time,
+           Deposit_Type -> deposit_type, etc.).
+        3. Binarise ``Booking_Status`` ("Cancelled" -> 1, "Checked-in" -> 0)
+           into ``is_canceled`` — kept as the single source of truth even
+           when a raw Is_Canceled column was present.
+        4. Parse ``Arrival_Date`` into year/month/day_of_month columns and
            a month-name string column, so ``add_derived_booking_features``
            can compute ``month_sin``/``month_cos``.
-        4. Drop constant-variance columns (``Meals``, ``Guest_Type``),
+        5. Drop constant-variance columns (``Meals``, ``Guest_Type``),
            the original status/date/ID columns, and the redundant
            ``Nights_Stayed`` (which equals ``Weekend_Nights + Week_Nights``).
-        5. Apply the Portugal-shared feature derivation helper so the
+        6. Apply the Portugal-shared feature derivation helper so the
            output exposes ``total_stay``, ``total_guests``, ``month_sin``,
            ``revenue_at_risk``, etc.
 
@@ -182,6 +191,20 @@ def clean_raw_ph(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
     """
     issues: dict[str, int] = {}
     out = df.copy()
+
+    # Drop raw real-export columns that would shadow derived ones or
+    # leak target-correlated information. Done BEFORE the rename so the
+    # name-collision case (raw Is_Canceled vs derived is_canceled) is
+    # never reachable.
+    pre_rename_drops = [
+        "Is_Canceled",  # would collide with derived is_canceled
+        "Arrival_Year",  # re-parsed from Arrival_Date below
+        "Arrival_Month",  # re-parsed from Arrival_Date below
+        "Arrival_DayOfWeek",  # not used by current PH features
+        "Total_Cost",  # leaky given adr * total_stay
+        "Total_Guests",  # re-derived by add_derived_booking_features
+    ]
+    out = out.drop(columns=[c for c in pre_rename_drops if c in out.columns])
 
     out = out.rename(columns=PH_COLUMN_RENAMES)
 
