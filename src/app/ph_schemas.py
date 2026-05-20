@@ -1,9 +1,10 @@
 """Pydantic schemas for the PH (Philippine dataset) sub-study API.
 
-Reduced PH feature set (8 raw + arrival date) vs Portugal's 32 fields. Field
-validation mirrors src/app/schemas.py where applicable; the rest of the
-fields the Portugal schema requires (country, agent, deposit_type, etc.) are
-NOT present in the PH PMS export, so they are deliberately omitted here.
+PH feature set is closer to Portugal's now that the real PMS export ships
+with deposit_type and total_of_special_requests. Country/agent/
+market_segment/customer_type/previous_cancellations are still absent from
+the PMS export, so the schema deliberately omits them. Field validation
+mirrors src/app/schemas.py where applicable.
 """
 
 from __future__ import annotations
@@ -43,10 +44,21 @@ class PHBookingRequest(BaseModel):
         min_length=1,
         description="Room type code (e.g., 'Standard', 'Deluxe')",
     )
+    deposit_type: str = Field(
+        ...,
+        min_length=1,
+        description="Deposit policy (e.g., 'No Deposit', 'Partial', 'Non-Refundable')",
+    )
+    total_of_special_requests: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        description="Count of special requests on the booking",
+    )
 
-    @field_validator("reserved_room_type", mode="before")
+    @field_validator("reserved_room_type", "deposit_type", mode="before")
     @classmethod
-    def _coerce_room_type(cls, value: object) -> str:
+    def _coerce_string_field(cls, value: object) -> str:
         if value is None:
             return ""
         return str(value).strip()
@@ -97,6 +109,8 @@ class PHBookingRequest(BaseModel):
             "babies": self.babies,
             "adr": self.adr,
             "reserved_room_type": self.reserved_room_type,
+            "deposit_type": self.deposit_type,
+            "total_of_special_requests": self.total_of_special_requests,
             "arrival_date": arrival,
         }
 

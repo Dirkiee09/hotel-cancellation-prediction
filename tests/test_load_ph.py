@@ -15,21 +15,21 @@ from src.data.load_ph import load_ph_data
 from src.utils.validate_data import clean_raw_ph, validate_raw_ph
 
 
-def test_load_ph_returns_300_rows() -> None:
-    """The PH CSV ships with 300 rows; alert if the file gets swapped."""
+def test_load_ph_returns_expected_rows() -> None:
+    """The real PH CSV ships with 193 rows; alert if the file gets swapped."""
     df = load_ph_data()
     assert isinstance(df, pd.DataFrame)
-    assert len(df) == 300
+    assert len(df) == 193
     assert "Booking_Status" in df.columns
 
 
 def test_clean_raw_ph_binarises_target() -> None:
-    """Target must become {0, 1}; specifically 82 cancellations expected."""
+    """Target must become {0, 1}; 29 cancellations expected in the real data."""
     df = load_ph_data()
     cleaned, _ = clean_raw_ph(df)
     assert PH_TARGET_COL in cleaned.columns
     assert set(cleaned[PH_TARGET_COL].unique()) <= {0, 1}
-    assert int(cleaned[PH_TARGET_COL].sum()) == 82
+    assert int(cleaned[PH_TARGET_COL].sum()) == 29
 
 
 def test_clean_raw_ph_renames_to_canonical_columns() -> None:
@@ -45,6 +45,8 @@ def test_clean_raw_ph_renames_to_canonical_columns() -> None:
         "babies",
         "adr",
         "reserved_room_type",
+        "deposit_type",
+        "total_of_special_requests",
     ):
         assert col in cleaned.columns, f"missing canonical column: {col}"
 
@@ -73,7 +75,7 @@ def test_clean_raw_ph_parses_arrival_date_components() -> None:
     assert "arrival_date_year" in cleaned.columns
     assert "arrival_date_month" in cleaned.columns
     assert "arrival_date_day_of_month" in cleaned.columns
-    assert cleaned["arrival_date_year"].between(2022, 2024).all()
+    assert cleaned["arrival_date_year"].between(2022, 2025).all()
     assert cleaned["arrival_date_day_of_month"].between(1, 31).all()
 
 

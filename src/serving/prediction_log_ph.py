@@ -1,8 +1,10 @@
 """SQLite-backed audit log for the PH /predict endpoint.
 
-Parallel to src/serving/prediction_log.py but with the reduced PH schema:
-8 booking-time input fields (no country / deposit_type / market_segment) +
+Parallel to src/serving/prediction_log.py with the PH schema: booking-time
+input fields including deposit_type and total_of_special_requests + the
 PH-specific output fields (no cost_sensitive policy, no ADR forecast).
+Country / market_segment / customer_type / agent are still absent because
+the PMS export does not record them.
 
 Power BI integration story:
     PH FastAPI /predict
@@ -12,7 +14,7 @@ Power BI integration story:
 
 Design contract (same as Portugal logger):
     * Logging is a side-effect — MUST NOT crash the /predict response.
-    * Connection-per-call. Idempotent CREATE TABLE.
+    * Connection-per-call. Idempotent CREATE TABLE + ALTER TABLE migration.
     * Failures log at WARNING level, never raise.
 """
 
@@ -42,6 +44,8 @@ _INPUT_COLUMNS = (
     "babies",
     "adr",
     "reserved_room_type",
+    "deposit_type",
+    "total_of_special_requests",
 )
 
 _OUTPUT_COLUMNS = (
@@ -71,6 +75,8 @@ CREATE TABLE IF NOT EXISTS ph_predictions (
     babies INTEGER,
     adr REAL,
     reserved_room_type TEXT,
+    deposit_type TEXT,
+    total_of_special_requests INTEGER,
     probability REAL,
     label_max_f1 INTEGER,
     label_high_precision INTEGER,
@@ -86,12 +92,30 @@ _CREATE_INDEX_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_ph_risk_tier ON ph_predictions (risk_tier);",
 )
 
+# Columns to add to a pre-existing ph_predictions table on init_db().
+# Mirrors src/serving/prediction_log.py::_NULLABLE_ADDITIONS — idempotent
+# ALTER TABLE so an old SQLite file from a previous schema version picks
+# up the new columns automatically. (We wiped the DB during the dataset
+# swap; this is belt-and-braces for any future schema additions.)
+_NULLABLE_ADDITIONS = (
+    ("deposit_type", "TEXT"),
+    ("total_of_special_requests", "INTEGER"),
+)
+
 
 def init_db(db_path: Path = PH_PREDICTION_LOG_DB) -> None:
-    """Create the ph_predictions table + indexes if missing."""
+    """Create the ph_predictions table + indexes if missing.
+
+    Also applies idempotent ALTER TABLE migrations to add new columns to
+    pre-existing DBs whose schema predates the latest feature additions.
+    """
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute(_CREATE_TABLE_SQL)
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(ph_predictions)")}
+        for col, sql_type in _NULLABLE_ADDITIONS:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE ph_predictions ADD COLUMN {col} {sql_type}")  # nosec B608
         for stmt in _CREATE_INDEX_SQL:
             conn.execute(stmt)
         conn.commit()
