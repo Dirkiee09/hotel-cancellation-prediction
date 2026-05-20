@@ -190,12 +190,12 @@ def predict(payload: PHBookingRequest, background_tasks: BackgroundTasks) -> PHP
 def _mount_gradio(app_: FastAPI) -> FastAPI:
     """Attach the PH Gradio UI at /ui (lazy import to avoid heavy startup cost)."""
     try:
-        from src.app.ph_ui import build_ph_ui
+        from src.app.ph_ui import PH_CSS, build_ph_ui
     except ImportError as exc:  # pragma: no cover — defensive
         logger.warning("PH Gradio UI not available: %s", exc)
         return app_
     ui = build_ph_ui()
-    return gr.mount_gradio_app(app_, ui, path="/ui")
+    return gr.mount_gradio_app(app_, ui, path="/ui", css=PH_CSS)
 
 
 app = _mount_gradio(app)

@@ -1,33 +1,42 @@
-"""Gradio UI for the PH (Philippine dataset) sub-study.
+"""Gradio UI for the PH (Philippine resort) sub-study.
 
-Minimal form-driven UI for the PH cancellation model. Designed to be
-launched either standalone (``python src/app/ph_ui.py``) on port 7861 or
-mounted inside the FastAPI app at ``/ui``.
+Redesigned to mirror the Portugal UI (src/app/ui.py) so the two servers
+present a consistent visual identity for a side-by-side defense demo.
+The PH UI is intentionally narrower in scope:
 
-This UI is deliberately simpler than the Portugal Gradio UI in src/app/ui.py:
-- No cohort distribution stats
-- No example bookings dropdown
-- No PowerBI export hook
+  * 10 input fields (vs Portugal's 21) — no country / market_segment /
+    customer_type / agent / previous cancellations / parking / meal.
+  * 2 threshold policies — max_f1 and high_precision (no cost_sensitive,
+    because n_val ≈ 19 is too thin to fit a reliable cost curve).
+  * Small-sample caveat strip immediately below the hero metrics — the
+    most important UX signal panelists need.
+  * Help tab cross-references the 11-notebook PH suite, so a curious
+    reader can follow up on any number they see in the UI.
 
-Every /predict still appends to ``data/predictions/ph_predictions.sqlite``
-via the FastAPI BackgroundTask wired in ``ph_main.py``. A prominent banner
-explains the Philippine dataset's structural properties so a defense
-audience reads the test metrics correctly.
+The Gradio submit handler appends every prediction to
+``data/predictions/ph_predictions.sqlite`` (and refreshes the CSV) so
+Power BI sees activity regardless of whether the call came from HTTP or
+from this UI button — same contract as the Portugal UI.
 """
 
 from __future__ import annotations
 
+import json
 import logging
-from datetime import date
+from datetime import date, datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import gradio as gr
 import pandas as pd
+from pydantic import ValidationError
 
 from src.app.ph_schemas import PHBookingRequest
+from src.app.ui import BACKGROUND_CSS  # reuse Portugal's design system
 from src.config import (
     PH_DATA_PATH,
+    PH_PREDICTION_LOG_DB,
     PH_REPORTS_DIR,
     RISK_TIER_HIGH_THRESHOLD,
     RISK_TIER_MEDIUM_THRESHOLD,
@@ -37,39 +46,22 @@ from src.serving.inference_ph import (
     get_cached_ph_artifacts,
     predict_ph,
 )
+from src.serving.prediction_log_ph import export_ph_to_csv, log_ph_prediction
 
 logger = logging.getLogger(__name__)
 
-DATASET_BANNER_HTML = """
-<div style="
-    border-left: 6px solid #2563eb;
-    background: #dbeafe;
-    padding: 14px 18px;
-    border-radius: 6px;
-    margin-bottom: 14px;
-    font-family: ui-sans-serif, system-ui, sans-serif;
-">
-    <strong style="font-size: 1.05rem; color: #1e3a8a;">
-        Philippine resort sub-study — real-data demonstration server
-    </strong>
-    <p style="margin: 8px 0 0; color: #1e3a8a; line-height: 1.45;">
-        This server runs the PH cancellation model trained on the
-        <strong>real Punta Villa Resort PMS export (193 booking records,
-        2022-2025)</strong>. The dataset is small (n_test ≈ 20 rows) and
-        bootstrap CIs on PR-AUC span roughly ±15 percentage points, so
-        treat the displayed metrics as directional rather than as
-        production-grade headlines.
-    </p>
-</div>
-"""
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PH_TRANSFERABILITY_PATH = PH_REPORTS_DIR / "ph_transferability.json"
+PH_SHAP_IMPORTANCE_PATH = PH_REPORTS_DIR / "shap_feature_importance.csv"
+
+
+# ---------------------------------------------------------------------------
+# Categorical-choice loading (auto-detected from CSV, with fallbacks)
+# ---------------------------------------------------------------------------
 
 
 def _load_categorical_choices(*column_aliases: str, fallback: list[str]) -> list[str]:
-    """Read distinct values for a column from test predictions or raw CSV.
-
-    Tries each candidate column name in turn (the cleaned report uses
-    the project-canonical name, the raw CSV uses the PMS export name).
-    """
+    """Distinct values for a column, scanning test predictions then raw CSV."""
     candidates: list[Path] = [
         PH_REPORTS_DIR / "ph_test_predictions.csv",
         PH_DATA_PATH,
@@ -92,7 +84,6 @@ def _load_categorical_choices(*column_aliases: str, fallback: list[str]) -> list
 _ROOM_TYPES = _load_categorical_choices(
     "reserved_room_type",
     "Room_Type",
-    "Room_Type_Reserved",
     fallback=["Standard Room", "De Luxe Room", "Group Room", "Presidential Room"],
 )
 _DEPOSIT_TYPES = _load_categorical_choices(
@@ -102,53 +93,318 @@ _DEPOSIT_TYPES = _load_categorical_choices(
 )
 
 
-def _format_pct(prob: float) -> str:
-    return f"{prob * 100:.1f}%"
+# ---------------------------------------------------------------------------
+# Hero metrics + caveat strip
+# ---------------------------------------------------------------------------
 
 
-def _risk_band(prob: float) -> tuple[str, str, str]:
-    """Return (label, color, recommendation) for the risk tier."""
-    if prob >= RISK_TIER_HIGH_THRESHOLD:
-        return "HIGH", "#dc2626", "Contact guest to confirm; consider overbooking buffer."
-    if prob >= RISK_TIER_MEDIUM_THRESHOLD:
-        return "MEDIUM", "#d97706", "Monitor; gentle reminder email a week before arrival."
-    return "LOW", "#16a34a", "Standard handling."
+@lru_cache(maxsize=1)
+def _load_ph_metrics() -> dict[str, Any] | None:
+    """Read ph_transferability.json once; return None if missing."""
+    if not PH_TRANSFERABILITY_PATH.exists():
+        return None
+    try:
+        return json.loads(PH_TRANSFERABILITY_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("ph_metrics_load_failed error=%s", exc)
+        return None
 
 
-def _format_top_features(top: list[dict[str, Any]]) -> str:
-    if not top:
-        return "<em>No feature contributions returned (SHAP unavailable).</em>"
-    rows = []
-    for entry in top:
-        feature = entry.get("feature", "?")
-        value = entry.get("value", "?")
-        contrib = entry.get("contribution", 0.0)
-        direction = "↑ toward cancel" if (contrib or 0.0) > 0 else "↓ toward stay"
-        color = "#dc2626" if (contrib or 0.0) > 0 else "#16a34a"
-        rows.append(
-            f"<tr>"
-            f"<td style='padding:6px 10px'><code>{feature}</code></td>"
-            f"<td style='padding:6px 10px'>{value}</td>"
-            f"<td style='padding:6px 10px;color:{color};font-weight:600'>"
-            f"{contrib:+.4f} <span style='opacity:0.7'>({direction})</span>"
-            f"</td>"
-            f"</tr>"
+def _hero_metrics_line() -> str:
+    """Render PH headline metrics as compact KPI chips.
+
+    Mirrors src/app/ui.py::_hero_metrics_line but reads the PH artefact.
+    Four chips: ROC-AUC, PR-AUC, F1@max_f1, ECE — all from
+    reports/ph/ph_transferability.json.
+    """
+    data = _load_ph_metrics()
+    if data is None:
+        return (
+            "<p class='kpi-muted'>PH model metrics not available — "
+            "run <code>python scripts/train_ph.py</code>.</p>"
         )
-    body = "".join(rows)
+    try:
+        roc = data["roc_auc_test"]
+        pr = data["pr_auc_test"]
+        f1 = data["max_f1"]["f1"]
+        ece = data.get("ece_test")
+        chips: list[tuple[str, str]] = [
+            ("ROC-AUC", f"{float(roc):.3f}"),
+            ("PR-AUC", f"{float(pr):.3f}"),
+            ("F1 @ max_f1", f"{float(f1):.3f}"),
+        ]
+        if ece is not None:
+            chips.append(("Calibration (ECE)", f"{float(ece):.3f}"))
+        return (
+            "<div class='kpi-row'>"
+            + "".join(
+                f"<span class='kpi-chip'><span class='kpi-label'>{label}</span>"
+                f"<span class='kpi-value'>{value}</span></span>"
+                for label, value in chips
+            )
+            + "</div>"
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.warning("ph_hero_metrics_render_failed error=%s", exc)
+        return "<p class='kpi-muted'>PH metrics shape unexpected — re-run training.</p>"
+
+
+def _model_lineage_chip() -> str:
+    """One-line lineage strip — family, n_train/n_val/n_test, trained at."""
+    data = _load_ph_metrics()
+    if data is None:
+        return ""
+    parts = []
+    family = (data.get("selected_model_family") or "lightgbm").upper()
+    n_train = data.get("n_train", "?")
+    n_val = data.get("n_val", "?")
+    n_test = data.get("n_test", "?")
+    parts.append(f"Champion: <strong>{family}</strong>")
+    parts.append(f"Train / Val / Test: {n_train} / {n_val} / {n_test}")
+    return "<p class='hero-meta'>" + " &nbsp;·&nbsp; ".join(parts) + "</p>"
+
+
+CAVEAT_STRIP_HTML = """
+<div class='caveat-strip'>
+    <strong>Small-sample sub-study —</strong>
+    n_test ≈ 20 rows. Bootstrap 95 % CIs on PR-AUC span roughly ±15 percentage
+    points. Treat displayed metrics as <em>directional</em>, not as
+    production-grade headlines. The Portugal main study at
+    <code>http://localhost:8000/ui</code> (119k bookings) is the headline result.
+</div>
+"""
+
+
+# Additional PH-only CSS layered on top of the imported Portugal design system.
+# Exposed as PH_CSS (BACKGROUND_CSS + PH_EXTRA_CSS) so src/app/ph_main.py can
+# pass it to gr.mount_gradio_app() — Gradio 6 prefers css there over the
+# deprecated gr.Blocks(css=...) constructor argument.
+PH_EXTRA_CSS = """
+.hero-meta {
+    color: var(--text-2);
+    font-size: 13px;
+    margin: -16px 0 24px 0;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+.caveat-strip {
+    background: #FFFBEB;
+    border: 1px solid #FDE68A;
+    color: #78350F;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0 0 28px 0;
+}
+.caveat-strip strong { color: #92400E; }
+.caveat-strip code {
+    background: #FEF3C7;
+    color: #78350F;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+.kpi-muted {
+    color: var(--text-2);
+    font-size: 13px;
+    margin: 0 0 24px 0;
+}
+"""
+
+PH_CSS = BACKGROUND_CSS + PH_EXTRA_CSS
+
+
+# ---------------------------------------------------------------------------
+# Example scenarios for the "Examples" tab (PH-specific defaults)
+# ---------------------------------------------------------------------------
+
+EXAMPLES: dict[str, dict[str, Any]] = {
+    "high_risk": {
+        "label": "🔴 High cancellation risk",
+        "hint": "No Deposit + long lead + zero special requests — the model's worst-case profile.",
+        "values": {
+            "lead_time": 120,
+            "arrival_date": date(2025, 12, 15).isoformat(),
+            "weekend_nights": 2,
+            "week_nights": 3,
+            "adults": 1,
+            "children": 0,
+            "babies": 0,
+            "adr": 4500.0,
+            "reserved_room_type": "De Luxe Room",
+            "deposit_type": "No Deposit",
+            "total_of_special_requests": 0,
+        },
+    },
+    "medium_risk": {
+        "label": "🟠 Borderline cancellation risk",
+        "hint": "Partial deposit + moderate lead + one special request — near the decision boundary.",
+        "values": {
+            "lead_time": 45,
+            "arrival_date": date(2025, 11, 1).isoformat(),
+            "weekend_nights": 1,
+            "week_nights": 2,
+            "adults": 2,
+            "children": 0,
+            "babies": 0,
+            "adr": 3200.0,
+            "reserved_room_type": "Standard Room",
+            "deposit_type": "Partial",
+            "total_of_special_requests": 1,
+        },
+    },
+    "low_risk": {
+        "label": "🟢 Low cancellation risk",
+        "hint": "Non-Refundable + short lead + multiple special requests — strongly committed booking.",
+        "values": {
+            "lead_time": 7,
+            "arrival_date": date(2025, 10, 10).isoformat(),
+            "weekend_nights": 1,
+            "week_nights": 1,
+            "adults": 2,
+            "children": 1,
+            "babies": 0,
+            "adr": 5000.0,
+            "reserved_room_type": "Presidential Room",
+            "deposit_type": "Non-Refundable",
+            "total_of_special_requests": 3,
+        },
+    },
+}
+
+INPUT_KEYS = (
+    "lead_time",
+    "arrival_date",
+    "weekend_nights",
+    "week_nights",
+    "adults",
+    "children",
+    "babies",
+    "adr",
+    "reserved_room_type",
+    "deposit_type",
+    "total_of_special_requests",
+)
+
+
+def _form_defaults() -> dict[str, Any]:
+    """Sensible defaults populated on first load."""
+    return EXAMPLES["medium_risk"]["values"]
+
+
+# ---------------------------------------------------------------------------
+# Result rendering helpers
+# ---------------------------------------------------------------------------
+
+
+def _band_classname(prob: float) -> tuple[str, str]:
+    """Return (CSS-class, human-readable band) for a probability."""
+    if prob >= RISK_TIER_HIGH_THRESHOLD:
+        return "result-bad", "High"
+    if prob >= RISK_TIER_MEDIUM_THRESHOLD:
+        return "result-warn", "Medium"
+    return "result-good", "Low"
+
+
+def _format_probability(prob: float) -> str:
+    """B1 fix from Portugal: surface very-low probs as '<0.01%' not '0.00%'."""
+    if prob <= 0.0:
+        return "&lt;0.01%"
+    return f"{prob * 100:.2f}%"
+
+
+def _recommended_action(prob: float, band: str) -> str:
+    """The action block shown below the big probability."""
+    if band == "High":
+        text = (
+            "Contact the guest within 24 hours to confirm intent. "
+            "Consider an overbooking buffer for the arrival date."
+        )
+    elif band == "Medium":
+        text = (
+            "Send a gentle reminder one week before arrival. "
+            "Monitor cancellation rate in this cohort during the next quarter."
+        )
+    else:
+        text = "Standard handling. No proactive outreach required."
     return (
-        "<table style='border-collapse:collapse;margin-top:8px'>"
-        "<thead><tr style='background:#f3f4f6'>"
-        "<th style='padding:6px 10px;text-align:left'>Feature</th>"
-        "<th style='padding:6px 10px;text-align:left'>Value</th>"
-        "<th style='padding:6px 10px;text-align:left'>SHAP contribution</th>"
-        "</tr></thead>"
-        f"<tbody>{body}</tbody></table>"
+        "<div class='action-block'>"
+        "<p class='action-label'>Recommended action</p>"
+        f"<p class='action-text'>{text}</p>"
+        "</div>"
     )
 
 
-def _predict_via_ui(
+def _format_top_features(top: list[dict[str, Any]]) -> str:
+    """Mini-bar visualisation of the top SHAP contributors.
+
+    Mirrors src/app/ui.py's factor-row layout but with PH-friendly captions.
+    """
+    if not top:
+        return (
+            "<div class='factors-block'>"
+            "<p class='factors-title'>Top contributing features</p>"
+            "<p style='color:var(--text-2);font-size:13px;margin:0;'>"
+            "No feature contributions returned (SHAP unavailable).</p></div>"
+        )
+    # Normalise bar widths against the largest absolute contribution.
+    max_abs = max(abs(float(t.get("contribution", 0.0) or 0.0)) for t in top) or 1.0
+    rows: list[str] = []
+    for entry in top:
+        feature = str(entry.get("feature", "?"))
+        value = str(entry.get("value", "?"))
+        contrib = float(entry.get("contribution", 0.0) or 0.0)
+        width_pct = min(50.0, abs(contrib) / max_abs * 50.0)
+        direction = "cancel" if contrib > 0 else "stay"
+        bar_html = (
+            f"<div class='factor-bar-fill {direction}' "
+            f"style='width:{width_pct:.1f}%'></div>"
+            "<div class='factor-bar-mid'></div>"
+        )
+        rows.append(
+            "<div class='factor-row'>"
+            f"<div class='factor-name'><code>{feature}</code> "
+            f"<span style='color:var(--text-2);'>= {value}</span></div>"
+            f"<div class='factor-bar'>{bar_html}</div>"
+            f"<div class='factor-contrib'>{contrib:+.3f}</div>"
+            "</div>"
+        )
+    return (
+        "<div class='factors-block'>"
+        "<p class='factors-title'>Top contributing features "
+        "(red = pushes toward cancel · green = pushes toward stay)</p>" + "".join(rows) + "</div>"
+    )
+
+
+def _format_policy_grid(prob: float, thr_f1: float, thr_hp: float) -> str:
+    """2-cell policy grid (PH has no cost_sensitive policy)."""
+    verdict_f1 = "Flag as cancel" if prob >= thr_f1 else "Treat as stay"
+    verdict_hp = "Flag (high-confidence)" if prob >= thr_hp else "Treat as stay"
+    return (
+        "<div class='policy-grid' style='grid-template-columns:1fr 1fr;'>"
+        "<div class='policy-cell'>"
+        "<p class='policy-name'>Balanced (max F1)</p>"
+        f"<p class='policy-decision'>{verdict_f1}</p>"
+        f"<p class='policy-thr'>threshold {thr_f1:.2f}</p>"
+        "</div>"
+        "<div class='policy-cell'>"
+        "<p class='policy-name'>High-precision</p>"
+        f"<p class='policy-decision'>{verdict_hp}</p>"
+        f"<p class='policy-thr'>threshold {thr_hp:.2f}</p>"
+        "</div>"
+        "</div>"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Prediction handler
+# ---------------------------------------------------------------------------
+
+
+def predict_one(
     lead_time: float,
-    arrival_date_str: str,
+    arrival_date_val: Any,
     weekend_nights: float,
     week_nights: float,
     adults: float,
@@ -159,18 +415,45 @@ def _predict_via_ui(
     deposit_type: str,
     total_of_special_requests: float,
 ) -> tuple[str, str, str]:
-    """Glue the Gradio inputs to the predict_ph() pipeline."""
+    """Score one booking and render (headline, details, raw_json) HTML/JSON.
+
+    Same return contract as src/app/ui.py::predict_one so the UI layout
+    mirrors Portugal's exactly.
+    """
     try:
         artifacts = get_cached_ph_artifacts()
     except FileNotFoundError as exc:
         msg = (
-            f"<div style='color:#dc2626'>PH artifacts unavailable: {exc}<br>"
-            "Run <code>python scripts/train_ph.py</code> first.</div>"
+            f"<div class='prob-block'><p class='prob-label'>Error</p>"
+            f"<p style='color:var(--bad)'>PH artifacts unavailable: {exc}<br>"
+            "Run <code>python scripts/train_ph.py</code> first.</p></div>"
         )
         return msg, "", ""
 
+    # Parse arrival_date — gr.DateTime returns either a datetime, a date, or
+    # a string depending on the Gradio version. Handle each.
+    arrival: date
     try:
-        arrival = date.fromisoformat(arrival_date_str)
+        if isinstance(arrival_date_val, (datetime,)):
+            arrival = arrival_date_val.date()
+        elif isinstance(arrival_date_val, date):
+            arrival = arrival_date_val
+        elif isinstance(arrival_date_val, str):
+            arrival = date.fromisoformat(arrival_date_val[:10])
+        elif arrival_date_val is None:
+            arrival = date.today()
+        else:
+            # gr.DateTime in Gradio 6.x can yield a float (epoch seconds).
+            arrival = datetime.fromtimestamp(float(arrival_date_val)).date()
+    except (TypeError, ValueError) as exc:
+        return (
+            f"<div class='prob-block'><p class='prob-label'>Invalid input</p>"
+            f"<p style='color:var(--bad)'>Could not parse arrival date: {exc}</p></div>",
+            "",
+            "",
+        )
+
+    try:
         booking = PHBookingRequest(
             lead_time=int(lead_time),
             arrival_date=arrival,
@@ -184,143 +467,442 @@ def _predict_via_ui(
             deposit_type=str(deposit_type),
             total_of_special_requests=int(total_of_special_requests),
         )
-    except (ValueError, TypeError) as exc:
-        return f"<div style='color:#dc2626'>Invalid input: {exc}</div>", "", ""
+    except (ValueError, TypeError, ValidationError) as exc:
+        return (
+            f"<div class='prob-block'><p class='prob-label'>Invalid input</p>"
+            f"<p style='color:var(--bad)'>{exc}</p></div>",
+            "",
+            "",
+        )
 
     prob, feature_df = predict_ph(booking.to_inference_dict(), artifacts)
     thresholds = artifacts.thresholds or {}
     thr_f1 = float(thresholds.get("max_f1", {}).get("threshold", 0.5))
     thr_hp = float(thresholds.get("high_precision", {}).get("threshold", 0.9))
-    band_label, band_color, recommendation = _risk_band(prob)
+    band_css, band = _band_classname(prob)
+    pct_str = _format_probability(prob)
+
+    bar_pct = max(0.0, min(100.0, prob * 100.0))
+    headline = (
+        "<div class='prob-block'>"
+        "<p class='prob-label'>Cancellation probability</p>"
+        f"<div class='prob-number {band_css}'>{pct_str}</div>"
+        "<div class='prob-bar'>"
+        f"<div class='prob-bar-fill {band_css}' style='width:{bar_pct:.1f}%'></div>"
+        "</div>"
+        f"<div><span class='risk-badge {band_css}'>● {band} risk</span></div>"
+        "</div>"
+    )
+
     top = explain_ph_prediction(feature_df, artifacts, top_n=5)
+    parts = [
+        _recommended_action(prob, band),
+        _format_top_features(top),
+        _format_policy_grid(prob, thr_f1, thr_hp),
+    ]
 
-    summary = f"""
-    <div style="font-family:ui-sans-serif,system-ui,sans-serif">
-        <div style="font-size:2.1rem;font-weight:700;color:{band_color}">
-            {_format_pct(prob)} cancel probability
-        </div>
-        <div style="margin-top:4px;font-size:1.1rem">
-            Risk tier:
-            <strong style="color:{band_color}">{band_label}</strong>
-        </div>
-        <div style="margin-top:8px;color:#374151">
-            Recommendation: {recommendation}
-        </div>
-    </div>
-    """
+    raw: dict[str, Any] = {
+        "probability": prob,
+        "probability_display": pct_str.replace("&lt;", "<"),
+        "risk_band": band,
+        "thresholds": {"max_f1": thr_f1, "high_precision": thr_hp},
+        "decisions": {
+            "balanced": "Flag as cancel" if prob >= thr_f1 else "Treat as stay",
+            "high_precision": "Flag (high-confidence)" if prob >= thr_hp else "Treat as stay",
+        },
+        "top_features": top,
+        "scored_utc": datetime.now(timezone.utc).isoformat(),
+        "model_family": "lightgbm",
+        "dataset": "Punta Villa Resort PH 2022-2025 (193 rows)",
+    }
 
-    thresholds_block = f"""
-    <table style="border-collapse:collapse;margin-top:8px;font-family:ui-sans-serif,system-ui,sans-serif">
-        <tr style="background:#f3f4f6">
-            <th style="padding:6px 10px;text-align:left">Policy</th>
-            <th style="padding:6px 10px;text-align:left">Threshold</th>
-            <th style="padding:6px 10px;text-align:left">Decision</th>
-        </tr>
-        <tr>
-            <td style="padding:6px 10px">max_f1</td>
-            <td style="padding:6px 10px">{thr_f1:.3f}</td>
-            <td style="padding:6px 10px;font-weight:600">
-                {'FLAG as cancel' if prob >= thr_f1 else 'KEEP as stay'}
-            </td>
-        </tr>
-        <tr>
-            <td style="padding:6px 10px">high_precision</td>
-            <td style="padding:6px 10px">{thr_hp:.3f}</td>
-            <td style="padding:6px 10px;font-weight:600">
-                {'FLAG as cancel' if prob >= thr_hp else 'KEEP as stay'}
-            </td>
-        </tr>
-    </table>
-    """
+    # Log to SQLite + refresh CSV (mirrors Portugal pattern). The Gradio
+    # path doesn't go through /predict, so we have to log explicitly.
+    try:
+        if prob >= RISK_TIER_HIGH_THRESHOLD:
+            risk_tier = "high"
+        elif prob >= RISK_TIER_MEDIUM_THRESHOLD:
+            risk_tier = "medium"
+        else:
+            risk_tier = "low"
+        response_for_log = {
+            "probability": prob,
+            "label_max_f1": int(prob >= thr_f1),
+            "label_high_precision": int(prob >= thr_hp),
+            "risk_tier": risk_tier,
+            "threshold_max_f1": thr_f1,
+            "threshold_high_precision": thr_hp,
+            "alerts": [],
+            "top_features": top,
+        }
+        log_ph_prediction(booking.model_dump(mode="json"), response_for_log, PH_PREDICTION_LOG_DB)
+        export_ph_to_csv()
+    except Exception:
+        logger.exception("ph_ui_prediction_log_failed (non-fatal)")
 
-    return summary, thresholds_block, _format_top_features(top)
+    return headline, "\n".join(parts), json.dumps(raw, indent=2, default=str)
+
+
+def _populate_from_example(key: str) -> tuple[Any, ...]:
+    v = EXAMPLES[key]["values"]
+    return tuple(v[k] for k in INPUT_KEYS)
+
+
+def _reset_to_defaults() -> tuple[Any, ...]:
+    """Reset all fields + result panels to the medium-risk default scenario."""
+    d = _form_defaults()
+    return (
+        *(d[k] for k in INPUT_KEYS),
+        _SKELETON_HEADLINE,
+        _SKELETON_DETAILS,
+        "",
+    )
+
+
+_SKELETON_HEADLINE = (
+    "<div class='prob-block'>"
+    "<p class='prob-label'>Cancellation probability</p>"
+    "<div class='prob-number' style='color:var(--text-3);'>—%</div>"
+    "<div class='prob-bar'>"
+    "<div class='prob-bar-fill' style='width:0%;background:var(--border);'></div>"
+    "</div>"
+    "<div><span class='risk-badge' style='background:var(--surface-2);"
+    "color:var(--text-3);border:1px solid var(--border);'>"
+    "● Awaiting input</span></div>"
+    "</div>"
+)
+_SKELETON_DETAILS = (
+    "<div class='action-block'>"
+    "<p class='action-label'>Recommended action</p>"
+    "<p class='action-text' style='color:var(--text-3);'>"
+    "Fill in the booking details on the left, then press "
+    "<b>Predict</b> to receive a calibrated risk assessment, "
+    "the top contributing features, and the policy decisions."
+    "</p></div>"
+)
+
+
+# ---------------------------------------------------------------------------
+# Help-tab markdown
+# ---------------------------------------------------------------------------
+
+
+def _top_shap_features_markdown(n: int = 8) -> str:
+    """Render the top-N SHAP features as a markdown bullet list."""
+    if not PH_SHAP_IMPORTANCE_PATH.exists():
+        return "*(SHAP importance not available — retrain via `scripts/train_ph.py`.)*"
+    try:
+        df = pd.read_csv(PH_SHAP_IMPORTANCE_PATH).head(n)
+        return "\n".join(
+            f"{pos + 1}. **`{row['feature']}`** — mean(|SHAP|) = {row['mean_abs_shap']:.3f}"
+            for pos, (_, row) in enumerate(df.reset_index(drop=True).iterrows())
+        )
+    except (OSError, ValueError, KeyError) as exc:
+        logger.warning("shap_importance_load_failed error=%s", exc)
+        return "*(SHAP importance unreadable.)*"
+
+
+def _help_markdown() -> str:
+    """Compose the Help tab markdown at UI build time."""
+    data = _load_ph_metrics() or {}
+    family = (data.get("selected_model_family") or "lightgbm").upper()
+    n_train = data.get("n_train", "?")
+    n_val = data.get("n_val", "?")
+    n_test = data.get("n_test", "?")
+
+    def _fmt(value: Any, spec: str = ".3f") -> str:
+        if value is None:
+            return "—"
+        try:
+            return format(float(value), spec)
+        except (TypeError, ValueError):
+            return "—"
+
+    roc_str = _fmt(data.get("roc_auc_test"))
+    pr_str = _fmt(data.get("pr_auc_test"))
+    ece_str = _fmt(data.get("ece_test"))
+    return f"""\
+## 📊 What this model is
+
+Calibrated cancellation classifier trained on the **real Punta Villa Resort PMS
+export** (193 bookings, 2022-2025). The model is the same family as Portugal's
+champion (LightGBM) so SHAP rankings and calibration are directly comparable
+across studies.
+
+| | |
+|---|---|
+| Champion family | **{family}** |
+| Train / Val / Test rows | {n_train} / {n_val} / {n_test} |
+| Test ROC-AUC | {roc_str} |
+| Test PR-AUC | {pr_str} |
+| Test ECE (calibration gap) | {ece_str} |
+| Threshold policies | `max_f1`, `high_precision` (no `cost_sensitive` — n_val too small) |
+
+## 📐 How to read the result
+
+- **Cancellation probability**: calibrated P(cancel) in `[0, 1]`, after
+  isotonic regression fit on the validation set. Treat the percentage
+  itself as a **calibrated estimate** of the booking's cancel risk.
+- **Risk tier**: Low (< {RISK_TIER_MEDIUM_THRESHOLD:.0%}), Medium
+  ({RISK_TIER_MEDIUM_THRESHOLD:.0%}-{RISK_TIER_HIGH_THRESHOLD:.0%}),
+  High (≥ {RISK_TIER_HIGH_THRESHOLD:.0%}).
+- **Top contributing features**: red bars push the prediction toward
+  cancel; green bars push it toward stay. Magnitudes are SHAP log-odds
+  contributions before calibration.
+- **Threshold policies**: shows what each operational policy would
+  decide for *this specific booking*. `max_f1` minimises misclassification
+  error; `high_precision` flags only the most confident cancel
+  predictions.
+
+## ⚠ Small-sample caveats (read before quoting any number)
+
+The PH sub-study trains on **154 rows** and tests on **20 rows**. At this
+sample size:
+
+- Bootstrap 95 % CIs on PR-AUC span roughly **±15-30 percentage points**.
+  Every metric in the hero chips is a **point estimate** — treat as
+  directional.
+- A single misclassified test row shifts recall by ~33 percentage points.
+- The `max_f1` threshold lands at an unintuitive value because the
+  validation set has only ~19 rows; do not over-interpret it as a
+  universal operating point.
+- The Portugal main study (119k bookings, port 8000) is the headline
+  result. PH is the **transferability probe** that shows the methodology
+  travels to a smaller dataset.
+
+## 🎯 Top features the model relies on
+
+(Global mean(|SHAP|) across the test set, top 8.)
+
+{_top_shap_features_markdown(8)}
+
+**`deposit_type` is the #1 PH feature** — same pattern as Portugal,
+where deposit policy was a top-10 SHAP predictor. The real Punta Villa
+PMS export now captures it; the earlier exploratory dataset did not.
+
+## 🔗 Cross-reference to the PH notebook suite
+
+The 11-notebook PH suite under `notebooks/ph/` documents the full
+methodology. Notable cross-references:
+
+- **`notebooks/ph/02_modeling.ipynb`** — ROC/PR curves, calibration,
+  threshold sweep, confusion matrix
+- **`notebooks/ph/05_explainability.ipynb`** — SHAP feature importance,
+  beeswarm, per-row explanations, Portugal vs PH SHAP comparison
+- **`notebooks/ph/07_model_selection.ipynb`** — 3-way model comparison
+  (LightGBM/XGBoost/GradientBoosting) with bootstrap CIs
+- **`notebooks/ph/08_model_monitoring.ipynb`** — runnable monitoring
+  template; reads the live SQLite log every prediction made through
+  this UI feeds
+- **`notebooks/ph/11_transferability.ipynb`** — pre-flight diagnostic
+  outcome + real-data findings + defense framing
+
+## 🛠 Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Hero chips say "metrics not available" | Missing `reports/ph/ph_transferability.json` | Run `python scripts/train_ph.py` |
+| `PH artifacts unavailable` error in result panel | Missing `artifacts/ph/ph_model.pkl` | Run `python scripts/train_ph.py` |
+| Many predictions return ≈ 0 % | Calibrator zero-plateau on confident "stay" bookings | Expected — UI shows `<0.01 %` for these |
+| Server returns "Connection refused" | Port 8001 in use or uvicorn not started | `python demo/start_server_ph.py` |
+| `Validation error` on Predict | Required field missing / out of range | Check inputs (adults ≥ 1, ADR < 100 000) |
+
+A green JSON at `http://localhost:8001/healthz` confirms the server
+is healthy.
+"""
+
+
+# ---------------------------------------------------------------------------
+# UI assembly
+# ---------------------------------------------------------------------------
 
 
 def build_ph_ui() -> gr.Blocks:
-    """Construct the PH Gradio Blocks UI."""
-    with gr.Blocks(title="PH Cancellation — Philippine Resort Sub-Study") as demo:
-        gr.HTML(DATASET_BANNER_HTML)
-        gr.Markdown(
-            "# PH Cancellation Predictor — Philippine Resort Sub-Study\n\n"
-            "Enter a booking below and the model returns a cancellation "
-            "probability, a risk tier (low/medium/high), and which features "
-            "pushed the prediction in which direction. Backed by the real "
-            "Punta Villa Resort PMS export (193 bookings, 2022-2025)."
-        )
+    """Construct the PH Gradio Blocks UI (mirrors Portugal's structure).
 
-        with gr.Row():
-            with gr.Column(scale=1):
-                gr.Markdown("### Booking details")
-                lead_time = gr.Number(label="Lead time (days)", value=30, precision=0, minimum=0)
-                arrival_date_str = gr.Textbox(
-                    label="Arrival date (YYYY-MM-DD)",
-                    value="2025-12-15",
-                )
-                with gr.Row():
-                    weekend_nights = gr.Number(
-                        label="Weekend nights", value=1, precision=0, minimum=0
+    CSS is NOT attached here — Gradio 6 expects CSS at mount time
+    (``gr.mount_gradio_app(app, ui, css=PH_CSS)``) or at launch time
+    (``ui.launch(css=PH_CSS)``). The PH_CSS module-level constant
+    contains BACKGROUND_CSS + PH_EXTRA_CSS for both call sites.
+    """
+    with gr.Blocks(
+        title="PH Cancellation Risk — Real Punta Villa Resort Sub-Study",
+    ) as ui:
+        gr.Markdown("# PH Cancellation Risk")
+        gr.Markdown(
+            "<p class='hero-subtitle'>Calibrated cancellation predictions on the "
+            "real Punta Villa Resort PMS export (193 bookings, 2022-2025), with "
+            "explainable contributing features.</p>"
+        )
+        gr.Markdown(_hero_metrics_line())
+        lineage = _model_lineage_chip()
+        if lineage:
+            gr.Markdown(lineage)
+        gr.HTML(CAVEAT_STRIP_HTML)
+
+        d = _form_defaults()
+
+        with gr.Tab("Predict"):
+            with gr.Row():
+                # ---------- Input column ----------
+                with gr.Column(scale=3):
+                    gr.Markdown("### Booking details")
+
+                    arrival_date_in = gr.DateTime(
+                        label="Arrival date",
+                        include_time=False,
+                        value=d["arrival_date"],
                     )
-                    week_nights = gr.Number(label="Week nights", value=2, precision=0, minimum=0)
+                    lead_time_in = gr.Number(
+                        label="Lead time (days)",
+                        value=d["lead_time"],
+                        precision=0,
+                        minimum=0,
+                        info=(
+                            "Days between booking and arrival. Long lead times "
+                            "increase cancellation risk in this dataset."
+                        ),
+                    )
+
+                    with gr.Row():
+                        weekend_nights_in = gr.Number(
+                            label="Weekend nights",
+                            value=d["weekend_nights"],
+                            precision=0,
+                            minimum=0,
+                        )
+                        week_nights_in = gr.Number(
+                            label="Week nights",
+                            value=d["week_nights"],
+                            precision=0,
+                            minimum=0,
+                        )
+
+                    with gr.Row():
+                        adults_in = gr.Number(
+                            label="Adults",
+                            value=d["adults"],
+                            precision=0,
+                            minimum=1,
+                            maximum=10,
+                        )
+                        children_in = gr.Number(
+                            label="Children",
+                            value=d["children"],
+                            precision=0,
+                            minimum=0,
+                            maximum=10,
+                        )
+                        babies_in = gr.Number(
+                            label="Babies",
+                            value=d["babies"],
+                            precision=0,
+                            minimum=0,
+                            maximum=10,
+                        )
+
+                    with gr.Accordion("Room and rate", open=True):
+                        reserved_room_type_in = gr.Dropdown(
+                            _ROOM_TYPES,
+                            label="Reserved room type",
+                            value=d["reserved_room_type"],
+                        )
+                        adr_in = gr.Number(
+                            label="Average daily rate (PHP)",
+                            value=d["adr"],
+                            minimum=0.0,
+                            maximum=100_000.0,
+                        )
+
+                    with gr.Accordion("Deposit & special requests", open=True):
+                        deposit_type_in = gr.Dropdown(
+                            _DEPOSIT_TYPES,
+                            label="Deposit policy",
+                            value=d["deposit_type"],
+                            info=(
+                                "The #1 SHAP feature on this PH model. "
+                                "'No Deposit' strongly predicts cancellation; "
+                                "'Non-Refundable' / 'Partial' predict stay."
+                            ),
+                        )
+                        total_of_special_requests_in = gr.Number(
+                            label="Special requests",
+                            value=d["total_of_special_requests"],
+                            precision=0,
+                            minimum=0,
+                            maximum=10,
+                            info=(
+                                "Each special request signals investment in the "
+                                "booking. > 0 is a stay signal."
+                            ),
+                        )
+
+                    with gr.Row():
+                        predict_btn = gr.Button(
+                            "Predict cancellation risk",
+                            variant="primary",
+                            size="lg",
+                            scale=4,
+                        )
+                        reset_btn = gr.Button("Reset", variant="secondary", size="sm", scale=1)
+
+                # ---------- Output column ----------
+                with gr.Column(scale=2):
+                    gr.Markdown("### Risk assessment")
+                    headline_out = gr.Markdown(
+                        _SKELETON_HEADLINE,
+                        elem_classes=["result-card"],
+                    )
+                    details_out = gr.Markdown(_SKELETON_DETAILS)
+                    with gr.Accordion("Technical details (JSON)", open=False):
+                        raw_out = gr.Code(label="response", language="json")
+
+            input_components = [
+                lead_time_in,
+                arrival_date_in,
+                weekend_nights_in,
+                week_nights_in,
+                adults_in,
+                children_in,
+                babies_in,
+                adr_in,
+                reserved_room_type_in,
+                deposit_type_in,
+                total_of_special_requests_in,
+            ]
+            predict_btn.click(
+                fn=predict_one,
+                inputs=input_components,
+                outputs=[headline_out, details_out, raw_out],
+            )
+            reset_btn.click(
+                fn=_reset_to_defaults,
+                outputs=[*input_components, headline_out, details_out, raw_out],
+            )
+
+        with gr.Tab("Examples"):
+            gr.Markdown("### Pre-loaded scenarios")
+            gr.Markdown(
+                "Pick a booking profile to fill the form on the **Predict** tab, "
+                "then switch over and press **Predict**."
+            )
+            for key, ex in EXAMPLES.items():
                 with gr.Row():
-                    adults = gr.Number(label="Adults", value=2, precision=0, minimum=1)
-                    children = gr.Number(label="Children", value=0, precision=0, minimum=0)
-                    babies = gr.Number(label="Babies", value=0, precision=0, minimum=0)
-                adr = gr.Number(label="ADR (PHP)", value=3500.0, minimum=0)
-                reserved_room_type = gr.Dropdown(
-                    label="Reserved room type",
-                    choices=_ROOM_TYPES,
-                    value=_ROOM_TYPES[0] if _ROOM_TYPES else None,
-                )
-                deposit_type = gr.Dropdown(
-                    label="Deposit policy",
-                    choices=_DEPOSIT_TYPES,
-                    value=_DEPOSIT_TYPES[0] if _DEPOSIT_TYPES else None,
-                )
-                total_of_special_requests = gr.Number(
-                    label="Special requests",
-                    value=0,
-                    precision=0,
-                    minimum=0,
-                )
-                submit = gr.Button("Predict", variant="primary")
+                    btn = gr.Button(ex["label"], size="lg")
+                    gr.Markdown(ex["hint"])
+                    btn.click(
+                        fn=lambda k=key: _populate_from_example(k),
+                        outputs=input_components,
+                    )
 
-            with gr.Column(scale=1):
-                gr.Markdown("### Result")
-                result_summary = gr.HTML()
-                gr.Markdown("### Threshold policies")
-                thresholds_block = gr.HTML()
-                gr.Markdown("### Top contributing features")
-                features_block = gr.HTML()
+        with gr.Tab("Help"):
+            gr.Markdown(_help_markdown())
 
-        submit.click(
-            fn=_predict_via_ui,
-            inputs=[
-                lead_time,
-                arrival_date_str,
-                weekend_nights,
-                week_nights,
-                adults,
-                children,
-                babies,
-                adr,
-                reserved_room_type,
-                deposit_type,
-                total_of_special_requests,
-            ],
-            outputs=[result_summary, thresholds_block, features_block],
-        )
+    return ui
 
-        gr.Markdown(
-            "---\n"
-            "**How to read these results**: the model was trained on 193 "
-            "real bookings (n_test ≈ 20); bootstrap 95 % CIs on PR-AUC span "
-            "roughly ±15 percentage points. Treat the probability as a "
-            "directional signal rather than a calibrated production "
-            "prediction. The top contributing features below show which "
-            "fields of *this specific booking* pushed the score up or down."
-        )
 
-    return demo
+# Keep the legacy export name for any external caller that imports it.
+build_ui = build_ph_ui
 
 
 def main() -> None:  # pragma: no cover — manual launch only
@@ -331,7 +913,7 @@ def main() -> None:  # pragma: no cover — manual launch only
         server_name="0.0.0.0",
         server_port=7861,
         share=False,
-        css=".gradio-container {max-width: 1100px; margin: auto}",
+        css=PH_CSS,
     )
 
 
