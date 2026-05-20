@@ -204,6 +204,115 @@ def load_main_context() -> dict[str, Any]:
     }
 
 
+def load_ph_context() -> dict[str, Any]:
+    """Load PH report/artifact-backed context for the notebooks/ph/ suite.
+
+    Mirrors load_main_context's dict shape so the same plot helpers
+    (plot_main_roc_pr, plot_main_calibration_hist, plot_main_confusion,
+    plot_baseline_comparison, plot_learning_dynamics, etc.) work without
+    modification — the helpers consume a context dict, not Portugal paths.
+
+    Required artifacts (produced by ``python scripts/train_ph.py``):
+        artifacts/ph/ph_model.pkl
+        artifacts/ph/ph_calibrator.pkl
+        artifacts/ph/ph_thresholds.json
+        reports/ph/ph_transferability.json
+        reports/ph/ph_test_predictions.csv
+
+    Optional (gracefully skipped if missing):
+        reports/ph/champion_summary.json
+        reports/ph/baseline_comparison.json
+        reports/ph/learning_curves.json
+        reports/ph/expanding_window_cv.json
+        reports/ph/shap_analysis.json
+        reports/ph/shap_feature_importance.csv
+        artifacts/ph/cost_threshold_sweep.csv
+    """
+    root = project_root()
+    ph_art = root / "artifacts" / "ph"
+    ph_rep = root / "reports" / "ph"
+
+    required = [
+        ph_art / "ph_model.pkl",
+        ph_art / "ph_thresholds.json",
+        ph_rep / "ph_transferability.json",
+        ph_rep / "ph_test_predictions.csv",
+    ]
+    missing = [str(p) for p in required if not p.exists()]
+    if missing:
+        raise FileNotFoundError(
+            "Missing required PH files (run `python scripts/train_ph.py`):\n" + "\n".join(missing)
+        )
+
+    metrics = load_json(ph_rep / "ph_transferability.json")
+    thresholds = load_json(ph_art / "ph_thresholds.json")
+    test_predictions = pd.read_csv(ph_rep / "ph_test_predictions.csv")
+
+    model_pipeline = joblib.load(ph_art / "ph_model.pkl")
+    calibrator_path = ph_art / "ph_calibrator.pkl"
+    calibrator = joblib.load(calibrator_path) if calibrator_path.exists() else None
+
+    feature_cols_path = ph_art / "ph_feature_columns.json"
+    feature_cols = (
+        load_json(feature_cols_path).get("features")
+        if feature_cols_path.exists()
+        else metrics.get("feature_columns", [])
+    )
+
+    y_test = (
+        test_predictions[metrics.get("target_column", "is_canceled")].astype(int)
+        if "is_canceled" in test_predictions.columns
+        else test_predictions["is_canceled"].astype(int)
+    )
+    y_prob = test_predictions["cancel_probability"].astype(float).to_numpy()
+    threshold_max_f1 = float(thresholds["max_f1"]["threshold"])
+    threshold_high_precision = float(thresholds["high_precision"]["threshold"])
+    y_pred_max_f1 = (y_prob >= threshold_max_f1).astype(int)
+
+    sweep_path = ph_rep / "ph_threshold_sweep.csv"
+    threshold_sweep_df = pd.read_csv(sweep_path) if sweep_path.exists() else pd.DataFrame()
+
+    optional: dict[str, Any] = {}
+    for name, path in [
+        ("champion_summary", ph_rep / "champion_summary.json"),
+        ("baseline_comparison", ph_rep / "baseline_comparison.json"),
+        ("learning_curves", ph_rep / "learning_curves.json"),
+        ("expanding_window_cv", ph_rep / "expanding_window_cv.json"),
+        ("shap_analysis", ph_rep / "shap_analysis.json"),
+    ]:
+        if path.exists():
+            optional[name] = load_json(path)
+
+    shap_importance_path = ph_rep / "shap_feature_importance.csv"
+    if shap_importance_path.exists():
+        optional["shap_feature_importance"] = pd.read_csv(shap_importance_path)
+
+    cost_sweep_path = ph_art / "cost_threshold_sweep.csv"
+    if cost_sweep_path.exists():
+        optional["cost_sensitivity_sweep"] = pd.read_csv(cost_sweep_path)
+
+    return {
+        "root": root,
+        "ph_artifacts_dir": ph_art,
+        "ph_reports_dir": ph_rep,
+        "test_df": test_predictions,
+        "X_test": test_predictions[feature_cols] if feature_cols else None,
+        "y_test": y_test,
+        "y_test_np": y_test.to_numpy(),
+        "y_prob": y_prob,
+        "y_pred_max_f1": y_pred_max_f1,
+        "metrics": metrics,
+        "thresholds": thresholds,
+        "threshold_sweep": threshold_sweep_df,
+        "threshold_max_f1": threshold_max_f1,
+        "threshold_high_precision": threshold_high_precision,
+        "model_pipeline": model_pipeline,
+        "calibrator": calibrator,
+        "feature_columns": feature_cols,
+        **optional,
+    }
+
+
 def main_summary_table(ctx: dict[str, Any]) -> pd.DataFrame:
     metrics = ctx["metrics"]
     return pd.DataFrame(
