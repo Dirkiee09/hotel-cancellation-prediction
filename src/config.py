@@ -132,6 +132,11 @@ SEGMENT_METRIC_GATES = {
 PREDICTION_LOG_DB = PROJECT_ROOT / "data" / "predictions" / "predictions.sqlite"
 PREDICTION_LOG_CSV = PROJECT_ROOT / "data" / "predictions" / "predictions_live.csv"
 
+# PH sub-study prediction log — sits alongside Portugal's so a single
+# data/predictions/ folder feeds two parallel Power BI dashboards.
+PH_PREDICTION_LOG_DB = PROJECT_ROOT / "data" / "predictions" / "ph_predictions.sqlite"
+PH_PREDICTION_LOG_CSV = PROJECT_ROOT / "data" / "predictions" / "ph_predictions_live.csv"
+
 # Reproducibility controls
 REPRO_TOLERANCE = 1e-6  # Relaxed for cross-platform reproducibility
 
@@ -143,3 +148,67 @@ OPTUNA_TIMEOUT_SECONDS = 600
 EXPANDING_WINDOW_N_SPLITS = 5
 TEMPORAL_STABILITY_BUCKETS = 6
 LEARNING_CURVE_FRACTIONS = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0]
+
+
+# ── Philippine transferability probe (appendix-grade, not in CI) ─────
+# Side-experiment that re-fits the methodology on a 300-row Philippine
+# resort dataset using only the 8 features both datasets share. See
+# CLAUDE.md "Transferability Probe — PH Resort" for scope and caveats.
+# These constants are NEVER imported by the Portugal pipeline.
+
+PH_DATA_PATH = PROJECT_ROOT / "data" / "Punta_Villa_Resort_2022_2024.csv"
+PH_ARTIFACTS_DIR = PROJECT_ROOT / "artifacts" / "ph"
+PH_REPORTS_DIR = PROJECT_ROOT / "reports" / "ph"
+PH_TARGET_COL = "is_canceled"
+
+# PH raw columns -> project-canonical names so downstream feature
+# engineering (add_derived_booking_features) can be reused.
+PH_COLUMN_RENAMES = {
+    "Lead_Time_Days": "lead_time",
+    "Weekend_Nights": "stays_in_weekend_nights",
+    "Week_Nights": "stays_in_week_nights",
+    "Adults": "adults",
+    "Children": "children",
+    "Babies": "babies",
+    "ADR_Rate": "adr",
+    "Room_Type": "reserved_room_type",
+}
+
+# Reduced feature list — excludes deposit_type, market_segment, country,
+# agent, customer_type, previous_cancellations, total_of_special_requests
+# (none of which the PH PMS export captures). These were among the top
+# SHAP features on the Portugal model, so the probe deliberately runs
+# with a weakened predictor set.
+PH_BOOKING_TIME_FEATURES = [
+    "lead_time",
+    "stays_in_weekend_nights",
+    "stays_in_week_nights",
+    "adults",
+    "children",
+    "babies",
+    "adr",
+    "reserved_room_type",
+    "month_sin",
+    "month_cos",
+    "total_stay",
+    "total_guests",
+    "adr_per_person",
+    "is_weekend_heavy",
+    "revenue_at_risk",
+    "is_late_window",
+]
+
+PH_CATEGORICAL_COLS = ["reserved_room_type"]
+PH_NUMERIC_COLS = sorted(c for c in PH_BOOKING_TIME_FEATURES if c not in PH_CATEGORICAL_COLS)
+
+# Directional floors only — at n_test ≈ 30, bootstrap CIs span ±15 pp.
+# These are not regression-detection gates like METRIC_GATES; they
+# document what would count as "the methodology generalises" if hit.
+PH_METRIC_GATES = {
+    "max_f1": {
+        "roc_auc_min": 0.55,
+        "pr_auc_min": 0.30,
+        "f1_min": 0.30,
+        "recall_min": 0.30,
+    },
+}
