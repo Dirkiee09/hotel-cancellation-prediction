@@ -1372,7 +1372,7 @@ def _format_top_features(features: list[dict[str, object]]) -> str:
             "<div class='factors-block'>"
             "<p class='factors-title'>Top contributing factors</p>"
             "<p style='color:var(--text-3);font-size:13px;margin:0;'>"
-            "Feature attributions not available for this prediction.</p>"
+            "No factor breakdown available for this booking.</p>"
             "</div>"
         )
 
@@ -1590,7 +1590,7 @@ def predict_one(*args: Any) -> tuple[str, str, str]:
     bar_pct = max(0.0, min(100.0, prob * 100.0))
     headline = (
         "<div class='prob-block'>"
-        "<p class='prob-label'>Cancellation probability</p>"
+        "<p class='prob-label'>Cancellation Risk</p>"
         f"<div class='prob-number {css}'>{pct_str}</div>"
         "<div class='prob-bar'>"
         f"<div class='prob-bar-fill {css}' style='width:{bar_pct:.1f}%'></div>"
@@ -2082,7 +2082,7 @@ def build_ui() -> gr.Blocks:
                         # Skeleton placeholder — same structure the prediction
                         # will fill in, so the panel doesn't feel empty.
                         "<div class='prob-block'>"
-                        "<p class='prob-label'>Cancellation probability</p>"
+                        "<p class='prob-label'>Cancellation Risk</p>"
                         "<div class='prob-number' style='color:var(--text-3);'>—%</div>"
                         "<div class='prob-bar'>"
                         "<div class='prob-bar-fill' "
@@ -2098,13 +2098,14 @@ def build_ui() -> gr.Blocks:
                         "<div class='action-block'>"
                         "<p class='action-label'>Recommended action</p>"
                         "<p class='action-text' style='color:var(--text-3);'>"
-                        "Fill in the reservation details on the left, then press "
-                        "<b>Predict</b> to receive a calibrated risk assessment, "
-                        "the top contributing factors, and the recommended next step."
+                        "Fill in the booking details on the left, then press "
+                        "<b>Predict</b>. You will see the cancellation risk, "
+                        "the top booking details driving that risk, and a "
+                        "recommended next step for the front-desk team."
                         "</p></div>"
                     )
-                    with gr.Accordion("Technical details (JSON)", open=False):
-                        raw_out = gr.Code(label="response", language="json")
+                    with gr.Accordion("Technical details (for analysts)", open=False):
+                        raw_out = gr.Code(label="raw model response", language="json")
 
             input_components = [
                 hotel,

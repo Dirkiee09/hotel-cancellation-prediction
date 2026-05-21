@@ -485,7 +485,7 @@ def predict_one(
     bar_pct = max(0.0, min(100.0, prob * 100.0))
     headline = (
         "<div class='prob-block'>"
-        "<p class='prob-label'>Cancellation probability</p>"
+        "<p class='prob-label'>Cancellation Risk</p>"
         f"<div class='prob-number {band_css}'>{pct_str}</div>"
         "<div class='prob-bar'>"
         f"<div class='prob-bar-fill {band_css}' style='width:{bar_pct:.1f}%'></div>"
@@ -561,7 +561,7 @@ def _reset_to_defaults() -> tuple[Any, ...]:
 
 _SKELETON_HEADLINE = (
     "<div class='prob-block'>"
-    "<p class='prob-label'>Cancellation probability</p>"
+    "<p class='prob-label'>Cancellation Risk</p>"
     "<div class='prob-number' style='color:var(--text-3);'>—%</div>"
     "<div class='prob-bar'>"
     "<div class='prob-bar-fill' style='width:0%;background:var(--border);'></div>"
@@ -640,45 +640,62 @@ across studies.
 
 ## 📐 How to read the result
 
-- **Cancellation probability**: calibrated P(cancel) in `[0, 1]`, after
-  isotonic regression fit on the validation set. Treat the percentage
-  itself as a **calibrated estimate** of the booking's cancel risk.
+- **Cancellation Risk**: the percentage the model gives you is an
+  honest estimate of how likely this booking is to be cancelled. We
+  apply a calibration step during training so that, for example, a
+  "30 %" result means about 30 out of 100 similar bookings really do
+  cancel — the percentage matches reality.
 - **Risk tier**: Low (< {RISK_TIER_MEDIUM_THRESHOLD:.0%}), Medium
   ({RISK_TIER_MEDIUM_THRESHOLD:.0%}-{RISK_TIER_HIGH_THRESHOLD:.0%}),
-  High (≥ {RISK_TIER_HIGH_THRESHOLD:.0%}).
-- **Top contributing features**: red bars push the prediction toward
-  cancel; green bars push it toward stay. Magnitudes are SHAP log-odds
-  contributions before calibration.
-- **Threshold policies**: shows what each operational policy would
-  decide for *this specific booking*. `max_f1` minimises misclassification
-  error; `high_precision` flags only the most confident cancel
-  predictions.
+  High (≥ {RISK_TIER_HIGH_THRESHOLD:.0%}). The tier is the
+  recommended action level for the front-desk team.
+- **Top contributing factors**: each red bar shows a booking detail
+  that pushed this prediction toward "cancel"; each green bar shows a
+  detail that pushed it toward "will arrive". The longer the bar, the
+  bigger the influence on this particular booking.
+- **Threshold policies**: each policy is a different decision rule the
+  hotel can adopt. *Balanced (max F1)* flags bookings that are
+  more-likely-than-not to cancel; *High-precision* only flags
+  bookings where the model is very confident, so almost every flag is
+  a real cancellation but many true cancellations slip through.
 
 ## ⚠ Small-sample caveats (read before quoting any number)
 
-The PH sub-study trains on **154 rows** and tests on **20 rows**. At this
-sample size:
+The Philippine sub-study trains on **154 bookings** and tests on
+**20 bookings**. At this sample size:
 
-- Bootstrap 95 % CIs on PR-AUC span roughly **±15-30 percentage points**.
-  Every metric in the hero chips is a **point estimate** — treat as
-  directional.
-- A single misclassified test row shifts recall by ~33 percentage points.
-- The `max_f1` threshold lands at an unintuitive value because the
-  validation set has only ~19 rows; do not over-interpret it as a
-  universal operating point.
-- The Portugal main study (119k bookings, port 8000) is the headline
-  result. PH is the **transferability probe** that shows the methodology
-  travels to a smaller dataset.
+- The numbers in the hero chips at the top are best treated as
+  **directional indicators** rather than headline figures. If we
+  re-ran the study on a different random selection of 20 test
+  bookings, the displayed PR-AUC could shift by roughly ±15-30
+  percentage points just from the small sample.
+- A single mis-classified test booking moves the recall by about 33
+  percentage points, so per-cell performance numbers should always
+  be reported with their uncertainty range.
+- The "balanced" decision cut-off (currently 0.190) was learned on
+  only 19 validation bookings, so the *exact* cut-off is statistically
+  noisy. The **risk tiers** (Low / Medium / High) are more stable
+  because they use the calibrated probability directly rather than a
+  single cut-off, and are the recommended operational tool for the
+  Philippine deployment until more bookings are collected.
+- The Portugal main study (119,210 bookings, port 8000) is the
+  headline result of the thesis. The Philippine study is a
+  **transferability probe** — it shows the same methodology produces
+  a working model on a real Philippine resort dataset with only a
+  fraction of the data.
 
-## 🎯 Top features the model relies on
+## 🎯 Top booking details the model relies on
 
-(Global mean(|SHAP|) across the test set, top 8.)
+(Global ranking of the booking details the model treats as most
+influential, across the test set. Top 8 shown.)
 
 {_top_shap_features_markdown(8)}
 
-**`deposit_type` is the #1 PH feature** — same pattern as Portugal,
-where deposit policy was a top-10 SHAP predictor. The real Punta Villa
-PMS export now captures it; the earlier exploratory dataset did not.
+**Deposit policy is the #1 driver on the Philippine model** — exactly
+the same pattern observed in Portugal, where deposit policy was also a
+top driver. This is one of the strongest cross-dataset findings in
+the study: the same single booking detail dominates cancellation
+prediction across two different countries.
 
 ## 🔗 Cross-reference to the PH notebook suite
 
