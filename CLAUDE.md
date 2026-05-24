@@ -22,13 +22,15 @@ serving (FastAPI + Gradio) → evaluation → thesis reporting.
 
 | Check | Status | Detail |
 |-------|--------|--------|
-| `pytest` | ✅ 91/91 | 89.15% coverage (gate: ≥80%) |
+| `pytest` | ✅ 130/130 | 88.33% coverage (gate: ≥80%) |
 | `ruff check` | ✅ clean | E, F, I rules |
-| `ruff format` | ✅ clean | line length 100 |
-| `mypy` | ✅ clean | 0 errors (48 source files checked) |
-| `src/` imports | ✅ 15/15 modules | all importable |
+| `ruff format` | ✅ clean | line length 100, 75 files |
+| `mypy` | ✅ clean | 0 errors (40 source files checked) |
+| `scripts/check.py all` | ✅ pass | artifacts + metrics + sync + fairness gates |
 | `scripts/` | ✅ 4/4 scripts | train, benchmark, check, notebooks |
-| `notebooks/` | ✅ 10/10 notebooks | 01_eda through 10_sensitivity_analysis, all with cached outputs |
+| `notebooks/` | ✅ 21/21 notebooks | 10 Portugal + 11 Philippine, all with cached outputs |
+| FastAPI Portugal | ✅ verified | `/healthz`, `/model-info`, `/predict` (with SHAP + ADR) on :8000 |
+| FastAPI Philippine | ✅ verified | `/healthz`, `/model-info`, `/predict` (with SHAP + caveat) on :8001 |
 
 ---
 
