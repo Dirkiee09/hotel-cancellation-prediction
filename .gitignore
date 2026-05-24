@@ -52,3 +52,7 @@ data/predictions/
 .env
 .env.*
 !.env.example
+
+# Thesis source manuscripts (kept locally, not in version control)
+Revisions of Predicting Hotel Booking Cancellations_ A Machine Learning Approach.pdf
+*.docx
