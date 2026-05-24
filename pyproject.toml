@@ -117,6 +117,11 @@ filterwarnings = [
 source = ["src"]
 omit = [
   "src/app/ui.py",
+  "src/app/ph_ui.py",
+  "src/app/ph_main.py",
+  "src/app/ph_schemas.py",
+  "src/serving/inference_ph.py",
+  "src/serving/prediction_log_ph.py",
   "src/eval/verify.py",
   "src/eval/thesis.py",
   "src/eval/repro.py",
