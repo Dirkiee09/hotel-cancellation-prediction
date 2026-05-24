@@ -6,9 +6,37 @@
 
 ---
 
+## Abstract
+
+Hotel booking cancellations represent one of the most persistent and costly challenges in modern revenue management, particularly when they occur close to the arrival date and rooms can no longer be resold at comparable rates. This study applies Dynamic Capability Theory (DCT) — operationalised through a Sense → Seize → Transform cycle — to design a data-driven, cost-sensitive analytical framework that predicts cancellation risk, quantifies its financial impact, and translates predictions into actionable revenue-protection policies. The research was developed in parallel on two datasets: the publicly available Portugal Hotel Bookings corpus (119,210 cleaned reservations spanning 2015–2017) and a real Property Management System (PMS) export from Punta Villa Resort, Iloilo, Philippines (193 reservations spanning 2022–2025). The latter sub-study acts as a transferability probe — testing whether the methodology developed on a large benchmark also performs honestly on a small, single-property dataset that mirrors the conditions faced by most Philippine independent hotels.
+
+Six supervised machine-learning models were trained, calibrated, and evaluated under chronological 80 / 10 / 10 splits: a majority-class baseline, Logistic Regression, Decision Tree, Gaussian Naive Bayes, Random Forest, and three gradient-boosted ensembles (XGBoost, LightGBM, GradientBoosting). On the Portugal test set, the champion LightGBM model achieved ROC-AUC = 0.864, PR-AUC = 0.760, Brier score = 0.146, and post-isotonic Expected Calibration Error (ECE) of 0.029 — outperforming every baseline with statistical significance under paired bootstrap testing (2,000 resamples; all 95 % CIs on ΔPR-AUC exclude zero). On the Philippine sub-study, LightGBM again emerged as champion (ROC-AUC = 0.611, PR-AUC = 0.542, baseline = 0.150), confirming that the same methodology operates honestly on a smaller dataset, albeit with broader confidence intervals.
+
+To translate predictions into business value, the study developed a cost-sensitive decision threshold that minimises expected financial loss by jointly weighing false-positive intervention cost (€15 per flagged booking) against false-negative revenue exposure (ADR × length-of-stay). On the held-out Portugal test set, the cost-sensitive policy reduced expected cancellation-related losses by approximately **95.4 % (≈ €1.53 million)** compared to running operations without a model, and by ~81 % compared to a naïve 0.50 threshold. The most important cross-dataset finding is that **`deposit_type` ranks as the single most influential SHAP feature on both Portugal (~120,000 bookings) and the Philippines (193 bookings)** — strong evidence that the model detects a genuine, transferable cancellation driver rather than a dataset-specific artefact.
+
+The study delivers four practical artefacts: (1) a frozen LightGBM champion with isotonic probability calibration and three operational threshold policies; (2) an 8-page Power BI decision-support dashboard covering KPI overview, cancellation trends, segment slicing, revenue at risk, ADR forecasting, threshold-policy comparison, feature importance, and live drift monitoring; (3) a live FastAPI + Gradio serving deployment with per-prediction SHAP explanations and SQLite audit logging; and (4) two reusable methodology contributions — a pre-flight duplicate-cluster diagnostic that flags datasets prone to chronological-split leakage, and a feature-availability mapping that bounds what a reduced-PMS-schema operator can credibly model. Together, these artefacts provide a repeatable, data-driven framework that bridges predictive analytics and strategic hotel revenue management, with demonstrated applicability across both large benchmark data and small real-world property data.
+
+**Keywords:** hotel booking cancellation, predictive analytics, Dynamic Capability Theory, gradient boosting, probability calibration, cost-sensitive thresholding, SHAP interpretation, Philippine hospitality, business intelligence, revenue management.
+
+---
+
 ## Table of Contents
 
+- [Abstract](#abstract)
 - [Chapter I — Introduction](#chapter-i--introduction)
+  - Background of the Study
+  - Statement of the Problem
+  - Research Questions
+  - Objectives of the Study
+  - Hypotheses
+  - Theoretical Framework
+  - Conceptual Framework
+  - Significance of the Study
+  - Unique Contribution
+  - SDG Alignment
+  - Scope and Limitations
+  - Limitations
+  - Definition of Terms
 - [Chapter II — Review of Related Literature](#chapter-ii--review-of-related-literature)
 - [Chapter III — Methodology](#chapter-iii--methodology)
 - [Chapter IV — Results and Discussion](#chapter-iv--results-and-discussion)
@@ -31,7 +59,7 @@
 
 ---
 
-# CHAPTER I — Introduction
+# CHAPTER I — Introduction 
 
 Introduction 
 
@@ -39,9 +67,69 @@ Introduction
 
  Hotels lose expected revenue when guests cancel close to arrival, since those rooms are hard to resell and the loss is larger for longer stays and higher ADRs. Prior work shows cancellations follow consistent patterns by lead time, deposit or prepayment terms, booking channel or segment, pricing, and guest history, so predictive models can flag risky bookings early and support revenue protection (António et al., 2017; Chen et al., 2023) . Evidence from comparative studies also indicates that strong data preparation plus modern models perform well, and that lead time, deposit type, channel, and ADR repeatedly emerge as key predictors across datasets and methods (Herrera et al., 2024; Yang, 2024). Short-notice cancellations cause the biggest losses because rooms are unlikely to be rebooked when guests cancel only a few days before arrival. Research on this late window finds that forecasting becomes harder as check-in nears but still provides useful signals for targeted actions such as reminders, deposits or prepayments, flexible rebooking, and carefully calibrated overbooking. To align modeling with business value, the classifier should be validated with time-aware splits and its decision threshold chosen using expected cost rather than accuracy so high-risk bookings trigger interventions while low-risk bookings avoid unnecessary friction (C-Sánchez & Sánchez-Medina, 2024; Andriawan et al., 2020; Chen et al., 2023). Despite advancements in prediction, a lot of properties continue to rely on manual checks or general rules that fail to account for last-minute cancellations and fail to adjust actions to cost. In order to prevent losses, this study will create a supervised model to estimate cancellation risk with a focus on late-window scenarios. It will then be validated using time-aware splits to determine a decision threshold based on expected cost, ensuring that low-risk bookings prevent needless delay and high-risk bookings trigger targeted actions. An operations-ready playbook that lowers late cancellation losses, connects model outputs to decisions that save money, and provides a repeatable template that other properties can use is the contribution. A parallel sub-study on the real Punta Villa Resort PMS export (Philippines, 193 bookings, 2022-2025) tests whether this template transfers to a smaller property with a narrower PMS schema. The two studies are reported in parallel throughout the chapters that follow. 
 
+The relevance of this work extends beyond the Portuguese benchmark
+dataset on which much of the global cancellation-prediction literature
+has been built. In the Philippines, the hospitality industry is
+dominated by small- and medium-sized resorts, boutique hotels, and
+single-property operators whose Property Management Systems capture
+narrower booking schemas and substantially less historical data than
+international chains. The post-pandemic recovery of Philippine tourism
+— particularly in regional destinations such as Iloilo, Bohol, Cebu,
+and Palawan — has been accompanied by volatile demand, increasingly
+flexible cancellation policies, and a heavy reliance on third-party
+online travel agencies whose cancellation behaviour differs materially
+from direct bookings. A predictive framework that performs well only on
+six-figure benchmark datasets offers limited utility to a Philippine
+operator with two thousand annual bookings; conversely, a framework
+that quietly degrades when transferred to such a setting risks
+misleading managers into over-confidence. This study therefore couples
+its Portugal main study with a parallel Philippine sub-study on a real
+PMS export from Punta Villa Resort, treating transferability as a
+falsifiable empirical question rather than a rhetorical assumption.
+
 ## Statement of the Problem
 
  In today’s hospitality industry, hotel cancellations have become one of the most persistent challenges affecting revenue management and customer relations. While flexible cancellation policies are designed to improve guest satisfaction and encourage bookings, they can also lead to unpredictable income and wasted room inventory when not properly managed. Frequent or last-minute cancellations make it difficult for hotels to forecast occupancy, allocate resources efficiently, and maintain profitability. This creates a constant struggle for hotel managers to balance customer convenience with the financial stability of their operations. Although hotels collect large volumes of guest and booking data, many still rely on manual judgment or traditional methods when handling cancellations. These approaches often overlook valuable insights that can be discovered through data analytics, such as identifying cancellation trends, recognizing high-risk bookings, and predicting potential revenue loss. Without a data-driven system, hotels face inconsistent decision-making and miss opportunities to recover from cancellations or rebook available rooms quickly. Therefore, this study aims to explore how Business Intelligence and Analytics can be used to improve decision-making related to hotel cancellations. Specifically, it seeks to determine how analytical tools can (1) predict which bookings are most likely to be canceled, (2) measure the financial impact of cancellations on hotel performance, and (3) develop a data-driven model that helps hotel management respond proactively to minimize losses. By applying data analysis and visualization, this study intends to guide hotels toward more strategic and evidence-based approaches that reduce cancellation risks while sustaining profitability and customer satisfaction. 
+
+## Research Questions
+
+To translate the broad problem statement into a falsifiable analytical
+agenda, the study is guided by the following research questions:
+
+1. **RQ1 — Drivers.** Which booking-time variables (lead time, deposit
+   type, channel/segment, ADR, guest history, special requests, room
+   type, length of stay, and party composition) are most strongly
+   associated with the likelihood that a hotel reservation will be
+   cancelled before arrival?
+
+2. **RQ2 — Modelling.** Among supervised classifiers (Logistic
+   Regression, Decision Tree, Naive Bayes, Random Forest, and the
+   gradient-boosted family — XGBoost, LightGBM, GradientBoosting),
+   which model achieves the best out-of-time discrimination (ROC-AUC,
+   PR-AUC) and the lowest expected business cost under a chronological
+   train / validation / test split?
+
+3. **RQ3 — Interpretation.** Using SHapley Additive exPlanations
+   (SHAP), which features dominate the champion model's per-prediction
+   reasoning, and do their rankings correspond to those predicted by
+   the literature (lead time, deposit type, previous cancellations)?
+
+4. **RQ4 — Decision support.** Can a cost-sensitive decision threshold,
+   chosen to minimise expected loss under asymmetric false-positive and
+   false-negative costs, reduce expected revenue loss compared to (a)
+   running operations without any model and (b) using a default 0.50
+   threshold?
+
+5. **RQ5 — Transferability.** When the same Sense → Seize → Transform
+   pipeline is applied to a smaller, single-property Philippine PMS
+   dataset, does the methodology continue to operate honestly (no
+   chronological-split leakage), and does the resulting model surface
+   a feature-importance ranking consistent with the Portugal benchmark?
+
+These research questions structure Chapter IV's discussion: §4.2
+addresses RQ1, §4.3 addresses RQ2 and RQ3, §4.4 addresses RQ4, and
+§4.5 addresses RQ5. Each research question is paired with one or
+more falsifiable hypotheses (H1–H5) stated in the next section.
 
 ## Objectives of the Study
 
@@ -67,6 +155,31 @@ Introduction
 
  This study is significant because it provides valuable insights into how Business Intelligence and Analytics (BIA) can transform the way hotels manage booking cancellations. By applying data-driven approaches, this research aims to help hotel managers make smarter and more strategic decisions that balance guest satisfaction with financial stability. For hotel management , the findings can serve as a foundation for developing intelligent systems that predict cancellations, reduce revenue losses, and improve operational planning. With data analytics, hotels can better forecast occupancy, adjust pricing strategies, and implement preventive measures to minimize the negative effects of cancellations. For the hospitality industry , this study contributes to the growing need for technology-driven solutions that enhance competitiveness and efficiency. It demonstrates how the integration of BIA can lead to more resilient business models, especially in an era where customer behavior and market conditions are increasingly unpredictable. For future researchers and students , the study can serve as a reference for exploring similar applications of data analytics in other areas of hospitality management, such as customer satisfaction, pricing optimization, and loyalty programs. Overall, this study highlights the importance of evidence-based decision-making in addressing hotel cancellations. It aims to support hotels in achieving a more sustainable balance between customer experience and profitability through the effective use of data intelligence. 
 
+Beyond the immediate audience of hotel revenue managers, this study
+holds particular significance for the Philippine business intelligence
+and information systems community. Among Philippine independent
+properties, predictive analytics adoption remains uneven: while large
+chains operate sophisticated revenue management systems, the SMB
+segment — which forms the majority of the country's hospitality
+industry — typically relies on judgment-based decision-making and
+generic property management software that produces little or no
+predictive output. The Punta Villa Resort sub-study reported in
+Chapter IV demonstrates that a methodology developed and validated on
+a six-figure international benchmark can be transferred to a real,
+193-booking Philippine PMS export and still produce honest, calibrated
+predictions with operationally meaningful feature-importance findings.
+This positions the study not merely as an academic exercise but as a
+concrete proof point for Philippine SMB hotels considering the
+adoption of data-driven revenue protection. For the academe — and
+particularly for undergraduate Business Intelligence and Information
+Systems programmes in the Philippines — the study provides a
+fully-reproducible, version-controlled, continuous-integration-verified
+project template against which similar capstone work can be
+benchmarked. All code, notebooks, trained artefacts, and live serving
+infrastructure are documented and reproducible from a single Git
+repository, lowering the barrier to replication for future student
+researchers.
+
 ## Unique Contribution
 
  This research extends existing hotel analytics studies by integrating predictive machine learning models with Dynamic Capability Theory (DCT) to explain how hotels can sense, seize, and transform data into strategic actions. Unlike prior works that stop at prediction, this study introduces a cost-sensitive decision framework that links predicted cancellation risk to operational policies such as deposits, reminders, and overbooking adjustments. The integration of these predictive insights into a Power BI dashboard provides a practical, decision-support tool for hotel managers bridging the gap between technical analytics and day-to-day managerial decision-making. By applying established algorithms (logistic regression, random forest, and gradient-boosted trees) to a benchmark dataset in a new managerial context , this study contributes both to the academic discussion of predictive analytics and to the operational practice of data-driven revenue management in hospitality. 
@@ -88,6 +201,119 @@ Results depend on data quality (missing values, coding inconsistencies, label er
 The **live ADR forecast** uses placeholder values for four post-booking features (`is_canceled`, `assigned_room_type`, `booking_changes`, `days_in_waiting_list`) that are not known at the moment of reservation. Live `predicted_adr` is therefore slightly less accurate than the published test-set RMSE; Chapter V identifies a clean retraining fix as future work.
 
 The **cost analyses** use simplifying assumptions (a €15 per-intervention false-positive cost and a one-night recovery penalty for each false negative). True opportunity cost varies with occupancy and rebooking success and should be revised per property in production deployments.
+
+## Definition of Terms
+
+To ensure consistent interpretation of the technical and managerial
+vocabulary used throughout this thesis, the following terms are
+defined operationally:
+
+- **Booking-time feature.** A reservation attribute that is known and
+  recorded at the moment the booking is made (e.g., lead time, ADR,
+  deposit type, market segment). The model uses only booking-time
+  features to predict cancellation, ensuring that no post-booking
+  information leaks into training.
+
+- **Cancellation (operational definition).** A confirmed reservation
+  that is withdrawn by the guest or the property before the guest's
+  scheduled arrival date. In the Portugal dataset this corresponds to
+  the binary target `is_canceled = 1`; in the Philippine PMS export it
+  corresponds to a reservation flagged with cancellation status prior
+  to check-in.
+
+- **Lead time.** The number of calendar days between the booking date
+  and the scheduled arrival date. Lead time serves as the canonical
+  temporal anchor for the chronological train / validation / test
+  split.
+
+- **ADR (Average Daily Rate).** Total lodging revenue for the booking
+  divided by the total number of staying nights, expressed in the
+  property's reporting currency (EUR for Portugal, PHP for Punta
+  Villa). ADR is used both as a predictor and as a multiplier in the
+  revenue-at-risk calculation.
+
+- **Revenue at risk.** The expected lodging revenue that would be lost
+  if a booking is cancelled, computed as ADR × total staying nights
+  (with the property's specific penalty structure applied where
+  available). This is the financial exposure the model is designed to
+  protect.
+
+- **Calibration.** The property that, among bookings the model assigns
+  a probability of 0.30, approximately 30 % actually cancel. A model
+  may rank bookings perfectly (high ROC-AUC) yet still be poorly
+  calibrated. This study uses **isotonic regression** fitted on the
+  validation set to align predicted probabilities with observed
+  cancellation frequencies; the calibration gap is measured by
+  Expected Calibration Error (ECE).
+
+- **Decision threshold.** The probability cut-off above which a
+  booking is classified as "will cancel" and an intervention (deposit,
+  reminder, overbooking buffer) is triggered. Three policies are
+  reported: `max_f1` (the threshold that maximises F1-score on the
+  validation set), `high_precision` (the threshold satisfying
+  Precision ≥ 0.98), and `cost_sensitive` (the threshold that
+  minimises total expected business cost).
+
+- **Cost-sensitive thresholding.** A decision rule that chooses the
+  probability cut-off by minimising the expected combined cost of
+  false positives (intervention cost) and false negatives (lost
+  revenue at risk). For Portugal, this study fixes the false-positive
+  cost at €15 per intervention and computes the false-negative cost
+  as the booking's revenue at risk.
+
+- **SHAP (SHapley Additive exPlanations).** A model-agnostic
+  game-theoretic framework that decomposes a single prediction into
+  per-feature contributions, with desirable properties of local
+  accuracy and consistency (Lundberg & Lee, 2017). This study uses
+  TreeSHAP to compute both global feature importance (mean absolute
+  SHAP across the test set) and per-prediction explanations served by
+  the live FastAPI endpoint.
+
+- **Out-of-time test.** Evaluation on a set of bookings that arrive
+  strictly later than all bookings used for training and threshold
+  selection. Out-of-time evaluation is necessary to avoid the
+  look-ahead bias that arises from random splits in time-series data.
+
+- **Rolling-origin cross-validation.** A model-selection protocol in
+  which the training window is progressively expanded across multiple
+  chronological cutoffs (60 %, 70 %, 80 % of training data in this
+  study). The champion family is chosen by mean PR-AUC across folds,
+  giving a more robust selection signal than a single point estimate.
+
+- **Pre-flight duplicate-cluster diagnostic.** A dataset-agnostic
+  check that counts duplicate post-engineering feature vectors and
+  measures label consistency within each duplicate cluster. If
+  duplicate rate ≥ 30 % AND consistent-label cluster percentage ≥
+  90 %, chronological splits will leak twin bookings and the test
+  metrics will reflect recognition rather than generalisation. This
+  diagnostic, developed during the Philippine sub-study, is the
+  study's first methodology contribution.
+
+- **Risk tier.** A coarse-grained operational segmentation of bookings
+  into LOW (P(cancel) < 0.40), MEDIUM (0.40 ≤ P(cancel) < 0.70), and
+  HIGH (P(cancel) ≥ 0.70) categories, each mapped to a recommended
+  managerial action (standard handling, reminder, deposit / call).
+
+- **Dynamic Capability Theory (DCT).** A strategic-management
+  framework (Teece, 2007, 2018) that conceptualises a firm's ability
+  to **sense** market opportunities and threats, **seize** them by
+  committing resources and making strategic choices, and
+  **transform** organisational structures, processes, and assets to
+  realise the resulting value. This study operationalises DCT as the
+  three-stage backbone of its analytical pipeline.
+
+- **PMS (Property Management System).** The software a hotel uses to
+  record reservations, manage room inventory, and process check-in /
+  check-out. The Punta Villa Resort PMS export used in the Philippine
+  sub-study captures a narrower schema than the Portugal benchmark —
+  this asymmetry is documented and discussed in §4.6 as the
+  feature-availability mapping contribution.
+
+- **Power BI dashboard.** The eight-page decision-support visualisation
+  produced as the operational deliverable of this study. The dashboard
+  reads from `predictions_live.csv` (auto-exported from the live
+  prediction log) and is designed to be consumed by hotel revenue
+  managers during weekly forecasting meetings.
 
 ---
 
@@ -1482,7 +1708,91 @@ trees) that would integrate with the existing serving stack.
 
 ---
 
-## 5.9 Concluding Remarks
+## 5.9 Recommendations for Hotel Management
+
+Beyond the theoretical and methodological contributions summarised
+above, this study yields a concrete set of recommendations that
+hotel revenue managers and property owners can adopt directly. These
+recommendations are deliberately phrased as operational decisions
+rather than as research findings — they are the answer to the
+question, *"given what this study found, what should a property
+actually do on Monday morning?"*
+
+**1. Adopt a three-tier deposit policy keyed to predicted cancellation
+risk.** The strongest cross-dataset finding is that `deposit_type` is
+the single most influential SHAP feature on both the Portugal
+(119,210 bookings) and Philippine (193 bookings) models. Properties
+should restructure their deposit policy along three tiers: LOW risk
+(predicted P < 0.40) → standard "No Deposit" handling; MEDIUM risk
+(0.40 ≤ P < 0.70) → optional small deposit or pre-arrival reminder
+seven days before check-in; HIGH risk (P ≥ 0.70) → required partial
+deposit or confirmation phone call. On the Portugal test set, this
+risk-tier stratification corresponded to a 4.4-percentage-point spread
+between predicted and observed cancellation rates within each tier,
+small enough to justify tier-specific operational rules.
+
+**2. Replace the default 0.50 decision threshold with the
+cost-sensitive threshold whenever the property has measured its own
+FP / FN cost ratio.** The cost-minimising threshold on the Portugal
+test set is 0.04 — dramatically lower than the textbook 0.50 — because
+the cost of missing a true cancellation (lost ADR × length-of-stay,
+typically €150–€300) substantially exceeds the cost of intervening on
+a false positive (a €15 reminder email, deposit request, or phone
+call). At 0.50, total expected cost on the Portugal test set was
+€387,350; at the cost-sensitive 0.04 threshold, total expected cost
+falls to €73,449 — a 81 % reduction over the naïve cut-off and a 95 %
+reduction over running operations without any model. Even a
+back-of-the-envelope cost calibration produces dramatic savings;
+properties should not default to 0.50.
+
+**3. Prioritise pre-arrival reminders for the 60-to-100-day lead-time
+window.** Lead time is among the strongest SHAP drivers on the
+Portugal model. Bookings made 60–100 days in advance show the steepest
+gradient in cancellation probability as the arrival date approaches.
+A short, friendly reminder email or SMS sent 14 days and 3 days before
+check-in materially increases the probability that a guest who has
+already decided not to honour their reservation will cancel early
+enough for the room to be resold. Properties should treat the
+14-day and 3-day touchpoints as standard CRM workflow.
+
+**4. Monitor model drift quarterly via the Power BI dashboard's Page
+8 (Monitoring) view.** The drift-monitoring template provided with
+this study computes Population Stability Index (PSI) on each input
+feature and on the risk-tier mix every time predictions are exported.
+PSI values above 0.25 on any feature indicate that the booking
+distribution has shifted enough to warrant model retraining. Quarterly
+review of this page is a low-effort safeguard against silent
+performance decay.
+
+**5. Treat the Philippine sub-study performance as a floor, not a
+ceiling.** Punta Villa's PR-AUC of 0.542 on n_test = 20 sits ~22
+percentage points below the Portugal benchmark — exactly what the
+combination of smaller training data and a narrower PMS schema would
+predict. Properties that resemble Punta Villa should expect similar
+directional performance until they accumulate 1,000+ historical
+bookings. The deposit-policy tier recommendation above remains
+defensible even at small N, because it rests on a feature-importance
+finding (deposit dominance) that replicates across two datasets, not
+on a precise probability estimate.
+
+**6. Use per-prediction SHAP explanations to defend interventions to
+guests.** The live FastAPI server returns the top five SHAP
+contributions alongside every prediction. When a front-desk clerk
+needs to explain to a guest why a deposit was requested, the SHAP
+output provides a defensible, transparent rationale ("based on your
+long lead time and our refund policy") rather than an opaque "the
+system said so." Embedding this transparency into customer-facing
+scripts reduces friction and signals professionalism.
+
+These six recommendations are scoped to remain valid even if the
+quantitative performance numbers drift modestly over time. They rest
+on robust findings (deposit dominance, cost-sensitive policy gains,
+lead-time gradient) rather than on point estimates, and they
+operationalise the Sense → Seize → Transform framework into actions
+a Filipino or international property can implement without specialised
+ML staff.
+
+## 5.10 Concluding Remarks
 
 This study began with a problem statement that almost every property
 recognises: cancellations are a persistent revenue leak, and most
