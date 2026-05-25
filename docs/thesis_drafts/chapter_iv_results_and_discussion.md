@@ -80,7 +80,7 @@ Several risk patterns are visible in the exploratory analysis (see
    exhibit a markedly lower cancellation rate than first-time
    bookings. This is one of the most intuitive findings, and it
    foreshadows the SHAP importance of `previous_bookings_not_canceled`
-   reported in §4.3.4.
+   reported in Section 4.3.4.
 
 These four patterns answer Research Objective 1 ("identify and analyze
 the primary factors and patterns that correlate with booking
@@ -138,11 +138,11 @@ Table 4.3.
 | Test rows with a train/val twin | **0 / 20** | Methodology proceeds without inflation risk |
 
 The diagnostic does **not** fire on the real Punta Villa data. This is
-the right result for two reasons: it confirms the test metrics in §4.5
+the right result for two reasons: it confirms the test metrics in Section 4.5
 measure genuine generalization rather than memorization, and it
 demonstrates the value of running the diagnostic before claiming
 transferability on small datasets — a point developed further as a
-methodology contribution in §4.6.
+methodology contribution in Section 4.6.
 
 ### 4.2.3 Cross-dataset cancellation drivers
 
@@ -150,7 +150,7 @@ Both datasets show the same broad cancellation-driver hierarchy at the
 exploratory level: deposit policy, lead time, and booking source all
 move cancellation rates by tens of percentage points. The two datasets
 differ on what the *dominant* driver is at the multivariate level, and
-that difference is taken up rigorously through SHAP in §4.3.4 and §4.5.3.
+that difference is taken up rigorously through SHAP in Section 4.3.4 and Section 4.5.3.
 
 ---
 
@@ -231,7 +231,7 @@ manager.
 **LightGBM is the champion** under this policy. Its PR-AUC gap over the
 runner-up (XGBoost) is small (+0.0028), but the gap over the simpler
 families (Random Forest, Logistic Regression) is substantial and is
-shown to be statistically significant in §4.3.4. The selection lineage
+shown to be statistically significant in Section 4.3.4. The selection lineage
 is logged at `reports/champion_summary.json`.
 
 ### 4.3.3 Held-out test-set performance (Portugal)
@@ -371,7 +371,7 @@ of the hypothesis. Three points are worth making explicit:
 1. **`deposit_type` dominates** because the encoded categorical level
    `deposit_type = "Non Refund"` is by far the single most influential
    SHAP feature, with mean(\|SHAP\|) = 0.911 on its own. This is the
-   counter-intuitive pattern noted in §4.2 — non-refundable deposits
+   counter-intuitive pattern noted in Section 4.2 — non-refundable deposits
    in this dataset are paradoxically associated with higher
    cancellation. The model captures the pattern directly.
 2. **Booking-source identity matters more than raw lead time.** Once
@@ -392,7 +392,7 @@ beeswarm with per-row contribution distribution.
 
 ### 4.3.5 Probability calibration
 
-Recall from §4.3.1 that the pipeline includes a calibration step
+Recall from Section 4.3.1 that the pipeline includes a calibration step
 that re-maps the model's raw scores so the displayed percentages
 correspond to real-world cancellation rates. Table 4.8 shows how
 much the calibration step improves the model's honesty, before and
@@ -412,7 +412,7 @@ closer to 54 %, a six-point gap that would lead managers to
 over-react to mid-range bookings. After calibration, that same
 prediction would be within roughly three points of the truth. This
 matters because the next step of the pipeline (the cost-sensitive
-threshold in §4.4) uses these percentages to decide which bookings
+threshold in Section 4.4) uses these percentages to decide which bookings
 trigger interventions — if the percentages were off by ten points,
 the cost calculations would be off in lockstep, and the dashboard
 recommendations would be unreliable.
@@ -499,7 +499,7 @@ one of three risk tiers, with the thresholds shown in Table 4.11.
 
 These tiers operationalise the cost-sensitive savings into a concrete
 deposit and outreach policy. The Power BI dashboard described in
-§4.4.3 visualises the per-tier counts and revenue exposure for the
+Section 4.4.3 visualises the per-tier counts and revenue exposure for the
 front-desk team.
 
 Figure 4.5
@@ -682,7 +682,7 @@ the Philippine champion for three reasons:
    families on every metric we report.
 2. **Parallel-to-Portugal lineage** — using the same family on both
    datasets keeps SHAP rankings and calibration directly
-   cross-comparable, which is important for the H5 verdict in §4.5.3.
+   cross-comparable, which is important for the H5 verdict in Section 4.5.3.
 3. **Occam's razor under statistical indistinguishability** — when
    the data cannot pick a winner, prefer the simpler-to-explain
    choice.
@@ -824,8 +824,8 @@ configurable in `src/config.py`. The methodology can therefore be
 re-applied to a third property by replacing the CSV, updating the
 two configuration values, and re-running the training command. This
 plug-and-play design is exercised end-to-end by the Philippine
-sub-study and documented in detail in `CLAUDE.md` § "Swapping
-Datasets."
+sub-study and documented in detail in the "Swapping Datasets"
+section of `CLAUDE.md`.
 
 ---
 
@@ -884,9 +884,9 @@ of the work, and proposes a concrete agenda for future research.
 
 [^2]: Source: `reports/benchmarks/01_dataset_split_summary.csv`.
 
-[^3]: Source: `notebooks/01_eda.ipynb` §1.7 (cancel rate by lead-time band).
+[^3]: Source: `notebooks/01_eda.ipynb` Section 1.7 (cancel rate by lead-time band).
 
-[^4]: Source: `notebooks/01_eda.ipynb` §1.6c (market_segment × lead_time × deposit_type heatmap) and `notebooks/05_explainability.ipynb` §5.2 (SHAP dependence on deposit_type).
+[^4]: Source: `notebooks/01_eda.ipynb` Section 1.6c (market_segment × lead_time × deposit_type heatmap) and `notebooks/05_explainability.ipynb` Section 5.2 (SHAP dependence on deposit_type).
 
 [^5]: Source: `reports/ph/ph_transferability.json` (n_train, n_val, n_test) + `data/Punta_Villa_Resort_PH_Dataset.csv` for date min/max. Per-split cancellation rate not separately tabulated in current artefacts; the overall 15.0 % rate is reliable.
 

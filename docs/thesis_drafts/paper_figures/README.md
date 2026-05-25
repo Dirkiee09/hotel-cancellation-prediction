@@ -13,34 +13,34 @@
 
 | # | Folder | Figure (filename stem) | Paper section | Hypothesis / Finding |
 |---|---|---|---|---|
-| 1 | `01_eda_and_data` | `fig_01_monthly_trend_with_volume_and_splits` | Ch IV §4.2.1 | Chronological-split honesty |
-| 2 | `01_eda_and_data` | `fig_02_cancellation_rate_donut` | Ch IV §4.2.1 | Class balance (37 % positive) |
-| 3 | `01_eda_and_data` | `fig_1.4_ph_monthly_trend` | Ch IV §4.2.2 | PH temporal context |
-| 4 | `02_model_performance` | `fig_01_roc_pr_curves` | Ch IV §4.3.3 | Headline model quality |
-| 5 | `02_model_performance` | `fig_72_ranked_dumbbell_model_selection` | Ch IV §4.3.2 | **H2** — rolling-CV winner |
-| 6 | `02_model_performance` | `fig_03_normalized_confusion_matrix_max_f1` | Ch IV §4.3.3 | Operational error rates |
-| 7 | `03_calibration_and_thresholds` | `fig_05_calibration_reliability_and_histogram` | Ch IV §4.3.5 | Decision-grade probabilities |
-| 8 | `03_calibration_and_thresholds` | `fig_11_cost_sensitive_threshold_sweep` | Ch IV §4.4.2 | **H4** — €1.55M savings curve |
-| 9 | `04_shap_and_interpretation` | `fig_13_shap_feature_importance_bar` | Ch IV §4.3.4 | **H1, H3** — feature ranking |
-| 10 | `04_shap_and_interpretation` | `fig_14_shap_beeswarm` | Ch IV §4.3.4 | **H1, H3** — direction + magnitude |
-| 11 | `05_business_value` | `fig_23_risk_tier_business_overview` | Ch IV §4.4.2 | Risk tiers + revenue exposure |
-| 12 | `05_business_value` | `fig_24_policy_comparison_business` | Ch IV §4.4.1 | 3-policy business comparison |
-| 13 | `05_business_value` | `fig_25_monthly_revenue_risk_timeline` | Ch IV §4.4.3 | Revenue-at-risk timeline |
-| 14 | `06_transferability_ph` | `fig_5.4_ph_vs_pt_shap_comparison` | Ch IV §4.5.3 | **H5** — cross-dataset SHAP |
-| 15 | `06_transferability_ph` | `fig_2.2_ph_roc_pr_curves` | Ch IV §4.5.2 | PH model quality |
-| 16 | `06_transferability_ph` | `fig_2.7_ph_feature_importance` | Ch IV §4.5.2 | PH champion drivers |
-| 17 | `07_methodology_contributions` | `fig_7.6_paired_delta_forest` | Ch IV §4.3.4 / §4.6 | Bootstrap-significance rigor |
-| 18 | `07_methodology_contributions` | `fig_1.2_ph_cluster_size_distribution` | Ch IV §4.5.1 / §4.6 | Pre-flight diagnostic outcome |
+| 1 | `01_eda_and_data` | `fig_01_monthly_trend_with_volume_and_splits` | Ch IV Section 4.2.1 | Chronological-split honesty |
+| 2 | `01_eda_and_data` | `fig_02_cancellation_rate_donut` | Ch IV Section 4.2.1 | Class balance (37 % positive) |
+| 3 | `01_eda_and_data` | `fig_1.4_ph_monthly_trend` | Ch IV Section 4.2.2 | PH temporal context |
+| 4 | `02_model_performance` | `fig_01_roc_pr_curves` | Ch IV Section 4.3.3 | Headline model quality |
+| 5 | `02_model_performance` | `fig_72_ranked_dumbbell_model_selection` | Ch IV Section 4.3.2 | **H2** — rolling-CV winner |
+| 6 | `02_model_performance` | `fig_03_normalized_confusion_matrix_max_f1` | Ch IV Section 4.3.3 | Operational error rates |
+| 7 | `03_calibration_and_thresholds` | `fig_05_calibration_reliability_and_histogram` | Ch IV Section 4.3.5 | Decision-grade probabilities |
+| 8 | `03_calibration_and_thresholds` | `fig_11_cost_sensitive_threshold_sweep` | Ch IV Section 4.4.2 | **H4** — €1.55M savings curve |
+| 9 | `04_shap_and_interpretation` | `fig_13_shap_feature_importance_bar` | Ch IV Section 4.3.4 | **H1, H3** — feature ranking |
+| 10 | `04_shap_and_interpretation` | `fig_14_shap_beeswarm` | Ch IV Section 4.3.4 | **H1, H3** — direction + magnitude |
+| 11 | `05_business_value` | `fig_23_risk_tier_business_overview` | Ch IV Section 4.4.2 | Risk tiers + revenue exposure |
+| 12 | `05_business_value` | `fig_24_policy_comparison_business` | Ch IV Section 4.4.1 | 3-policy business comparison |
+| 13 | `05_business_value` | `fig_25_monthly_revenue_risk_timeline` | Ch IV Section 4.4.3 | Revenue-at-risk timeline |
+| 14 | `06_transferability_ph` | `fig_5.4_ph_vs_pt_shap_comparison` | Ch IV Section 4.5.3 | **H5** — cross-dataset SHAP |
+| 15 | `06_transferability_ph` | `fig_2.2_ph_roc_pr_curves` | Ch IV Section 4.5.2 | PH model quality |
+| 16 | `06_transferability_ph` | `fig_2.7_ph_feature_importance` | Ch IV Section 4.5.2 | PH champion drivers |
+| 17 | `07_methodology_contributions` | `fig_7.6_paired_delta_forest` | Ch IV Section 4.3.4 / Section 4.6 | Bootstrap-significance rigor |
+| 18 | `07_methodology_contributions` | `fig_1.2_ph_cluster_size_distribution` | Ch IV Section 4.5.1 / Section 4.6 | Pre-flight diagnostic outcome |
 
 **Total: 18 figures across 7 thematic groups, ~2-3 figures per chapter section.**
 
 ---
 
-## Folder 01 — EDA & Data Characterization (Ch IV §4.2)
+## Folder 01 — EDA & Data Characterization (Ch IV Section 4.2)
 
 ### Fig. 1 — Monthly Cancellation Trend with Split Boundaries (Portugal)
 - **File:** `fig_01_monthly_trend_with_volume_and_splits.{png,pdf}`
-- **Paper section:** §4.2.1 Portugal Dataset Characterisation
+- **Paper section:** Section 4.2.1 Portugal Dataset Characterisation
 - **What it shows:** Monthly cancellation rate over 2015-2017 with the train / val / test
   split lines overlaid. Demonstrates the chronological 80/10/10 split visually.
 - **Suggested caption:** *"Monthly booking volume and cancellation rate across the Portugal
@@ -52,7 +52,7 @@
 
 ### Fig. 2 — Cancellation Rate Donut
 - **File:** `fig_02_cancellation_rate_donut.{png,pdf}`
-- **Paper section:** §4.2.1
+- **Paper section:** Section 4.2.1
 - **What it shows:** Class balance — 37 % canceled / 63 % retained on the full Portugal
   dataset.
 - **Suggested caption:** *"Class balance on the Portugal dataset: 37.0 % of bookings were
@@ -62,7 +62,7 @@
 
 ### Fig. 3 — Philippine Monthly Trend (PH)
 - **File:** `fig_1.4_ph_monthly_trend.{png,pdf}`
-- **Paper section:** §4.2.2 Philippine Sub-Study Characterisation
+- **Paper section:** Section 4.2.2 Philippine Sub-Study Characterisation
 - **What it shows:** Booking volume and cancellation rate across the Punta Villa Resort
   PMS export (Dec 2022 – Dec 2025), 193 real bookings.
 - **Suggested caption:** *"Monthly booking volume and cancellation rate at Punta Villa
@@ -72,11 +72,11 @@
 
 ---
 
-## Folder 02 — Model Performance (Ch IV §4.3)
+## Folder 02 — Model Performance (Ch IV Section 4.3)
 
 ### Fig. 4 — ROC + PR Curves (Test Set, Portugal)
 - **File:** `fig_01_roc_pr_curves.{png,pdf}`
-- **Paper section:** §4.3.3 Held-Out Test-Set Performance
+- **Paper section:** Section 4.3.3 Held-Out Test-Set Performance
 - **What it shows:** ROC and Precision-Recall curves for the champion LightGBM on the
   11,922-row test set. Headline: PR-AUC = 0.760 vs class baseline = 0.370 (≈2× lift).
 - **Suggested caption:** *"ROC (left) and Precision-Recall (right) curves for the champion
@@ -87,7 +87,7 @@
 
 ### Fig. 5 — Rolling-Origin Model Selection Dumbbell
 - **File:** `fig_72_ranked_dumbbell_model_selection.{png,pdf}`
-- **Paper section:** §4.3.2 Portugal Model Selection
+- **Paper section:** Section 4.3.2 Portugal Model Selection
 - **What it shows:** Per-model PR-AUC across the 3 rolling-origin folds (60/70/80 %
   cutoffs). LightGBM, XGBoost, and GradientBoosting cluster tightly at the top;
   LogisticRegression, RandomForest follow; DecisionTree at the bottom.
@@ -100,7 +100,7 @@
 
 ### Fig. 6 — Confusion Matrix at max_F1 Threshold
 - **File:** `fig_03_normalized_confusion_matrix_max_f1.{png,pdf}`
-- **Paper section:** §4.3.3
+- **Paper section:** Section 4.3.3
 - **What it shows:** Normalised confusion matrix at the F1-maximising threshold (0.40).
 - **Suggested caption:** *"Normalised confusion matrix for LightGBM at the F1-maximising
   threshold of 0.40 on the test set. Recall = 0.841, precision = 0.652 — the model
@@ -109,11 +109,11 @@
 
 ---
 
-## Folder 03 — Calibration & Thresholds (Ch IV §4.3.5 + §4.4)
+## Folder 03 — Calibration & Thresholds (Ch IV Section 4.3.5 + Section 4.4)
 
 ### Fig. 7 — Calibration Reliability + Probability Histogram
 - **File:** `fig_05_calibration_reliability_and_histogram.{png,pdf}`
-- **Paper section:** §4.3.5 Probability Calibration
+- **Paper section:** Section 4.3.5 Probability Calibration
 - **What it shows:** Reliability diagram (predicted vs observed cancellation rate) before
   and after isotonic calibration, plus the post-calibration probability histogram.
 - **Suggested caption:** *"Reliability diagram before and after isotonic calibration on
@@ -125,7 +125,7 @@
 
 ### Fig. 8 — Cost-Sensitive Threshold Sweep
 - **File:** `fig_11_cost_sensitive_threshold_sweep.{png,pdf}`
-- **Paper section:** §4.4.2 H4 Verdict — Cost-Sensitive Threshold
+- **Paper section:** Section 4.4.2 H4 Verdict — Cost-Sensitive Threshold
 - **What it shows:** Total business cost as a function of decision threshold, with FP cost
   €15 and FN cost = revenue-at-risk per booking. The minimum sits at threshold = 0.04.
 - **Suggested caption:** *"Cost-sensitive threshold sweep across the test set. Total cost
@@ -138,11 +138,11 @@
 
 ---
 
-## Folder 04 — SHAP & Interpretation (Ch IV §4.3.4)
+## Folder 04 — SHAP & Interpretation (Ch IV Section 4.3.4)
 
 ### Fig. 9 — SHAP Feature Importance Bar
 - **File:** `fig_13_shap_feature_importance_bar.{png,pdf}`
-- **Paper section:** §4.3.4 Hypothesis Tests
+- **Paper section:** Section 4.3.4 Hypothesis Tests
 - **What it shows:** Mean(|SHAP|) per feature across the test set, top 15 features.
 - **Suggested caption:** *"Top 15 features by mean absolute SHAP contribution on the
   Portugal test set. `deposit_type`, `country`, and `lead_time` lead the ranking — the
@@ -152,7 +152,7 @@
 
 ### Fig. 10 — SHAP Beeswarm
 - **File:** `fig_14_shap_beeswarm.{png,pdf}`
-- **Paper section:** §4.3.4
+- **Paper section:** Section 4.3.4
 - **What it shows:** Per-feature SHAP value distribution with point colour encoding the
   feature's raw value — adds direction + magnitude information beyond the bar chart.
 - **Suggested caption:** *"SHAP beeswarm summary on the test set. Each dot represents a
@@ -164,11 +164,11 @@
 
 ---
 
-## Folder 05 — Business Value (Ch IV §4.4)
+## Folder 05 — Business Value (Ch IV Section 4.4)
 
 ### Fig. 11 — Risk Tier Business Overview
 - **File:** `fig_23_risk_tier_business_overview.{png,pdf}`
-- **Paper section:** §4.4.2
+- **Paper section:** Section 4.4.2
 - **What it shows:** Test-set distribution across LOW / MEDIUM / HIGH risk tiers with
   revenue exposure and observed cancellation rate per tier.
 - **Suggested caption:** *"Risk-tier composition of the test set (n = 11,922). Each tier
@@ -179,7 +179,7 @@
 
 ### Fig. 12 — Policy Comparison Business
 - **File:** `fig_24_policy_comparison_business.{png,pdf}`
-- **Paper section:** §4.4.1 Threshold Policy Comparison
+- **Paper section:** Section 4.4.1 Threshold Policy Comparison
 - **What it shows:** max_f1 vs high_precision vs cost_sensitive side-by-side: threshold,
   precision, recall, F1, total cost.
 - **Suggested caption:** *"Three operating policies on the test set: F1-maximising
@@ -189,7 +189,7 @@
 
 ### Fig. 13 — Monthly Revenue-at-Risk Timeline
 - **File:** `fig_25_monthly_revenue_risk_timeline.{png,pdf}`
-- **Paper section:** §4.4.3 Power BI Dashboard
+- **Paper section:** Section 4.4.3 Power BI Dashboard
 - **What it shows:** Revenue at risk per month over the test window, with risk-tier
   breakdown.
 - **Suggested caption:** *"Monthly revenue at risk computed from cost-sensitive flags,
@@ -198,11 +198,11 @@
 
 ---
 
-## Folder 06 — Philippine Transferability Study (Ch IV §4.5)
+## Folder 06 — Philippine Transferability Study (Ch IV Section 4.5)
 
 ### Fig. 14 — Cross-Dataset SHAP Comparison (PT vs PH)
 - **File:** `fig_5.4_ph_vs_pt_shap_comparison.{png,pdf}`
-- **Paper section:** §4.5.3 H5 Verdict
+- **Paper section:** Section 4.5.3 H5 Verdict
 - **What it shows:** Side-by-side mean(|SHAP|) bars from the Portugal and Philippine
   models. `deposit_type` is #1 on both.
 - **Suggested caption:** *"Cross-dataset SHAP feature importance: Portugal champion (left,
@@ -215,7 +215,7 @@
 
 ### Fig. 15 — Philippine ROC + PR Curves
 - **File:** `fig_2.2_ph_roc_pr_curves.{png,pdf}`
-- **Paper section:** §4.5.2 PH Model Performance
+- **Paper section:** Section 4.5.2 PH Model Performance
 - **What it shows:** ROC and PR curves on the 20-row PH test set; ROC-AUC ≈ 0.611,
   PR-AUC ≈ 0.542 (vs class baseline 0.150 → ~3.6× lift).
 - **Suggested caption:** *"ROC (left) and Precision-Recall (right) curves on the Philippine
@@ -226,7 +226,7 @@
 
 ### Fig. 16 — Philippine Feature Importance
 - **File:** `fig_2.7_ph_feature_importance.{png,pdf}`
-- **Paper section:** §4.5.2
+- **Paper section:** Section 4.5.2
 - **What it shows:** Top-feature ranking in the Philippine model. `deposit_type` clearly
   dominates.
 - **Suggested caption:** *"LightGBM split-frequency importance on the Philippine sub-study
@@ -235,11 +235,11 @@
 
 ---
 
-## Folder 07 — Methodology Contributions (Ch IV §4.6)
+## Folder 07 — Methodology Contributions (Ch IV Section 4.6)
 
 ### Fig. 17 — Paired Bootstrap Delta Forest (Portugal)
 - **File:** `fig_7.6_paired_delta_forest.{png,pdf}`
-- **Paper section:** §4.3.4 H2 statistical rigour / §4.6 Methodology Contributions
+- **Paper section:** Section 4.3.4 H2 statistical rigour / Section 4.6 Methodology Contributions
 - **What it shows:** ΔPR-AUC of the champion versus each challenger, with 95 % CIs from
   paired bootstrap.
 - **Suggested caption:** *"Paired-bootstrap deltas (champion LightGBM minus challenger)
@@ -251,7 +251,7 @@
 
 ### Fig. 18 — Philippine Pre-Flight Cluster Diagnostic
 - **File:** `fig_1.2_ph_cluster_size_distribution.{png,pdf}`
-- **Paper section:** §4.5.1 PH Setup / §4.6 Methodology Contributions
+- **Paper section:** Section 4.5.1 PH Setup / Section 4.6 Methodology Contributions
 - **What it shows:** Distribution of duplicate-vector cluster sizes in the PH dataset.
   ~0 % duplicate rate confirms the methodology proceeds honestly.
 - **Suggested caption:** *"Pre-flight duplicate-cluster diagnostic on the Philippine
@@ -304,14 +304,14 @@ defense-day question, cut it.* This left 18 figures across 7 themes, each non-re
 
 | Section in `complete_thesis.md` | Figures referenced |
 |---|---|
-| Ch IV §4.2 (Sense) | Fig. 1, 2, 3 |
-| Ch IV §4.3 (Seize — modelling) | Fig. 4, 5, 6, 9, 10, 17 |
-| Ch IV §4.3.5 (Calibration) | Fig. 7 |
-| Ch IV §4.4 (Transform — business) | Fig. 8, 11, 12, 13 |
-| Ch IV §4.5 (PH transferability) | Fig. 14, 15, 16, 18 |
-| Ch IV §4.6 (Methodology contributions) | Fig. 17, 18 (cross-referenced) |
-| Ch V §5.4 (Theoretical contributions) | Fig. 14 (cross-referenced) |
-| Ch V §5.5 (Practical contributions) | Fig. 8, 11 (cross-referenced) |
+| Ch IV Section 4.2 (Sense) | Fig. 1, 2, 3 |
+| Ch IV Section 4.3 (Seize — modelling) | Fig. 4, 5, 6, 9, 10, 17 |
+| Ch IV Section 4.3.5 (Calibration) | Fig. 7 |
+| Ch IV Section 4.4 (Transform — business) | Fig. 8, 11, 12, 13 |
+| Ch IV Section 4.5 (PH transferability) | Fig. 14, 15, 16, 18 |
+| Ch IV Section 4.6 (Methodology contributions) | Fig. 17, 18 (cross-referenced) |
+| Ch V Section 5.4 (Theoretical contributions) | Fig. 14 (cross-referenced) |
+| Ch V Section 5.5 (Practical contributions) | Fig. 8, 11 (cross-referenced) |
 
 **Total cross-references across Ch IV/V: ~22 figure citations** for 18 unique figures —
 some figures (especially Fig. 8, 14, 17, 18) are appropriately cited twice because they

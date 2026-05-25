@@ -124,9 +124,9 @@ agenda, the study is guided by the following research questions:
    chronological-split leakage), and does the resulting model surface
    a feature-importance ranking consistent with the Portugal benchmark?
 
-These research questions structure Chapter IV's discussion: §4.2
-addresses RQ1, §4.3 addresses RQ2 and RQ3, §4.4 addresses RQ4, and
-§4.5 addresses RQ5. Each research question is paired with one or
+These research questions structure Chapter IV's discussion: Section 4.2
+addresses RQ1, Section 4.3 addresses RQ2 and RQ3, Section 4.4 addresses RQ4, and
+Section 4.5 addresses RQ5. Each research question is paired with one or
 more falsifiable hypotheses (H1–H5) stated in the next section.
 
 ## Objectives of the Study
@@ -304,7 +304,7 @@ defined operationally:
   record reservations, manage room inventory, and process check-in /
   check-out. The Punta Villa Resort PMS export used in the Philippine
   sub-study captures a narrower schema than the Portugal benchmark —
-  this asymmetry is documented and discussed in §4.6 as the
+  this asymmetry is documented and discussed in Section 4.6 as the
   feature-availability mapping contribution.
 
 - **Power BI dashboard.** The eight-page decision-support visualisation
@@ -407,7 +407,7 @@ The Philippine PMS export captures a reduced subset of the variables available i
 | `Special_Requests` | Count of special requests | `total_of_special_requests` |
 | `Arrival_Date` | ISO arrival date | `arrival_date_year`, `arrival_date_month`, `arrival_date_day_of_month`, `month_sin`, `month_cos` |
 
-The Philippine PMS export does **not** capture `country`, `agent`, `market_segment`, `customer_type`, `previous_cancellations`, `previous_bookings_not_canceled`, `required_car_parking_spaces`, or `meal` (the latter is constant and dropped). This is the feature-availability constraint that Chapter IV § 4.6.2 develops as a methodology contribution.
+The Philippine PMS export does **not** capture `country`, `agent`, `market_segment`, `customer_type`, `previous_cancellations`, `previous_bookings_not_canceled`, `required_car_parking_spaces`, or `meal` (the latter is constant and dropped). This is the feature-availability constraint that Chapter IV Section 4.6.2 develops as a methodology contribution.
 
 ## Pre-Flight Duplicate-Cluster Diagnostic
 
@@ -528,7 +528,7 @@ Several risk patterns are visible in the exploratory analysis (see
    exhibit a markedly lower cancellation rate than first-time
    bookings. This is one of the most intuitive findings, and it
    foreshadows the SHAP importance of `previous_bookings_not_canceled`
-   reported in §4.3.4.
+   reported in Section 4.3.4.
 
 These four patterns answer Research Objective 1 ("identify and analyze
 the primary factors and patterns that correlate with booking
@@ -586,11 +586,11 @@ Table 4.3.
 | Test rows with a train/val twin | **0 / 20** | Methodology proceeds without inflation risk |
 
 The diagnostic does **not** fire on the real Punta Villa data. This is
-the right result for two reasons: it confirms the test metrics in §4.5
+the right result for two reasons: it confirms the test metrics in Section 4.5
 measure genuine generalization rather than memorization, and it
 demonstrates the value of running the diagnostic before claiming
 transferability on small datasets — a point developed further as a
-methodology contribution in §4.6.
+methodology contribution in Section 4.6.
 
 ### 4.2.3 Cross-dataset cancellation drivers
 
@@ -598,7 +598,7 @@ Both datasets show the same broad cancellation-driver hierarchy at the
 exploratory level: deposit policy, lead time, and booking source all
 move cancellation rates by tens of percentage points. The two datasets
 differ on what the *dominant* driver is at the multivariate level, and
-that difference is taken up rigorously through SHAP in §4.3.4 and §4.5.3.
+that difference is taken up rigorously through SHAP in Section 4.3.4 and Section 4.5.3.
 
 ---
 
@@ -679,7 +679,7 @@ manager.
 **LightGBM is the champion** under this policy. Its PR-AUC gap over the
 runner-up (XGBoost) is small (+0.0028), but the gap over the simpler
 families (Random Forest, Logistic Regression) is substantial and is
-shown to be statistically significant in §4.3.4. The selection lineage
+shown to be statistically significant in Section 4.3.4. The selection lineage
 is logged at `reports/champion_summary.json`.
 
 ### 4.3.3 Held-out test-set performance (Portugal)
@@ -822,7 +822,7 @@ of the hypothesis. Three points are worth making explicit:
 1. **`deposit_type` dominates** because the encoded categorical level
    `deposit_type = "Non Refund"` is by far the single most influential
    SHAP feature, with mean(\|SHAP\|) = 0.911 on its own. This is the
-   counter-intuitive pattern noted in §4.2 — non-refundable deposits
+   counter-intuitive pattern noted in Section 4.2 — non-refundable deposits
    in this dataset are paradoxically associated with higher
    cancellation. The model captures the pattern directly.
 2. **Booking-source identity matters more than raw lead time.** Once
@@ -843,7 +843,7 @@ beeswarm with per-row contribution distribution.
 
 ### 4.3.5 Probability calibration
 
-Recall from §4.3.1 that the pipeline includes a calibration step
+Recall from Section 4.3.1 that the pipeline includes a calibration step
 that re-maps the model's raw scores so the displayed percentages
 correspond to real-world cancellation rates. Table 4.8 shows how
 much the calibration step improves the model's honesty, before and
@@ -863,7 +863,7 @@ closer to 54 %, a six-point gap that would lead managers to
 over-react to mid-range bookings. After calibration, that same
 prediction would be within roughly three points of the truth. This
 matters because the next step of the pipeline (the cost-sensitive
-threshold in §4.4) uses these percentages to decide which bookings
+threshold in Section 4.4) uses these percentages to decide which bookings
 trigger interventions — if the percentages were off by ten points,
 the cost calculations would be off in lockstep, and the dashboard
 recommendations would be unreliable.
@@ -950,7 +950,7 @@ one of three risk tiers, with the thresholds shown in Table 4.11.
 
 These tiers operationalise the cost-sensitive savings into a concrete
 deposit and outreach policy. The Power BI dashboard described in
-§4.4.3 visualises the per-tier counts and revenue exposure for the
+Section 4.4.3 visualises the per-tier counts and revenue exposure for the
 front-desk team.
 
 Figure 4.5
@@ -1133,7 +1133,7 @@ the Philippine champion for three reasons:
    families on every metric we report.
 2. **Parallel-to-Portugal lineage** — using the same family on both
    datasets keeps SHAP rankings and calibration directly
-   cross-comparable, which is important for the H5 verdict in §4.5.3.
+   cross-comparable, which is important for the H5 verdict in Section 4.5.3.
 3. **Occam's razor under statistical indistinguishability** — when
    the data cannot pick a winner, prefer the simpler-to-explain
    choice.
@@ -1283,8 +1283,8 @@ configurable in `src/config.py`. The methodology can therefore be
 re-applied to a third property by replacing the CSV, updating the
 two configuration values, and re-running the training command. This
 plug-and-play design is exercised end-to-end by the Philippine
-sub-study and documented in detail in `CLAUDE.md` § "Swapping
-Datasets."
+sub-study and documented in detail in the "Swapping Datasets"
+section of `CLAUDE.md`.
 
 ---
 
@@ -1343,9 +1343,9 @@ of the work, and proposes a concrete agenda for future research.
 
 [^2]: Source: `reports/benchmarks/01_dataset_split_summary.csv`.
 
-[^3]: Source: `notebooks/01_eda.ipynb` §1.7 (cancel rate by lead-time band).
+[^3]: Source: `notebooks/01_eda.ipynb` Section 1.7 (cancel rate by lead-time band).
 
-[^4]: Source: `notebooks/01_eda.ipynb` §1.6c (market_segment × lead_time × deposit_type heatmap) and `notebooks/05_explainability.ipynb` §5.2 (SHAP dependence on deposit_type).
+[^4]: Source: `notebooks/01_eda.ipynb` Section 1.6c (market_segment × lead_time × deposit_type heatmap) and `notebooks/05_explainability.ipynb` Section 5.2 (SHAP dependence on deposit_type).
 
 [^5]: Source: `reports/ph/ph_transferability.json` (n_train, n_val, n_test) + `data/Punta_Villa_Resort_PH_Dataset.csv` for date min/max. Per-split cancellation rate not separately tabulated in current artefacts; the overall 15.0 % rate is reliable.
 
@@ -1434,11 +1434,11 @@ Table 5.2 records which Chapter IV section addresses each objective.
 
 | Objective | Where it is met | Status |
 |---|---|---|
-| 1. Identify and analyse the primary factors that correlate with booking cancellations through EDA | §4.2 (Sense) | Met |
-| 2. Develop and evaluate a range of ML models on Accuracy, Recall, F1, Precision, AUC | §4.3 (Seize) | Met; LightGBM selected as champion by rolling-origin PR-AUC |
-| 3. Interpret the feature importance of the best-performing model and translate it into a clear understanding of cancellation drivers | §4.3.4 (SHAP) | Met; per-prediction SHAP also exposed in the live API |
-| 4. Build a Power BI decision-support dashboard converting model insights into cost-sensitive policy recommendations | §4.4.3 | Met; 8-page dashboard delivered |
-| 5. Validate the methodology's transferability to a small real Philippine resort dataset (added) | §4.5 | Met; the pre-flight diagnostic passes and `deposit_type` survives as #1 SHAP |
+| 1. Identify and analyse the primary factors that correlate with booking cancellations through EDA | Section 4.2 (Sense) | Met |
+| 2. Develop and evaluate a range of ML models on Accuracy, Recall, F1, Precision, AUC | Section 4.3 (Seize) | Met; LightGBM selected as champion by rolling-origin PR-AUC |
+| 3. Interpret the feature importance of the best-performing model and translate it into a clear understanding of cancellation drivers | Section 4.3.4 (SHAP) | Met; per-prediction SHAP also exposed in the live API |
+| 4. Build a Power BI decision-support dashboard converting model insights into cost-sensitive policy recommendations | Section 4.4.3 | Met; 8-page dashboard delivered |
+| 5. Validate the methodology's transferability to a small real Philippine resort dataset (added) | Section 4.5 | Met; the pre-flight diagnostic passes and `deposit_type` survives as #1 SHAP |
 
 Every objective is met in Chapter IV. Objective 4's deliverable — the
 Power BI dashboard — is reproducible from the CSV outputs in `reports/`
@@ -1575,7 +1575,7 @@ findings.
 **Portugal dataset age.** The Portugal data covers July 2015 to August
 2017. It pre-dates the COVID-19 pandemic and the rise of flexible
 booking policies that have reshaped customer behaviour since. The
-empirical patterns reported in §4.2 — including the counter-intuitive
+empirical patterns reported in Section 4.2 — including the counter-intuitive
 "Non Refund" deposit pattern — may not reproduce on bookings made
 under post-2020 conditions. A property planning to deploy this
 methodology in production should retrain on its own recent data
@@ -1599,7 +1599,7 @@ several percentage points up or down. On the 20-row test set, this
 specific cut-off happens not to flag any cancellations, producing an
 F1 score of zero. This is a mathematical symptom of small sample
 size at a single chosen cut-off; it is *not* a failure of the model
-itself, which (as Chapter IV § 4.5.2 shows) still ranks Philippine
+itself, which (as Chapter IV Section 4.5.2 shows) still ranks Philippine
 bookings by cancellation risk well enough to produce a PR-AUC roughly
 3.6 times the natural cancellation rate. The risk-tier system — which
 relies on the calibrated probabilities themselves rather than on a
@@ -1614,7 +1614,7 @@ moment of reservation. The live `/predict` endpoint substitutes
 placeholder values for these features, so the live `predicted_adr` is
 slightly less accurate than the published test-set RMSE of 44.31 EUR.
 A methodologically clean fix is to retrain the ADR regressor on
-booking-time features only, which is recommended in §5.8.
+booking-time features only, which is recommended in Section 5.8.
 
 **No randomised field experiments.** The cost-sensitive savings of
 €1.53M on the Portugal test sample is a backtested figure: it
@@ -1634,7 +1634,7 @@ of unnecessary deposit demands. The one-night recovery penalty
 under-states the true opportunity cost when a cancelled booking
 cannot be rebooked at all. Both assumptions are documented in
 `src/config.py` and can be revised per property; the relative ranking
-of the three threshold policies in §4.4.1 is robust to changes in
+of the three threshold policies in Section 4.4.1 is robust to changes in
 these assumptions over a reasonable range.
 
 **No external data fusion.** The study deliberately excludes external
@@ -1659,7 +1659,7 @@ Six concrete research directions follow from this study's findings
 and limitations.
 
 **Collect more Philippine bookings.** The Philippine learning curve
-in `notebooks/ph/03_deep_analysis.ipynb` § 3.2 does not flatten at
+in `notebooks/ph/03_deep_analysis.ipynb` Section 3.2 does not flatten at
 the current n_train of 154 rows. Doubling the training set is
 likely to yield a meaningful PR-AUC improvement and would tighten
 the threshold-stability problem that produces F1 = 0 at max-F1 on
@@ -1673,7 +1673,7 @@ current ADR regressor uses four post-booking features at training
 time and substitutes placeholders at inference. A clean retrain
 on the same feature subset as the cancellation classifier (the 18
 booking-time engineered features) would close the live-vs-published
-RMSE discrepancy noted in §5.7. This is a small change to
+RMSE discrepancy noted in Section 5.7. This is a small change to
 `src/pipelines/train.py` and would be a one-week project.
 
 **Run a live A/B test of the cost-sensitive threshold.** The €1.53M
@@ -1701,7 +1701,7 @@ A federation of small properties — each contributing model gradient
 updates without sharing raw data — could in principle produce
 production-grade thresholds on commodity hardware without any single
 property needing Portugal-scale data. The plug-and-play dataset
-framework described in §4.6.3 is the natural starting point for
+framework described in Section 4.6.3 is the natural starting point for
 such a federation.
 
 **Add an uplift modelling layer.** The cancellation classifier

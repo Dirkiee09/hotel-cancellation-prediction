@@ -106,5 +106,5 @@ contributions:
    PMS schema can produce — a useful bound for other small properties
    with similar PMS exports.
 
-See `CLAUDE.md` § "PH Sub-Study — Philippine Resort Dataset" for the full
+See `CLAUDE.md` the "PH Sub-Study — Philippine Resort Dataset" section for the full
 project context.

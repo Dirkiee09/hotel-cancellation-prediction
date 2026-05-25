@@ -65,11 +65,11 @@ Table 5.2 records which Chapter IV section addresses each objective.
 
 | Objective | Where it is met | Status |
 |---|---|---|
-| 1. Identify and analyse the primary factors that correlate with booking cancellations through EDA | §4.2 (Sense) | Met |
-| 2. Develop and evaluate a range of ML models on Accuracy, Recall, F1, Precision, AUC | §4.3 (Seize) | Met; LightGBM selected as champion by rolling-origin PR-AUC |
-| 3. Interpret the feature importance of the best-performing model and translate it into a clear understanding of cancellation drivers | §4.3.4 (SHAP) | Met; per-prediction SHAP also exposed in the live API |
-| 4. Build a Power BI decision-support dashboard converting model insights into cost-sensitive policy recommendations | §4.4.3 | Met; 8-page dashboard delivered |
-| 5. Validate the methodology's transferability to a small real Philippine resort dataset (added) | §4.5 | Met; the pre-flight diagnostic passes and `deposit_type` survives as #1 SHAP |
+| 1. Identify and analyse the primary factors that correlate with booking cancellations through EDA | Section 4.2 (Sense) | Met |
+| 2. Develop and evaluate a range of ML models on Accuracy, Recall, F1, Precision, AUC | Section 4.3 (Seize) | Met; LightGBM selected as champion by rolling-origin PR-AUC |
+| 3. Interpret the feature importance of the best-performing model and translate it into a clear understanding of cancellation drivers | Section 4.3.4 (SHAP) | Met; per-prediction SHAP also exposed in the live API |
+| 4. Build a Power BI decision-support dashboard converting model insights into cost-sensitive policy recommendations | Section 4.4.3 | Met; 8-page dashboard delivered |
+| 5. Validate the methodology's transferability to a small real Philippine resort dataset (added) | Section 4.5 | Met; the pre-flight diagnostic passes and `deposit_type` survives as #1 SHAP |
 
 Every objective is met in Chapter IV. Objective 4's deliverable — the
 Power BI dashboard — is reproducible from the CSV outputs in `reports/`
@@ -206,7 +206,7 @@ findings.
 **Portugal dataset age.** The Portugal data covers July 2015 to August
 2017. It pre-dates the COVID-19 pandemic and the rise of flexible
 booking policies that have reshaped customer behaviour since. The
-empirical patterns reported in §4.2 — including the counter-intuitive
+empirical patterns reported in Section 4.2 — including the counter-intuitive
 "Non Refund" deposit pattern — may not reproduce on bookings made
 under post-2020 conditions. A property planning to deploy this
 methodology in production should retrain on its own recent data
@@ -230,7 +230,7 @@ several percentage points up or down. On the 20-row test set, this
 specific cut-off happens not to flag any cancellations, producing an
 F1 score of zero. This is a mathematical symptom of small sample
 size at a single chosen cut-off; it is *not* a failure of the model
-itself, which (as Chapter IV § 4.5.2 shows) still ranks Philippine
+itself, which (as Chapter IV Section 4.5.2 shows) still ranks Philippine
 bookings by cancellation risk well enough to produce a PR-AUC roughly
 3.6 times the natural cancellation rate. The risk-tier system — which
 relies on the calibrated probabilities themselves rather than on a
@@ -245,7 +245,7 @@ moment of reservation. The live `/predict` endpoint substitutes
 placeholder values for these features, so the live `predicted_adr` is
 slightly less accurate than the published test-set RMSE of 44.31 EUR.
 A methodologically clean fix is to retrain the ADR regressor on
-booking-time features only, which is recommended in §5.8.
+booking-time features only, which is recommended in Section 5.8.
 
 **No randomised field experiments.** The cost-sensitive savings of
 €1.53M on the Portugal test sample is a backtested figure: it
@@ -265,7 +265,7 @@ of unnecessary deposit demands. The one-night recovery penalty
 under-states the true opportunity cost when a cancelled booking
 cannot be rebooked at all. Both assumptions are documented in
 `src/config.py` and can be revised per property; the relative ranking
-of the three threshold policies in §4.4.1 is robust to changes in
+of the three threshold policies in Section 4.4.1 is robust to changes in
 these assumptions over a reasonable range.
 
 **No external data fusion.** The study deliberately excludes external
@@ -290,7 +290,7 @@ Six concrete research directions follow from this study's findings
 and limitations.
 
 **Collect more Philippine bookings.** The Philippine learning curve
-in `notebooks/ph/03_deep_analysis.ipynb` § 3.2 does not flatten at
+in `notebooks/ph/03_deep_analysis.ipynb` Section 3.2 does not flatten at
 the current n_train of 154 rows. Doubling the training set is
 likely to yield a meaningful PR-AUC improvement and would tighten
 the threshold-stability problem that produces F1 = 0 at max-F1 on
@@ -304,7 +304,7 @@ current ADR regressor uses four post-booking features at training
 time and substitutes placeholders at inference. A clean retrain
 on the same feature subset as the cancellation classifier (the 18
 booking-time engineered features) would close the live-vs-published
-RMSE discrepancy noted in §5.7. This is a small change to
+RMSE discrepancy noted in Section 5.7. This is a small change to
 `src/pipelines/train.py` and would be a one-week project.
 
 **Run a live A/B test of the cost-sensitive threshold.** The €1.53M
@@ -332,7 +332,7 @@ A federation of small properties — each contributing model gradient
 updates without sharing raw data — could in principle produce
 production-grade thresholds on commodity hardware without any single
 property needing Portugal-scale data. The plug-and-play dataset
-framework described in §4.6.3 is the natural starting point for
+framework described in Section 4.6.3 is the natural starting point for
 such a federation.
 
 **Add an uplift modelling layer.** The cancellation classifier

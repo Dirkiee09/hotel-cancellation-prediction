@@ -222,7 +222,7 @@ performance measurement..."*) and **expand it** to include:
 > **Third**, a plug-and-play dataset framework that allows the
 > methodology to be re-applied to any chronologically-sortable booking
 > CSV with a single configuration change. All three contributions are
-> exercised by the Philippine sub-study described in Chapter IV § 4.5."*
+> exercised by the Philippine sub-study described in Chapter IV Section 4.5."*
 
 ---
 
@@ -273,7 +273,7 @@ performance measurement..."*) and **expand it** to include:
 > `market_segment`, `customer_type`, `previous_cancellations`,
 > `previous_bookings_not_canceled`, `required_car_parking_spaces`, or
 > `meal` (the latter is constant and dropped). This is the
-> feature-availability constraint that Chapter IV § 4.6.2 develops as
+> feature-availability constraint that Chapter IV Section 4.6.2 develops as
 > a methodology contribution.*
 
 ### Modelling Procedures — add pre-flight diagnostic + bootstrap significance
@@ -300,7 +300,7 @@ performance measurement..."*) and **expand it** to include:
 > *Each candidate model family fits its own isotonic calibrator on the
 > validation set, so the calibration step is part of model selection
 > rather than a post-hoc adjustment to the champion alone. This
-> ensures that model comparisons (Chapter IV § 4.3.4) use calibrated
+> ensures that model comparisons (Chapter IV Section 4.3.4) use calibrated
 > probabilities for every family, not raw scores from non-champions
 > and calibrated scores from the champion.*
 
@@ -312,7 +312,7 @@ performance measurement..."*) and **expand it** to include:
 > test set with replacement, recomputes PR-AUC and ROC-AUC for the
 > champion and the challenger on the same resample, and stores the
 > delta. The 95 % confidence interval on the delta and the two-sided
-> p-value are then reported (Chapter IV § 4.3.4 Table 4.6). This
+> p-value are then reported (Chapter IV Section 4.3.4 Table 4.6). This
 > elevates "LightGBM is best" from a point-estimate claim to a
 > statistical claim."*
 
@@ -349,7 +349,7 @@ performance measurement..."*) and **expand it** to include:
 
 ## Application notes
 
-1. **Apply these patches in this order**: Chapter I § 6 (Scope rewrite)
+1. **Apply these patches in this order**: Chapter I Section 6 (Scope rewrite)
    first, then Chapter III dataset variables (which the Scope refers
    to), then everything else. The rest of the patches are independent
    of each other.
@@ -363,7 +363,7 @@ performance measurement..."*) and **expand it** to include:
 3. **Cross-reference check after applying**: every Chapter IV / V
    number cited as "from Chapter III" should trace back to a section
    that exists post-patch. The patches above add: parallel datasets
-   (§ Research Design), pre-flight diagnostic (§ Modelling Procedures),
-   per-family calibration (§ Modelling Procedures), bootstrap
-   significance (§ Modelling Procedures), and serving / CI instruments
-   (§ Research Instruments).
+   (Research Design section), pre-flight diagnostic (Modelling
+   Procedures section), per-family calibration (Modelling Procedures
+   section), bootstrap significance (Modelling Procedures section),
+   and serving / CI instruments (Research Instruments section).

@@ -59,7 +59,7 @@ These topics are deliberately left out and should be picked up after
 the chapter drafts are finalised:
 
 - Abstract rewrite (do this last; pull the headline numbers from
-  Chapter IV § 4.3.3 and § 4.4.2).
+  Chapter IV Section 4.3.3 and Section 4.4.2).
 - Figure captions (the chapter drafts reference figures by filename;
   the author should write panel-style captions following the journal /
   university template).

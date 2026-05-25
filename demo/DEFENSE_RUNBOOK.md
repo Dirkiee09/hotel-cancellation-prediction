@@ -132,7 +132,7 @@ talking points, not lines to read.
 
 ### Act 4 — The methodology contribution (3 min)
 - Open `notebooks/ph/11_transferability.ipynb` in JupyterLab.
-- Scroll to §11.2 — the duplicate-cluster diagnostic.
+- Scroll to Section 11.2 — the duplicate-cluster diagnostic.
 - "Before trusting any small-N metric, we run a pre-flight check: do
   feature vectors repeat? If 30 %+ of rows share a vector AND clusters
   have consistent labels, the chronological split leaks twins. **On the
@@ -143,7 +143,7 @@ talking points, not lines to read.
   datasets."
 
 ### Act 5 — Wrap (2 min)
-- Open `notebooks/ph/07_model_selection.ipynb`, scroll to §7.2 — the
+- Open `notebooks/ph/07_model_selection.ipynb`, scroll to Section 7.2 — the
   bootstrap-CI forest plot.
 - "Three model families compared honestly: LightGBM leads on point
   estimate but the CIs all overlap. At n_test = 20 the comparison is
@@ -276,7 +276,7 @@ python scripts/export_predictions.py
 - Specific notebook pairs to remember:
   - "Why LightGBM?" → `notebooks/02_modeling.ipynb` (Portugal) +
     `notebooks/ph/07_model_selection.ipynb` (PH)
-  - "What about calibration?" → `notebooks/03_deep_analysis.ipynb` (§3.6)
+  - "What about calibration?" → `notebooks/03_deep_analysis.ipynb` (Section 3.6)
   - "How does it explain itself?" → `notebooks/05_explainability.ipynb`
   - "What if the data shifts?" → `notebooks/08_model_monitoring.ipynb`
 
@@ -343,8 +343,8 @@ relationships, not universals.
 Three pieces of evidence on Portugal: (a) **rolling-origin CV** with 3
 chronological folds, PR-AUC stable across folds (`reports/benchmarks/10_rolling_origin_fold_metrics.csv`),
 (b) **learning curves** that flatten well before 100 % of training data
-(`notebooks/03_deep_analysis.ipynb` §3.2), (c) **expanding-window CV**
-with no fold collapse (`notebooks/03_deep_analysis.ipynb` §3.3). On PH
+(`notebooks/03_deep_analysis.ipynb` Section 3.2), (c) **expanding-window CV**
+with no fold collapse (`notebooks/03_deep_analysis.ipynb` Section 3.3). On PH
 the learning curve does NOT flatten — explicitly documented as "the
 model is data-starved" in `notebooks/ph/03_deep_analysis.ipynb`.
 
@@ -411,11 +411,11 @@ business decision that would benefit from a live experiment.
 | Topic | File |
 |---|---|
 | Project overview | `CLAUDE.md` |
-| Methodology decisions | `CLAUDE.md` § "Pipeline Flow (detailed)" |
-| Plug-and-play dataset support | `CLAUDE.md` § "Swapping Datasets" |
-| PH sub-study scope + framing | `CLAUDE.md` § "PH Sub-Study" + `notebooks/ph/README.md` |
-| Live PH server | `CLAUDE.md` § "Live PH server" |
-| ADR live-forecast caveat | `CLAUDE.md` § "Live ADR forecast" |
+| Methodology decisions | `CLAUDE.md` the "Pipeline Flow (detailed)" section |
+| Plug-and-play dataset support | `CLAUDE.md` the "Swapping Datasets" section |
+| PH sub-study scope + framing | `CLAUDE.md` the "PH Sub-Study" section + `notebooks/ph/README.md` |
+| Live PH server | `CLAUDE.md` the "Live PH server" section |
+| ADR live-forecast caveat | `CLAUDE.md` the "Live ADR forecast" section |
 | Cross-artifact threshold consistency | `scripts/check.py sync` |
 | Metric quality gates | `scripts/check.py metrics` |
 
