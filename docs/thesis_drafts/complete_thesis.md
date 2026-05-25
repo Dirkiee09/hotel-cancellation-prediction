@@ -511,11 +511,12 @@ Several risk patterns are visible in the exploratory analysis (see
    non-refundable deposit policy cancels more often than a booking
    with no deposit policy in this dataset.[^4] This pattern survives
    controls for market segment and lead time, so it is not a
-   confounding artefact. A plausible interpretation is that
-   non-refundable deposits in this dataset are often paid through
-   channels that allow downstream chargebacks or insurance
-   recovery, so the deposit policy field captures *booking intent*
-   rather than *commitment*.
+   confounding artefact.
+
+   A plausible interpretation is that non-refundable deposits in
+   this dataset are often paid through channels that allow
+   downstream chargebacks or insurance recovery, so the deposit
+   policy field captures *booking intent* rather than *commitment*.
 
 3. **The "Groups" market segment carries the highest cancellation
    rate.** Group bookings cancel at roughly 1.6× the rate of the
@@ -705,13 +706,16 @@ side-by-side for comparison.
 **PR-AUC of 0.760** is more than double the dataset's natural
 cancellation rate of 0.370, which means the model genuinely separates
 cancellers from stayers rather than just guessing the average rate.
+
 The **ROC-AUC of 0.864** can be read as: if we picked one random
 canceller and one random stayer from the test set, the model would
 correctly assign the canceller a higher probability about 86 % of
-the time. The **Brier score of 0.146** is a combined measure of how
-close the predicted percentages are to the actual outcomes — lower
-is better, and 0.146 is in the range generally considered useful for
-business decision support.
+the time.
+
+The **Brier score of 0.146** is a combined measure of how close the
+predicted percentages are to the actual outcomes — lower is better,
+and 0.146 is in the range generally considered useful for business
+decision support.
 
 The **Expected Calibration Error (ECE) of 0.029** is the most
 business-relevant number in the table. It can be read as follows:
@@ -1135,16 +1139,24 @@ the Philippine champion for three reasons:
    choice.
 
 The Philippine champion achieves test ROC-AUC = 0.611 and PR-AUC =
-0.542. With the Philippine base rate of 15.0 %, the PR-AUC of 0.542
-represents a roughly 3.6× lift over the positive-class baseline — a
-meaningful ranking signal at this sample size, even if the
-confidence interval is wide. In plain language: the model
-successfully **ranks** Philippine bookings by cancellation risk, so
-its probabilities and risk tiers are usable to prioritise outreach,
-even though the very small test sample (only 20 rows) makes any
-fixed decision cut-off statistically unstable. The instability of
-the cut-off on this sample size is taken up explicitly in Chapter V
-under Limitations.
+0.542.
+
+At n_test = 20, bootstrap 95 % CIs on PR-AUC span roughly ±15
+percentage points, so these numbers should be read as directional
+evidence rather than as production-grade headline metrics. Within
+that statistical limit, the PR-AUC of 0.542 still represents a
+roughly 3.6× lift over the Philippine positive-class baseline of
+15.0 % — a meaningful ranking signal at this sample size.
+
+In plain language, the model successfully **ranks** Philippine
+bookings by cancellation risk, so its probabilities and risk tiers
+are usable to prioritise outreach. The very small test sample (only
+20 rows) makes any fixed decision cut-off statistically unstable,
+however; deployment at Punta Villa should therefore include
+human-in-the-loop review for every high-risk booking until
+sufficient historical data accumulates to tighten these intervals.
+The instability of the cut-off on this sample size is taken up
+explicitly in Chapter V under Limitations.
 
 ### 4.5.3 Hypothesis 5 — cross-dataset top SHAP
 
