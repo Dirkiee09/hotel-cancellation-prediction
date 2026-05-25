@@ -4,15 +4,35 @@ These tests verify that ``load_ph_data`` and ``clean_raw_ph`` produce a
 DataFrame that the PH training pipeline can consume. They do NOT verify
 model quality (the dataset is too small for meaningful regression
 detection), they only verify the data-cleaning contract.
+
+The Punta Villa Resort CSV is a proprietary PMS export and is gitignored
+(see .gitignore line `data/*.csv`); it ships locally but is never pushed
+to remote. CI runners therefore have no file to load. This entire test
+module is skipped when the file is absent so the PH data-layer contract
+is still verified locally (where the file exists) without breaking CI
+(where it does not). See CLAUDE.md "PH Sub-Study" for the parallel
+intent that the PH model is not part of the Portugal CI pipeline.
 """
 
 from __future__ import annotations
 
-import pandas as pd
+from pathlib import Path
 
-from src.config import PH_BOOKING_TIME_FEATURES, PH_TARGET_COL
+import pandas as pd
+import pytest
+
+from src.config import PH_BOOKING_TIME_FEATURES, PH_DATA_PATH, PH_TARGET_COL
 from src.data.load_ph import load_ph_data
 from src.utils.validate_data import clean_raw_ph, validate_raw_ph
+
+pytestmark = pytest.mark.skipif(
+    not Path(PH_DATA_PATH).exists(),
+    reason=(
+        f"PH dataset not found at {PH_DATA_PATH}; skipping PH data-layer tests. "
+        "The Punta Villa Resort CSV is gitignored (proprietary PMS export) and "
+        "is expected to be absent in CI environments."
+    ),
+)
 
 
 def test_load_ph_returns_expected_rows() -> None:
