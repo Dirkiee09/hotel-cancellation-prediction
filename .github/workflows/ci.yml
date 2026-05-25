@@ -46,23 +46,43 @@ jobs:
       - name: Train production pipeline
         run: python scripts/train.py
 
+      - name: Artifact consistency check
+        run: python scripts/check.py artifacts
+
       - name: Model metric gates
         run: python scripts/check.py metrics
-
-      - name: Security scan (bandit)
-        run: bandit -q -r src scripts -s B101 -x tests
 
       - name: Artifact threshold sync check
         run: python scripts/check.py sync
 
+      - name: Algorithm fairness check (matched-capacity XGBoost vs LightGBM)
+        run: python scripts/check.py fairness
+
+      - name: Security scan (bandit)
+        run: bandit -q -r src scripts -s B101 -x tests
+
       - name: Dependency vulnerability scan (pip-audit)
         run: pip-audit -r requirements.txt --no-deps --disable-pip
+
+      - name: Upload quality-job artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: quality-debug-${{ github.run_id }}
+          path: |
+            artifacts/
+            reports/
+          if-no-files-found: ignore
+          retention-days: 7
 
   thesis-analysis:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: quality
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # NOTE: remote default branch was renamed to "Main" (capital M) during the
+    # GitHub default-branch rename; gate on that exact ref. Using "main"
+    # lowercase silently skipped this job for every push.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/Main'
     steps:
       - name: Checkout
         uses: actions/checkout@v5
