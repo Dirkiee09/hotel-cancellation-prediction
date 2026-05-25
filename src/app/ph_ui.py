@@ -71,7 +71,7 @@ def _load_categorical_choices(*column_aliases: str, fallback: list[str]) -> list
             continue
         try:
             df = pd.read_csv(path)
-        except Exception:  # pragma: no cover — defensive
+        except Exception:  # nosec B112  # pragma: no cover — defensive: skip malformed CSV and try the next alias path
             continue
         for col in column_aliases:
             if col in df.columns:
@@ -927,7 +927,7 @@ def main() -> None:  # pragma: no cover — manual launch only
     logging.basicConfig(level=logging.INFO)
     demo = build_ph_ui()
     demo.launch(
-        server_name="0.0.0.0",
+        server_name="0.0.0.0",  # nosec B104 — intentional: demo server must be reachable from host network for defense panel walk-through
         server_port=7861,
         share=False,
         css=PH_CSS,
