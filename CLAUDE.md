@@ -171,12 +171,15 @@ python src/app/ui.py                # Gradio UI (standalone)
 3. mypy
 4. pytest (≥80% coverage)
 5. `scripts/train.py` — full train must succeed
-6. `scripts/check.py metrics` — metric gates must pass
-7. `scripts/check.py sync` — cross-artifact threshold consistency
-8. bandit security scan
-9. pip-audit dependency vulnerability scan
+6. `scripts/check.py artifacts` — model + calibrator + feature columns load and round-trip
+7. `scripts/check.py metrics` — metric gates must pass
+8. `scripts/check.py sync` — cross-artifact threshold consistency
+9. `scripts/check.py fairness` — matched-capacity XGBoost vs LightGBM (champion must lead at equal hyperparameter budget)
+10. bandit security scan
+11. pip-audit dependency vulnerability scan
+12. On failure, uploads `artifacts/` + `reports/` as a 7-day debug artifact
 
-**`thesis-analysis` job** (runs only on push to `main`, needs `quality`):
+**`thesis-analysis` job** (runs only on push to remote `Main` — capital M because of the GitHub default-branch rename; gating on `refs/heads/main` lowercase would silently never fire — needs `quality`):
 1. `scripts/train.py --thesis` — full train + thesis analysis (SHAP, CI, ablation, Optuna)
 2. `scripts/benchmark.py` — 16 CSV benchmark tables
 3. `scripts/check.py sync` — post-benchmark consistency
