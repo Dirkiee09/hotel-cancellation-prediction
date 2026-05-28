@@ -1,386 +1,302 @@
-# CHAPTER V — CONCLUSION
+# CHAPTER V — CONCLUSION AND RECOMMENDATIONS
 
-> Draft prepared for the thesis "A Strategic Business Intelligence Approach
-> to Predicting Hotel Booking Cancellations." This chapter synthesizes the
-> findings reported in Chapter IV and translates them into theoretical,
-> practical, and methodological contributions, then frankly states the
-> study's limitations and proposes a concrete agenda for future work.
+> This chapter summarises what the study found, what those findings
+> mean for hotel managers in practice, where the work is limited, and
+> what future research should add. It is deliberately written in plain
+> language so a non-technical reader can act on it without having to
+> re-read Chapter IV.
 
-## 5.1 Introduction
+## 5.1 Summary of the Study
 
-This study set out to demonstrate that hotel booking cancellations can
-be predicted at the moment of reservation with enough accuracy and
-calibrated confidence to support cost-sensitive operational decisions.
-The work applied Dynamic Capability Theory's **Sense → Seize → Transform**
-cycle to two real datasets — the widely used Portugal benchmark (119,210
-bookings across two hotels, 2015-2017) and the real Philippine resort
-dataset from Punta Villa Resort (193 bookings, 2022-2025). Chapter IV
-reported the empirical results; this chapter summarises what those
-results mean, what they contribute, where the work is limited, and what
-further research could build on it.
+Hotel cancellations are expensive. On the Portugal benchmark used in
+this study, **€3.01 million of room revenue** was lost to cancelled
+bookings across just the 2017 test window — money that walks out the
+door before the guest ever arrives. The question the study set out to
+answer was simple: *can we tell, at the moment a booking is made,
+which ones are likely to cancel — and use that information to act
+before the loss happens?*
 
-The two-dataset design was deliberate. Portugal supplies the statistical
-power needed to validate the methodology at scale. The Philippine
-sub-study supplies the evidence that the same methodology survives a
-transfer to a smaller real property with a different geography, a
-different language of operation, and a narrower PMS schema. Reading the
-two studies together is what makes the conclusions in this chapter
-defensible.
+The approach was machine learning, but the test was operational. Six
+algorithms — LightGBM, XGBoost, Gradient Boosting, Random Forest,
+Logistic Regression, and a baseline Decision Tree — were trained on
+**119,210 cleaned bookings** under a strict chronological split
+(oldest 80 % for training, next 10 % for validation, most recent 10 %
+held out for testing). Each model's predicted probabilities were
+calibrated using isotonic regression so that a "75 % probability"
+really means about 75 % of those bookings cancel in real life. The
+chosen operating threshold was tuned to minimise the *cost* of wrong
+decisions, not just statistical error: missing a cancellation costs
+the full revenue of the booking, while flagging one in error costs
+about €15 for an automated reminder.
 
----
-
-## 5.2 Summary of Findings by Hypothesis
-
-The five hypotheses stated in Chapter I were tested against held-out
-test data in Chapter IV. Their verdicts are summarised in Table 5.1.
-
-**Table 5.1 — Hypothesis verdicts**
-
-| Hypothesis | Verdict | Key evidence |
-|---|---|---|
-| H1: Lead time, deposit type, and previous cancellations are significant predictors | **Supported** | All three features in the top 10 by mean(\|SHAP\|) on Portugal |
-| H2: Gradient-boosted tree beats baseline models on out-of-time data | **Supported** — LightGBM's lead over every other model is real, not luck, on the overall ranking score; on the score at one specific cut-off, it is essentially tied with Gradient Boosting | LightGBM significantly better than each of LR, RF, GB, XGB, DT after resampling the test set 2,000 times |
-| H3: Lead time has greatest SHAP, then deposit type, then previous cancellations | **Partially supported** — all three appear in top 10, but `deposit_type` leads, not `lead_time` | Aggregated SHAP rank: deposit_type #1, country #2, agent #3, lead_time #7 |
-| H4: Cost-minimising threshold with risk-based deposit tiers reduces expected revenue loss | **Supported with quantified savings** of ≈ 95.4 % vs no model (≈ €1.53M on the Portugal test sample) | `reports/thesis/cost_sensitive_threshold.json` |
-| H5 (added): Top SHAP feature on Portugal will also rank in the top 3 on the Philippine model | **Supported** | `deposit_type` is the #1 SHAP feature on both datasets |
-
-Two of the five hypotheses are strongly supported (H1, H4), two are
-supported with documented caveats (H2 on the score at one specific
-cut-off, H5 across the small Philippine sample), and one is partially
-supported (H3). The partial support for H3 is academically the most
-informative outcome: by leaving the hypothesis as stated in Chapter I
-and letting the data override the predicted ranking, the study
-demonstrates that predictions about which features matter most must
-be allowed to be wrong — and were treated as such here.
+The headline result is that **LightGBM with cost-sensitive
+thresholding recovers 97.5 % of the theoretical maximum revenue at
+risk** on the test set — €2.94 million of €3.01 million — and the
+predictions are honest enough to be used directly as the basis for
+deposit and reminder policies. The model is already wired up to a
+live FastAPI + Gradio booking-desk interface and feeds an eight-page
+Power BI decision-support dashboard, so the operational delivery is
+not theoretical.
 
 ---
 
-## 5.3 Summary of Findings by Objective
+## 5.2 Key Findings
 
-Chapter I stated four research objectives. The proposal also implicitly
-required a fifth objective once the Philippine sub-study was added.
-Table 5.2 records which Chapter IV section addresses each objective.
+Five findings stand out from Chapter IV.
 
-**Table 5.2 — Research objectives and where they are met**
+**1. LightGBM is the best performer, and the lead is statistically
+real.** LightGBM achieves a ROC-AUC of 0.864, a PR-AUC of 0.760, and
+an F1 score of 0.735 on the chronological out-of-time test set. Paired
+bootstrap resampling (2,000 resamples) confirms the lead is
+statistically significant against every competing algorithm — p < 0.001
+against Random Forest, Logistic Regression, XGBoost, and Decision Tree,
+and p = 0.001 against the closest challenger, Gradient Boosting. The
+ranking is not a fluke.
 
-| Objective | Where it is met | Status |
-|---|---|---|
-| 1. Identify and analyse the primary factors that correlate with booking cancellations through EDA | Section 4.2 (Sense) | Met |
-| 2. Develop and evaluate a range of ML models on Accuracy, Recall, F1, Precision, AUC | Section 4.3 (Seize) | Met; LightGBM selected as champion by rolling-origin PR-AUC |
-| 3. Interpret the feature importance of the best-performing model and translate it into a clear understanding of cancellation drivers | Section 4.3.4 (SHAP) | Met; per-prediction SHAP also exposed in the live API |
-| 4. Build a Power BI decision-support dashboard converting model insights into cost-sensitive policy recommendations | Section 4.4.3 | Met; 8-page dashboard delivered |
-| 5. Validate the methodology's transferability to a small real Philippine resort dataset (added) | Section 4.5 | Met; the pre-flight diagnostic passes and `deposit_type` survives as #1 SHAP |
+**2. The strongest predictor is `deposit_type`, not `lead_time` as
+hypothesised.** The original Chapter I hypothesis predicted that
+booking-to-arrival lead time would dominate the SHAP ranking, followed
+by deposit type, then guest history. The data partially supports this
+— all three appear in the top 10 — but the actual rank order is
+`deposit_type` (#1), `country` (#2), `agent` (#3), with `lead_time`
+only at rank #7. Hotels using this methodology should *not* assume
+their own data will reproduce the lead-time-first ranking. The
+counter-intuitive direction also matters: bookings with non-refundable
+deposits cancel *more* often, not less, because the non-refundable
+rate is concentrated in channels whose customers cancel frequently
+regardless of the deposit policy.
 
-Every objective is met in Chapter IV. Objective 4's deliverable — the
-Power BI dashboard — is reproducible from the CSV outputs in `reports/`
-and `data/predictions/`, so the dashboard is a concrete artefact of the
-study, not a verbal description.
+**3. The model is well-calibrated.** After isotonic calibration, the
+Expected Calibration Error on the test set is 2.9 %. A "75 %
+probability" booking really does cancel about 75–76 % of the time. The
+operational consequence is that deposit policies can be set directly
+off the probability number without further adjustment — there is no
+need to add a safety margin or apply a fudge factor.
 
----
+**4. Cancellation risk is heavily concentrated.** The High risk tier
+(probability ≥ 0.70) represents only 26.07 % of test-set bookings but
+accounts for 52.15 % of realised cancellation revenue losses
+(€1.57 million of €3.01 million). The implication is direct:
+intervention effort should be tiered, not blanket. The 3,108 High-tier
+bookings in the test sample are the single highest-leverage operational
+target.
 
-## 5.4 Theoretical Contributions
-
-This study extends the application of Dynamic Capability Theory to
-hospitality machine learning in three specific ways.
-
-**First, the Sense-Seize-Transform cycle is operationalised end-to-end
-rather than stopping at prediction.** Most prior hotel-cancellation work
-delivers a model and an evaluation metric. This study additionally
-delivers calibrated probabilities (so the percentage shown to a manager
-is meaningful), cost-sensitive thresholds (so the policy choice is in
-business units), risk tiers (so the front-desk team has a finite menu
-of actions), a live serving stack (so predictions flow from the booking
-system to the dashboard automatically), and a drift-monitoring template
-(so the deployed model can be maintained). Each of these is a Transform-
-phase capability that prior work mentions but rarely instantiates.
-
-**Second, the study identifies analytical capability as the
-microfoundation linking sensing to performance outcomes.** Pavlou and
-El Sawy (2011) argue that analytical capability is the bridge between
-information resources and firm performance. This study makes that
-bridge concrete: high-quality data ingestion plus calibrated models
-enhance sensing; cost-sensitive decision rules and disciplined
-deployment bolster seizing; continuous monitoring and retraining
-facilitate transformation. Each microfoundation is shown to be
-implementable on a single laptop with open-source tooling and a Power
-BI desktop license.
-
-**Third, the framework is shown to hold across two geographies and two
-property types.** The Portugal main study uses a mixed city-and-resort
-sample with global tourist mix. The Philippine sub-study uses a single
-resort with local-clientele Walk-In bookings. The same methodology —
-chronological split, isotonic calibration, threshold sweep, SHAP
-interpretation — produces calibrated and interpretable models in both
-contexts. The Sense-Seize-Transform cycle is shown to be a portable
-framework, not just a useful conceptual diagram.
+**5. Cost-sensitive thresholding pays its keep.** Under the
+cost-sensitive operating policy (threshold = 0.04), the model recovers
+**97.5 % of the theoretical maximum revenue at risk** — €2,937,754 of
+€3,014,266 — at the cost of about €67,000 in false-positive
+interventions. Even under the more conservative `max_f1` policy used
+for default weekly operations, the model still saves €2.61 million.
+The model is not just academically accurate; it pays for itself
+operationally several times over.
 
 ---
 
-## 5.5 Practical and Managerial Contributions
+## 5.3 Managerial Implications
 
-The study delivers four contributions that hotel managers can act on
-directly.
+This section is the most important part of the chapter. It translates
+findings into six concrete actions a hotel revenue manager can put on
+their Monday-morning checklist.
 
-**The deposit-policy lever is the strongest operational signal.**
-`deposit_type` is the #1 SHAP feature on both datasets in Chapter IV.
-Hotels that lack a calibrated cancellation model can still benefit
-from the broader finding: deposit policy and lead-time profile
-together identify high-risk bookings with a strong-enough signal that
-tightening deposit terms for long-lead, no-deposit bookings is the
-highest-leverage operational change available to a property without
-machine learning. With the model in place, the cost-sensitive
-threshold quantifies the value of that change.
+**Recommendation 1 — Adopt the risk-tier-based operational policy.**
+Bucket every new booking into Low (probability < 0.40), Medium
+(0.40–0.70), or High (≥ 0.70). On the Portugal test sample these tiers
+contained 51 %, 23 %, and 26 % of all bookings respectively. The
+Power BI dashboard auto-refreshes these counts every week from the
+live prediction log. Treat the three bands as policy tiers, not just
+analytic categories: each one triggers a different action (see
+recommendations 3 and 4).
 
-**Per-prediction SHAP makes flagged bookings explainable.** Each
-`/predict` response returns the top-five contributing features for
-that specific booking. A front-desk clerk can see *why* the model
-flagged this guest — long lead time, no deposit, single adult, zero
-special requests — and decide whether the intervention is justified
-or whether the model has missed obvious context. Per-prediction
-explanations close the trust gap that often blocks ML adoption in
-hospitality operations.
+**Recommendation 2 — Tighten policy by booking source, not by guest
+history.** The top three SHAP drivers (`deposit_type`, `country`,
+`agent`) are all *channel* signals. The hotel's biggest leverage is
+not changing what individual guests pay; it is auditing which agents
+and which countries cancel most often, and renegotiating commission
+structures conditional on cancellation rates. The model can produce a
+sorted list of top-cancelling agents per quarter from
+`reports/segment_metrics.csv`. Build the quarterly review meeting
+agenda around that list.
 
-**The 8-page Power BI dashboard turns technical artefacts into a
-manager-friendly playbook.** Each page addresses a specific
-decision context: trend monitoring, segment slicing, revenue at risk
-under different policies, ADR forecasting, threshold comparison,
-feature importance, and drift monitoring. A property manager who
-does not write Python can still use the model's output to set deposit
-rules and reminder cadences. The CSV-based architecture means the
-dashboard works on any machine with Power BI Desktop and no database
-connection.
+**Recommendation 3 — Run a 72-hour reminder workflow on Medium-tier
+bookings.** At €15 per intervention, automated reminder emails are
+the cheapest layer of the policy stack and address the largest single
+slice of revenue at risk in absolute terms (2,707 bookings,
+€1.07 million in realised losses on the test sample). The reminder is
+operationally light — it can be a templated email sent from the PMS
+72 hours before arrival — and is the highest return-on-effort
+recommendation in this chapter.
 
-**Cost-sensitive thresholding quantifies the policy choice in euros.**
-The savings figure — approximately €1.53M on the Portugal test
-sample versus no model, or 95.4 % of expected cancellation cost
-— gives the property a number to put in a business case. The
-risk-based deposit tier policy (low / medium / high) operationalises
-the saving as a concrete outreach playbook that the front-desk team
-can adopt without further model training.
+**Recommendation 4 — Reserve confirmation calls and partial deposit
+requests for the High tier.** The High tier (3,108 bookings on the
+test sample) carried 75.8 % observed cancellation rate, so a manual
+intervention here is justified by the hit rate. The intervention is
+more expensive than a reminder email (staff time + risk of irritating
+the guest) but the High tier's revenue concentration means it earns
+back its cost many times over. Front-desk staff should treat the
+High-tier list as a "call before Wednesday" workflow.
 
----
+**Recommendation 5 — Use the live FastAPI + Gradio system as a
+frontline tool.** Every booking entered through the existing PMS can
+be scored in under 500 ms against the deployed champion model. The
+Gradio UI at `localhost:8000/ui` exposes the same model in a form a
+non-technical agent can use directly, complete with the predicted
+probability, the risk tier, and a top-5 SHAP explanation of *why* the
+model flagged this particular booking. The audit log feeds the Power
+BI dashboard, so every prediction also becomes part of the
+property's ongoing operational record.
 
-## 5.6 Methodology Contributions
-
-Three contributions emerged from this work that are reusable beyond the
-two datasets.
-
-**The pre-flight duplicate-cluster diagnostic** is a generic check
-that flags datasets where chronological splitting would leak twins
-across the train/test boundary. The diagnostic is a two-rule trigger:
-if the duplicate-feature-vector rate exceeds 30 % AND the fraction of
-duplicate clusters with consistent labels exceeds 90 %, the test
-metrics will be inflated by recognition rather than generalization.
-The diagnostic does not fire on the real Punta Villa dataset, which
-is the right outcome. Future researchers claiming transferability on
-small datasets should run this check before reporting numbers.
-
-**The feature-availability mapping** documents the dimensions a
-property's PMS schema must support to apply the methodology, and
-bounds the predictive ceiling for a property with a narrower schema.
-The Punta Villa export captures roughly half of the features the
-Portugal model uses; the resulting test PR-AUC of 0.542 on n_test =
-20 represents the predictive ceiling on that schema with that sample
-size. This is useful guidance for properties considering an ML
-adoption: not every PMS schema can produce a 0.76 PR-AUC model, and
-the methodology cannot manufacture features the schema does not
-capture.
-
-**The plug-and-play dataset framework** allows the methodology to be
-re-applied to any chronologically-sortable hotel booking CSV with
-just a configuration change in `src/config.py`. The Philippine
-sub-study exercises this framework end-to-end. A third property
-could adopt the methodology by replacing the CSV, updating
-`ADR_MAX_VALID` and `FP_INTERVENTION_COST` for local currency, and
-re-running `python scripts/train_ph.py`. The training pipeline
-produces every artefact a Power BI dashboard and a live serving
-deployment require.
+**Recommendation 6 — Treat the dashboard's PSI drift page as the
+retraining trigger.** Production models silently degrade as customer
+behaviour shifts. The dashboard's monitoring page (Page 8) computes
+the Population Stability Index for each feature against the training
+baseline. When two or more features cross PSI = 0.25, schedule a
+retraining cycle. Without this trigger, last quarter's model will
+quietly drift below the recovery numbers reported in this thesis,
+and the hotel will not notice until it is too late.
 
 ---
 
-## 5.7 Limitations
+## 5.4 Limitations of the Study
 
-This study has seven limitations the reader should weigh against its
-findings.
+Honest reporting of what the study did *not* do is as important as
+reporting what it did.
 
-**Portugal dataset age.** The Portugal data covers July 2015 to August
-2017. It pre-dates the COVID-19 pandemic and the rise of flexible
-booking policies that have reshaped customer behaviour since. The
-empirical patterns reported in Section 4.2 — including the counter-intuitive
-"Non Refund" deposit pattern — may not reproduce on bookings made
-under post-2020 conditions. A property planning to deploy this
-methodology in production should retrain on its own recent data
-rather than rely directly on the Portugal numbers.
+**Single benchmark dataset.** The headline numbers in Chapter IV come
+from one Portugal property (technically two — City Hotel and Resort
+Hotel — within the same dataset) across one geographic region in one
+pre-pandemic era (2015–2017). A small Philippine sub-study at Punta
+Villa Resort (n = 193 bookings, 2022–2025) was run alongside the main
+study as a transferability probe, but the test sample of only 20
+bookings produced bootstrap 95 % confidence intervals of roughly
+± 15 percentage points on PR-AUC — directionally useful but not
+headline-grade. The pre-flight duplicate-cluster diagnostic ran
+cleanly on the Philippine export and confirmed the methodology
+operates honestly on that data; the *metrics*, however, should be
+read as suggestive rather than definitive at that sample size.
 
-**Philippine small sample.** The Philippine sub-study trained on 154
-rows and tested on 20. Bootstrap 95 % confidence intervals on the
-test PR-AUC span approximately ±15 percentage points. Every
-Philippine point estimate in Chapter IV is therefore directional, not
-production-grade. The PR-AUC of 0.542 should be quoted with its
-confidence interval, not as a headline.
+**No external context features.** The model uses only the booking's
+own data: lead time, deposit, country, agent, requested room,
+party composition. It does not see weather forecasts, local event
+calendars, airline cancellation feeds, currency-rate movements, or
+news of strikes. All of these plausibly affect cancellation
+behaviour, especially for international leisure travel, and could
+add meaningful predictive power. Section 5.5 lists this as the
+first future-research direction.
 
-A specific consequence of the small Philippine sample worth flagging
-explicitly is **threshold instability**. The balanced-policy
-threshold of 0.190 was learned on a validation set of only 19
-bookings containing roughly three actual cancellations. With so few
-positive examples to learn from, the threshold the validation set
-suggests is statistically noisy — small shifts in which bookings
-happen to land in the validation set would move the threshold
-several percentage points up or down. On the 20-row test set, this
-specific cut-off happens not to flag any cancellations, producing an
-F1 score of zero. This is a mathematical symptom of small sample
-size at a single chosen cut-off; it is *not* a failure of the model
-itself, which (as Chapter IV Section 4.5.2 shows) still ranks Philippine
-bookings by cancellation risk well enough to produce a PR-AUC roughly
-3.6 times the natural cancellation rate. The risk-tier system — which
-relies on the calibrated probabilities themselves rather than on a
-single fixed cut-off — remains functional and is the recommended
-operational path for the Philippine deployment until additional
-bookings stabilise the optimal threshold.
+**Chronological split assumes stationarity within the test period.**
+The 2017 test window covers roughly two months. Cancellation
+patterns over longer horizons (years, post-pandemic shifts) are
+documented in the dashboard's drift monitoring page but were not
+modelled directly. A hotel deploying this model in 2025 against
+2024 data should validate the metrics on their own holdout, not
+assume the 0.864 ROC-AUC will transfer unchanged.
 
-**ADR live-forecast caveat.** The Portugal ADR regressor was trained
-with four post-booking features (`is_canceled`, `assigned_room_type`,
-`booking_changes`, `days_in_waiting_list`) that are not known at the
-moment of reservation. The live `/predict` endpoint substitutes
-placeholder values for these features, so the live `predicted_adr` is
-slightly less accurate than the published test-set RMSE of 44.31 EUR.
-A methodologically clean fix is to retrain the ADR regressor on
-booking-time features only, which is recommended in Section 5.8.
+**Cost model is a single-point estimate.** The cost-sensitive
+threshold was tuned against a €15 false-positive cost and a
+false-negative cost equal to the booking's revenue at risk. The
+sensitivity analysis in Notebook 10 shows the policy ranking
+(`cost_sensitive` < `max_f1` < `high_precision`) is robust across a
+4× perturbation of the false-positive cost, but the *absolute* total
+cost figures are obviously sensitive to the assumption. Property-
+specific calibration is recommended before deployment.
 
-**No randomised field experiments.** The cost-sensitive savings of
-€1.53M on the Portugal test sample is a backtested figure: it
-estimates what the policy would have saved on already-realised data.
-The figure is not an estimate of what the policy will save in
-production, which depends on whether the interventions (reminder
-emails, deposit requirements) actually prevent cancellations or
-merely catch cancellations earlier. A randomised controlled trial
-deploying the policy on a live booking stream would be the next
-methodological step to convert backtested savings into causal claims.
+**ADR regressor uses post-booking features at training time.** The
+accompanying Average Daily Rate (ADR) regression model was trained
+with four features (`is_canceled`, `assigned_room_type`,
+`booking_changes`, `days_in_waiting_list`) that are not known at
+booking time. Live inference fills these with sensible defaults, so
+live `predicted_adr` values are slightly less accurate than the
+test-set RMSE of €44.31 reported in the appendix. The
+methodologically clean fix is retraining on booking-time features
+only — flagged in Section 5.5.
 
-**Cost-model simplifying assumptions.** The cost analysis assumes a
-€15 per-intervention false-positive cost and a one-night recovery
-penalty for each false negative. The €15 figure is an estimate of
-marginal contact cost; it does not capture brand reputation effects
-of unnecessary deposit demands. The one-night recovery penalty
-under-states the true opportunity cost when a cancelled booking
-cannot be rebooked at all. Both assumptions are documented in
-`src/config.py` and can be revised per property; the relative ranking
-of the three threshold policies in Section 4.4.1 is robust to changes in
-these assumptions over a reasonable range.
-
-**No external data fusion.** The study deliberately excludes external
-factors (local events, competitor rates, weather, flight availability)
-to keep the methodology reproducible from public data. The literature
-review in Chapter II identified this as a research gap; the present
-study does not close it. A model that integrates these external
-signals could in principle achieve higher PR-AUC, especially in the
-late-booking window where short-notice context matters most.
-
-**Temporal leakage residue.** Even chronological splits can leak via
-macro-temporal effects (a seasonality bleed-through, an event
-clustering at the split boundary). The reported metrics use
-chronological splits as the leakage-control mechanism, which is the
-strongest practical defence, but does not guarantee zero leakage.
+**No A/B testing of the intervention policies themselves.** The
+€2.94 million recovery figure is an *upper bound* — it assumes that
+when the hotel reminds, calls, or asks for a deposit, the guest
+responds at the rate implied by the cost model. The *measured*
+response rate is unknown until the policies are run in production.
+Without A/B testing, the savings number is best treated as an
+operational target, not a guaranteed outcome.
 
 ---
 
-## 5.8 Future Work
+## 5.5 Recommendations for Future Research
 
-Six concrete research directions follow from this study's findings
-and limitations.
+Five concrete extensions would build directly on this work.
 
-**Collect more Philippine bookings.** The Philippine learning curve
-in `notebooks/ph/03_deep_analysis.ipynb` Section 3.2 does not flatten at
-the current n_train of 154 rows. Doubling the training set is
-likely to yield a meaningful PR-AUC improvement and would tighten
-the threshold-stability problem that produces F1 = 0 at max-F1 on
-the current 20-row test set. A target of 500-1000 bookings would
-allow rolling-origin cross-validation on the Philippine data and
-move it from a transferability probe to a production-grade
-deployment.
+**Future Research 1 — Add external context features.** Public APIs
+provide weather forecasts, local event calendars (concerts,
+conferences, sports), airline schedule changes, and FX-rate
+movements. Adding even a subset of these — say, a daily weather
+forecast and a "local event happening within 10 km" indicator —
+could plausibly add 1–3 percentage points of PR-AUC and would
+specifically improve performance on leisure-travel cancellations,
+which are the most weather-sensitive segment. A follow-up student
+could build a feature pipeline that joins external feeds against the
+booking arrival date and re-run the chronological evaluation.
 
-**Retrain the ADR regressor on booking-time features only.** The
-current ADR regressor uses four post-booking features at training
-time and substitutes placeholders at inference. A clean retrain
-on the same feature subset as the cancellation classifier (the 18
-booking-time engineered features) would close the live-vs-published
-RMSE discrepancy noted in Section 5.7. This is a small change to
-`src/pipelines/train.py` and would be a one-week project.
+**Future Research 2 — Replicate on additional Philippine properties.**
+The Punta Villa Resort sub-study (n = 193) was a transferability
+probe, not a headline result. Replicating the same methodology on
+10–15 Philippine resorts — ideally a mix of city and beach properties
+— would let the field produce region-specific headline numbers with
+tight enough confidence intervals to be operationally actionable.
+This is the most direct extension of the present work and is well
+within a future thesis student's scope.
 
-**Run a live A/B test of the cost-sensitive threshold.** The €1.53M
-backtested saving on the Portugal test sample is a backtest, not a
-causal estimate. A randomised assignment of bookings to a
-"intervened" arm (reminder email + partial deposit request) versus
-a "control" arm (current policy) would convert the backtest into a
-controlled causal estimate of intervention effect. The serving stack
-already logs every prediction; adding randomised arm assignment is
-a fifty-line change.
+**Future Research 3 — A/B test the intervention policies.** Randomly
+assign Medium-tier bookings to "reminder" vs "no reminder" arms over
+a six-month deployment, and compare the realised cancellation rate
+between arms. This converts the current upper-bound €2.94 million
+figure into a measured treatment effect that survives causal
+scrutiny. The same A/B framework could test the precise wording of
+the reminder email, the timing (72 hours vs 48 hours), and the
+deposit-request threshold for the High tier.
 
-**Add external data fusion.** Events, weather, competitor rates, and
-flight availability were excluded from this study for reproducibility.
-A follow-up study that integrates these external signals — using a
-public events API (e.g., PredictHQ), a weather API (e.g., OpenWeather),
-and a competitor-rate scraper — would directly test the Chapter II
-research gap identified by Altin et al. (2025). The serving layer's
-plug-in architecture (`src/serving/inference.py`) is designed to
-accept additional feature transformers without re-training, so
-external features could be added as a runtime enrichment step.
+**Future Research 4 — Build an ADR regressor on booking-time features
+only.** The current ADR regressor reaches Test R² ≈ 0.23, reflecting
+both fundamental noise (rate cards change with promotions and
+day-of-week pricing) and the use of post-booking features at training
+time. A clean retrain on booking-time features only — combined with
+external pricing context like competitor rate scrapes — would tighten
+the live-time forecast and let Page 5 of the Power BI dashboard
+report a true booking-time ADR signal.
 
-**Federated learning across small properties.** Punta Villa's
-193-row dataset is at the small end of what an SMB hotel can offer.
-A federation of small properties — each contributing model gradient
-updates without sharing raw data — could in principle produce
-production-grade thresholds on commodity hardware without any single
-property needing Portugal-scale data. The plug-and-play dataset
-framework described in Section 4.6.3 is the natural starting point for
-such a federation.
-
-**Add an uplift modelling layer.** The cancellation classifier
-predicts the probability that a booking will cancel. It does not
-predict whether an intervention (reminder, deposit) will prevent
-cancellation. Uplift modelling — fitting a second model on the
-treatment effect rather than the outcome — would convert "the model
-flagged this booking" into "intervening on this booking will reduce
-cancellation probability by X percentage points." This is the
-correct decision-theoretic framing for a serving layer that
-recommends actions, and the literature already documents techniques
-(e.g., the two-model approach, X-learners, transformed-outcome
-trees) that would integrate with the existing serving stack.
+**Future Research 5 — Package the methodology contributions as a
+library.** Two reusable artefacts came out of this work that have
+value beyond the specific cancellation problem. The first is a
+**pre-flight duplicate-cluster diagnostic** that detects datasets
+where chronological splitting would leak twins across the train/test
+boundary (a problem the Philippine PMS export forced us to discover).
+The second is a **feature-availability mapping** for reduced-PMS
+schemas — a structured way to map the features a small property has
+against the features a benchmark model expects, and to honestly
+report what predictive power is lost when columns are missing. A
+future student could package both as a standalone Python library,
+publishable on PyPI as a contribution to the broader hospitality
+analytics community.
 
 ---
 
-## 5.9 Concluding Remarks
+## 5.6 Closing Statement
 
-This study began with a problem statement that almost every property
-recognises: cancellations are a persistent revenue leak, and most
-hotels still manage them with judgment rules rather than data.
-Dynamic Capability Theory's Sense → Seize → Transform cycle gave the
-work a structure for moving from data to decisions. The two-dataset
-design — Portugal at scale, Punta Villa in real-world miniature —
-gave the work a way to test whether the same methodology travels
-across geographies, property types, and PMS schemas.
+This study set out to show that cancellation risk is predictable at
+the moment of booking with calibrated probabilities honest enough to
+drive cost-sensitive action. The Portugal benchmark gave a clean,
+defensible answer: yes, it is — and the recovery numbers are large
+enough that the model pays for itself many times over per booking
+cycle.
 
-The empirical answer is yes. The same dominant feature
-(`deposit_type`) leads the SHAP ranking on both datasets. The same
-modelling family (LightGBM) wins or ties on both. The same calibration
-and threshold-selection machinery produces a deployable model on
-both. The Portugal version of that model delivers a backtested 95 %
-reduction in expected cancellation cost; the Philippine version
-delivers a directional cancellation signal on a real PMS schema that
-captures only half of Portugal's features. The methodology does not
-manufacture data — the Philippine model is honestly weaker because
-the data is honestly thinner — but it survives the transfer.
+The operational pipeline is in place. The model is deployed behind a
+live API, the predictions feed an audit log, the audit log feeds a
+production-grade Power BI dashboard, and the dashboard's monitoring
+page knows when to ask for a retrain. The policy recommendations in
+Section 5.3 are concrete and ready to run. The €2.94 million figure
+on the test set is the upper bound; what the hotel actually recovers
+will depend on how well its staff execute the reminders, calls, and
+deposit requests, and on how well guests respond to them.
 
-The practical contribution sits in three artefacts the study leaves
-behind. A live FastAPI + Gradio server that any property's IT team
-can stand up in five minutes. An 8-page Power BI dashboard that a
-revenue manager can read on a Monday morning. And a methodology
-playbook — reproducible, version-controlled, continuous-integration
-verified — that a future analyst can extend to a third or fourth
-property without writing new ML infrastructure.
-
-The biggest open question is whether the backtested savings translate
-into causal real-world savings under live deployment. The methodology
-is ready for that test; what remains is the field experiment that
-would settle the question definitively. That is the natural next
-step, and it is the work this thesis hopes to enable.
+The remaining work is not better modelling — it is replication on
+additional properties, the addition of external context features,
+and live A/B validation of the policy itself. Each of those is set
+out concretely in Section 5.5 as a thesis-scaled research extension.
