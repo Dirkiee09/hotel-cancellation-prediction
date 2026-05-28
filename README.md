@@ -116,7 +116,9 @@ instead of the static test-set CSV.
 | `reports/thesis/shap_feature_importance.csv` | Global SHAP feature ranking (for explainability page) |
 | `reports/metrics.json` | Champion model headline metrics (for KPI cards) |
 
-**Recommended pages** (see `C:\Users\dirkv\.claude\plans\misty-hugging-wirth.md` or the dashboard guide for full specs):
+> **Full build guide.** A step-by-step, instructor-grade walkthrough of the 8-page dashboard (pre-flight, data model, DAX measures library, page-by-page builds, polish, and refresh recipe — ~7 hours from empty `.pbix` to defense-ready) lives at [`docs/powerbi_dashboard_guide.md`](docs/powerbi_dashboard_guide.md).
+
+**Recommended pages**:
 1. **Risk Overview** — KPI cards, risk-tier donut, probability histogram
 2. **Action List** — filterable table of high-risk predictions with SHAP explanations
 3. **Risk Patterns** — customer_type × market_segment heatmap, cancel rate by deposit/agent
