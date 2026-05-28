@@ -126,6 +126,7 @@ notebooks/                    # 10 Jupyter notebooks (load artifacts, no retrain
   08_model_monitoring.ipynb   # Production monitoring template (21 cells)
   09_model_comparison.ipynb   # Cross-model comparison & stability analysis (31 cells)
   10_sensitivity_analysis.ipynb # Cost sensitivity, data hunger, threshold trade-offs (15 cells)
+  12_stratified_kfold_cv.ipynb  # Stratified 10-fold CV across 7 algorithms (loads reports/cv/portugal_*)
 
 artifacts/                    # Trained model artifacts (git-ignored)
 reports/                      # Metrics, benchmark tables, thesis reports (git-ignored)
@@ -421,6 +422,7 @@ modelling assumption. DT is shallow enough to be printed in full in the thesis a
 | Live prediction log | `data/predictions/predictions.sqlite` (one row per `/predict` call) + `data/predictions/predictions_live.csv` (PowerBI-ready export) |
 | Segment metrics | `reports/segment_metrics.csv` |
 | Champion summary | `reports/champion_summary.json` (champion family, runner-up, PR-AUC gap, selected_at) |
+| Stratified 10-fold CV | `reports/cv/portugal_stratified_10fold_folds.csv` + `_summary.json` (7 algorithms × 10 stratified folds; written by `scripts/stratified_cv.py`) |
 
 ### Artifact Contract (producers → consumers)
 
@@ -449,6 +451,7 @@ artifact has exactly one writer; multiple consumers are normal.
 | `reports/adr_segment_performance.csv` | `scripts/export_adr_predictions.py` (aggregates RMSE/MAE per hotel × room_type, min 50 rows) | Power BI Page 5 (ADR Forecasting): segment RMSE heatmap |
 | `reports/benchmarks/01_*.csv` … `16_*.csv` | `scripts/benchmark.py` | Notebook 07, `scripts/check.py sync` |
 | `reports/thesis/*.json` | `src/eval/thesis.py` | Notebooks 03/05, `scripts/check.py sync` |
+| `reports/cv/{portugal,philippine}_stratified_10fold_folds.csv` + `_summary.json` | `scripts/stratified_cv.py` (StratifiedKFold across 7 algorithms — Dummy/LR/DT/NB/GB/XGB/LGBM) | Notebook 12 (Portugal) + `notebooks/ph/12_stratified_kfold_cv.ipynb` (PH) |
 
 **Threshold cross-check**: `scripts/check.py sync` verifies the same `max_f1` / `high_precision`
 / `cost_sensitive` thresholds appear in `artifacts/thresholds.json`,
@@ -659,6 +662,7 @@ run side-by-side for a defense demo.
 | `artifacts/ph/ph_adr_regressor.pkl` | HistGradientBoosting ADR regressor (NB 04) |
 | `reports/ph/ph_adr_regressor_metrics.json` | ADR regressor train/val/test RMSE/MAE/R² (NB 04) |
 | `reports/ph/ph_adr_test_predictions.csv` | Per-row ADR predictions + residuals (NB 04) |
+| `reports/cv/philippine_stratified_10fold_folds.csv` + `_summary.json` | Stratified 10-fold CV across 7 algorithms (NB 12); written by `scripts/stratified_cv.py --dataset philippine` |
 
 ### Notebook suite (`notebooks/ph/`)
 
@@ -678,6 +682,7 @@ mentally pair "Portugal 03 ↔ PH 03".
 | `09_model_comparison.ipynb` | NEW | Per-row probability spread, family-disagreement table, mean-of-3 ensemble vs champion |
 | `10_sensitivity_analysis.ipynb` | NEW | Cost sensitivity, data hunger, threshold policy trade-offs |
 | `11_transferability.ipynb` | NEW (real-data reframe) | Pre-flight diagnostic outcome + real-data metrics + defense framing |
+| `12_stratified_kfold_cv.ipynb` | NEW | Stratified 10-fold CV — 7 algorithms × 10 folds on the 193-row real PMS export |
 | `README.md` | NEW | Suite overview + small-N caveat narrative |
 
 ### All Portugal notebooks now have a PH counterpart
