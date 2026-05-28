@@ -1,16 +1,22 @@
-"""Generate the Model Deployment Framework diagram for Chapter IV.
+"""Generate the Technical Serving Architecture diagram for Chapter IV.
 
-Produces a publication-grade architecture diagram showing the full live-
-serving pipeline: how a single booking enters at the front desk, runs
-through the model, gets logged to SQLite, materialises as a CSV, and
-reaches the Power BI dashboard. Includes the side-channel drift loop
-that triggers retraining.
+Renders Figure 4.10 — the technical *implementation* view of the live-
+serving pipeline. Pair this with `create_conceptual_systems_diagram.py`
+(Figure 4.9), which renders the conceptual *positioning* view adapted
+from Antonio et al. (2017, Figure 6).
+
+What this figure shows: the runtime data flow of a single ``POST
+/predict`` call — from a front-desk booking entry through FastAPI,
+LightGBM inference, isotonic calibration, threshold resolution, SHAP
+explanation, async SQLite logging, the CSV export, the Power BI
+dashboard, and the weekly PSI drift loop that closes back to a
+retrain trigger.
 
 Output: ``reports/figures/thesis/fig_deployment_framework.png`` (+ PDF).
 
-Run once after any architectural change. The diagram intentionally uses
-only matplotlib primitives (no graphviz dependency) so the figure
-regenerates on any laptop with the project's existing requirements.
+Run once after any architectural change. Matplotlib-only — no
+graphviz dependency, regenerates on any laptop with the project's
+existing requirements.
 """
 
 from __future__ import annotations
@@ -58,8 +64,25 @@ def _box(ax, xy, w, h, text, *, fc=SURFACE, ec=PRIMARY, fontsize=9.5, fontweight
     )
 
 
-def _arrow(ax, xy_from, xy_to, *, color=NEUTRAL, label="", style="->", linewidth=1.4):
-    """Draw a labeled arrow between two anchor points."""
+def _arrow(
+    ax,
+    xy_from,
+    xy_to,
+    *,
+    color=NEUTRAL,
+    label="",
+    style="->",
+    linewidth=1.4,
+    linestyle="-",
+    rad=0.0,
+    label_pos=0.5,
+):
+    """Draw a labeled arrow between two anchor points.
+
+    `rad` adds a curved connection (positive curves left of the line,
+    negative curves right). `label_pos` slides the label along the line
+    in [0, 1] so labels can be moved out of cluttered regions.
+    """
     arr = FancyArrowPatch(
         xy_from,
         xy_to,
@@ -67,12 +90,14 @@ def _arrow(ax, xy_from, xy_to, *, color=NEUTRAL, label="", style="->", linewidth
         mutation_scale=14,
         color=color,
         linewidth=linewidth,
+        linestyle=linestyle,
+        connectionstyle=f"arc3,rad={rad}",
         zorder=1,
     )
     ax.add_patch(arr)
     if label:
-        mx = (xy_from[0] + xy_to[0]) / 2
-        my = (xy_from[1] + xy_to[1]) / 2
+        mx = xy_from[0] + (xy_to[0] - xy_from[0]) * label_pos
+        my = xy_from[1] + (xy_to[1] - xy_from[1]) * label_pos
         ax.text(
             mx,
             my,
@@ -81,7 +106,7 @@ def _arrow(ax, xy_from, xy_to, *, color=NEUTRAL, label="", style="->", linewidth
             va="center",
             fontsize=8,
             color=color,
-            bbox=dict(boxstyle="round,pad=0.18", fc="white", ec="none", alpha=0.9),
+            bbox=dict(boxstyle="round,pad=0.22", fc="white", ec="none", alpha=0.95),
             zorder=4,
         )
 
@@ -93,14 +118,20 @@ def build_figure() -> None:
             "font.serif": ["Times New Roman", "DejaVu Serif", "Liberation Serif"],
         }
     )
-    fig, ax = plt.subplots(figsize=(13.5, 8.5), dpi=150)
+    fig, ax = plt.subplots(figsize=(13.5, 9.0), dpi=150)
     ax.set_xlim(0, 14)
-    ax.set_ylim(0, 10)
+    ax.set_ylim(0, 11)
     ax.axis("off")
 
     # ── Top row: user touch points ─────────────────────────────────
     _box(
-        ax, (0.4, 8.4), 2.4, 1.0, "Front-desk staff\n(via PMS UI)", fc="#E6EEF7", fontweight="bold"
+        ax,
+        (0.4, 8.4),
+        2.4,
+        1.0,
+        "Front-desk staff\n(via PMS UI)",
+        fc="#E6EEF7",
+        fontweight="bold",
     )
     _box(
         ax,
@@ -115,7 +146,12 @@ def build_figure() -> None:
     # ── FastAPI box (large container) ─────────────────────────────
     _box(ax, (0.4, 5.2), 5.4, 2.7, "", fc="#FFFFFF", ec=PRIMARY)
     ax.text(
-        0.6, 7.6, "FastAPI Server (localhost:8000)", fontsize=11, fontweight="bold", color=PRIMARY
+        0.6,
+        7.6,
+        "FastAPI Server (localhost:8000)",
+        fontsize=11,
+        fontweight="bold",
+        color=PRIMARY,
     )
     # Endpoints sub-row
     _box(ax, (0.6, 6.8), 1.5, 0.55, "/predict", fc="#DFEAF5", fontsize=9)
@@ -143,8 +179,17 @@ def build_figure() -> None:
         fontsize=8.2,
     )
 
-    # ── Artifact layer (left side) ────────────────────────────────
-    _box(ax, (6.4, 6.8), 3.0, 0.65, "artifacts/best_model.pkl", fc="#EDF7EE", ec=SAFE, fontsize=9)
+    # ── Artifact layer (middle-right column) ──────────────────────
+    _box(
+        ax,
+        (6.4, 6.8),
+        3.0,
+        0.65,
+        "artifacts/best_model.pkl",
+        fc="#EDF7EE",
+        ec=SAFE,
+        fontsize=9,
+    )
     _box(
         ax,
         (6.4, 6.05),
@@ -155,7 +200,16 @@ def build_figure() -> None:
         ec=SAFE,
         fontsize=9,
     )
-    _box(ax, (6.4, 5.3), 3.0, 0.65, "artifacts/thresholds.json", fc="#EDF7EE", ec=SAFE, fontsize=9)
+    _box(
+        ax,
+        (6.4, 5.3),
+        3.0,
+        0.65,
+        "artifacts/thresholds.json",
+        fc="#EDF7EE",
+        ec=SAFE,
+        fontsize=9,
+    )
 
     # ── BackgroundTask + persistence row ─────────────────────────
     _box(
@@ -204,32 +258,40 @@ def build_figure() -> None:
     )
 
     # ── Bottom row: monitoring + retrain loop ────────────────────
+    # Re-laid out so the retrain trigger sits directly UNDER the
+    # artifacts column — the "regenerates artifacts/*" arrow becomes
+    # a clean short vertical instead of a long diagonal across the
+    # Power BI box.
     _box(
         ax,
         (0.4, 1.0),
-        3.0,
+        2.6,
         1.4,
-        "compute_live_drift.py\n(scheduled — e.g., weekly)\nPSI per feature vs baseline",
+        "compute_live_drift.py\n(scheduled — e.g. weekly)\nPSI per feature vs baseline",
         fc="#FFF4DE",
         ec=ACCENT,
         fontsize=9,
     )
     _box(
         ax,
-        (3.8, 1.0),
-        3.0,
+        (3.4, 1.0),
+        3.2,
         1.4,
         "drift_metrics.csv\n(zones: safe / watch / retrain)",
         fc="#FFF4DE",
         ec=ACCENT,
         fontsize=9,
     )
+    # Retrain trigger inline-labels its own "regenerates artifacts/*"
+    # outcome so we don't need a long vertical arrow that would have to
+    # cross the predictions_live.csv box.
     _box(
         ax,
-        (7.2, 1.0),
+        (6.4, 1.0),
         3.0,
         1.4,
-        "Retraining trigger\n(if ≥ 2 features cross PSI 0.25 →\n scripts/train.py)",
+        "Retraining trigger\n(if ≥ 2 features cross PSI 0.25 →\n"
+        "scripts/train.py regenerates artifacts/*)",
         fc="#FFF4DE",
         ec=ACCENT,
         fontsize=9,
@@ -237,56 +299,87 @@ def build_figure() -> None:
     )
 
     # ── Arrows ────────────────────────────────────────────────────
-    # Users → FastAPI endpoints
+    # Users → FastAPI endpoints (blue request flow).
     _arrow(ax, (1.6, 8.4), (1.35, 7.4), color=PRIMARY, label="HTTP")
     _arrow(ax, (4.6, 8.4), (3.0, 7.4), color=PRIMARY, label="HTTP/JSON")
 
-    # FastAPI inference → loads artifacts (dotted-ish but solid)
+    # FastAPI inference → loads artifacts.
     _arrow(ax, (5.8, 6.35), (6.4, 6.35), color=SAFE, label="load")
 
-    # FastAPI inference → response back to caller
-    ax.annotate(
-        "JSON response\n(≤ 500 ms)",
-        xy=(2.5, 4.5),
-        xytext=(2.5, 5.1),
-        ha="center",
-        fontsize=8,
-        color=PRIMARY,
-        arrowprops=dict(arrowstyle="<-", color=PRIMARY, linewidth=1.4),
-    )
+    # FastAPI → BackgroundTask (after response is sent).
+    _arrow(ax, (1.7, 5.2), (1.7, 4.4), color=DANGER, label="add_task")
 
-    # FastAPI → BackgroundTask (after response)
-    _arrow(ax, (3.1, 5.2), (1.7, 4.4), color=DANGER, label="add_task")
-
-    # BackgroundTask → SQLite
+    # BackgroundTask → SQLite.
     _arrow(ax, (3.0, 3.9), (3.4, 3.9), color=DANGER, label="INSERT")
 
-    # SQLite → CSV
-    _arrow(ax, (6.6, 3.9), (7.0, 3.9), color=DANGER, label="export_to_csv()")
+    # SQLite → CSV.
+    _arrow(
+        ax,
+        (6.6, 3.9),
+        (7.0, 3.9),
+        color=DANGER,
+        label="export_to_csv()",
+    )
 
-    # CSV → Power BI (refresh)
-    _arrow(ax, (10.0, 3.9), (10.6, 4.5), color=PRIMARY, label="Power BI\nRefresh")
+    # CSV → Power BI (refresh).
+    _arrow(
+        ax,
+        (10.0, 4.2),
+        (10.6, 5.0),
+        color=PRIMARY,
+        label="Power BI\nRefresh",
+    )
 
-    # SQLite → baseline reference + live CSV → drift compute
-    _arrow(ax, (8.5, 3.4), (1.9, 2.4), color=ACCENT, label="weekly read")
+    # SQLite → drift compute (weekly snapshot — curved to avoid the
+    # CSV box in the middle).
+    _arrow(
+        ax,
+        (5.0, 3.4),
+        (1.7, 2.4),
+        color=ACCENT,
+        label="weekly read",
+        rad=0.25,
+        label_pos=0.45,
+    )
 
-    # Drift compute → drift CSV
-    _arrow(ax, (3.4, 1.7), (3.8, 1.7), color=ACCENT)
+    # Drift compute → drift CSV.
+    _arrow(ax, (3.0, 1.7), (3.4, 1.7), color=ACCENT)
 
-    # Drift CSV → Power BI Page 8 (monitoring page)
-    _arrow(ax, (6.8, 1.7), (10.6, 5.0), color=ACCENT, label="Page 8")
+    # Drift CSV → Retrain trigger (linear flow along the bottom).
+    _arrow(ax, (6.6, 1.7), (6.4, 1.7), color=ACCENT)
 
-    # Drift CSV → Retrain trigger
-    _arrow(ax, (6.8, 1.7), (7.2, 1.7), color=ACCENT)
+    # Drift CSV → Power BI Page 8 (single labelled diagonal up the
+    # right edge; routed slightly curved so it doesn't slash through
+    # the Retrain trigger box).
+    _arrow(
+        ax,
+        (5.0, 2.4),
+        (10.6, 4.3),
+        color=ACCENT,
+        label="Page 8",
+        rad=-0.18,
+        label_pos=0.55,
+    )
 
-    # Retrain trigger → artifacts (full cycle)
-    _arrow(ax, (10.2, 2.2), (7.9, 6.6), color=SAFE, label="regenerates\nartifacts/*", linewidth=1.6)
+    # Retrain trigger → artifacts column. Rendered as a short green
+    # dashed link on the right margin (clear of the predictions_live
+    # box) so the SAFE-green flow shows up in the legend.
+    _arrow(
+        ax,
+        (9.4, 1.7),
+        (9.4, 5.3),
+        color=SAFE,
+        linestyle="--",
+        linewidth=1.4,
+        rad=0.35,
+        label="",
+    )
 
-    # ── Title + caption ──────────────────────────────────────────
+    # ── Title + caption (above the top boxes; ylim=11 leaves room) ──
     ax.text(
         7.0,
-        9.7,
-        "Figure 4.8 — Model Deployment Framework",
+        10.5,
+        "Figure 4.10 — Technical Serving Architecture",
         ha="center",
         fontsize=14,
         fontweight="bold",
@@ -294,9 +387,9 @@ def build_figure() -> None:
     )
     ax.text(
         7.0,
-        9.35,
-        "Live serving pipeline: from a single booking entry to the "
-        "Power BI dashboard and back via drift-triggered retraining",
+        10.05,
+        "Runtime data flow of a single /predict call: FastAPI, LightGBM, "
+        "SQLite audit log, Power BI, and the PSI drift loop that closes back to retraining.",
         ha="center",
         fontsize=10,
         color=NEUTRAL,
@@ -317,10 +410,18 @@ def build_figure() -> None:
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT_DIR / "fig_deployment_framework.png", bbox_inches="tight", dpi=300)
-    fig.savefig(OUT_DIR / "fig_deployment_framework.pdf", bbox_inches="tight")
-    plt.close(fig)
     print(f"wrote {OUT_DIR / 'fig_deployment_framework.png'}")
-    print(f"wrote {OUT_DIR / 'fig_deployment_framework.pdf'}")
+    # The PDF write is best-effort — if a viewer holds the file open the
+    # PNG path still succeeds and the thesis references the PNG anyway.
+    try:
+        fig.savefig(OUT_DIR / "fig_deployment_framework.pdf", bbox_inches="tight")
+        print(f"wrote {OUT_DIR / 'fig_deployment_framework.pdf'}")
+    except PermissionError:
+        print(
+            f"PDF skipped (file locked by external viewer): "
+            f"{OUT_DIR / 'fig_deployment_framework.pdf'}"
+        )
+    plt.close(fig)
 
 
 if __name__ == "__main__":
