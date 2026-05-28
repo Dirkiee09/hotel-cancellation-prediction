@@ -875,7 +875,106 @@ what that pilot would look like.
 
 ---
 
-## 4.7 Chapter Summary
+## 4.7 Model Deployment Framework
+
+A model that lives in a notebook is an academic artefact. A model that
+scores a booking the moment it lands in the property's PMS, logs the
+score for later audit, surfaces the result in a dashboard the next
+morning, and tells the operations team when it is time to retrain —
+that is a business intelligence deliverable. This section documents
+the deployment framework that wraps the LightGBM champion into exactly
+that operational tool.
+
+**[Insert Figure 4.8 —
+`reports/figures/thesis/fig_deployment_framework.png` here, showing
+the live-serving pipeline from a single booking entry through to the
+Power BI dashboard and back via drift-triggered retraining.]**
+
+### 4.7.1 Architecture at a glance
+
+Figure 4.8 maps the full request-to-dashboard data flow. The framework
+has four layers, each with a clear job:
+
+- **The serving layer** is a FastAPI application running on
+  `localhost:8000`. It exposes three production endpoints — `/predict`
+  for booking scoring, `/model-info` for current model lineage,
+  `/healthz` for readiness checks — plus a Gradio user interface
+  mounted at `/ui` for non-technical staff who prefer a web form to a
+  JSON API. Both paths run identical inference, so the same model
+  serves both audiences.
+- **The inference pipeline** runs entirely in memory once the artefacts
+  are loaded: a Pydantic validator coerces the incoming booking,
+  feature engineering derives the 33 model inputs, the LightGBM
+  pipeline produces a raw probability, isotonic calibration corrects
+  the probability, threshold resolution assigns the three policy
+  labels and the risk tier, TreeSHAP computes the top-5 feature
+  contributions for explainability, and the ADR regressor produces a
+  parallel price prediction. The full pipeline returns a JSON response
+  in under 500 ms on a laptop-grade CPU.
+- **The persistence layer** is asynchronous. After the response is sent
+  back to the caller, a FastAPI BackgroundTask appends the (request,
+  response) pair to a SQLite audit log at
+  `data/predictions/predictions.sqlite` and re-exports the full log to
+  `predictions_live.csv`. The user never waits for the disk write, and
+  the API never fails if the log is briefly unavailable. The CSV is
+  the source of truth Power BI Desktop consumes.
+- **The monitoring loop** runs on a separate schedule (typically
+  weekly). The `compute_live_drift.py` script reads the live CSV and
+  the training-time baseline, computes Population Stability Index per
+  feature, and writes a `drift_metrics.csv` with each feature
+  classified into a safe / watch / retrain zone. Page 8 of the Power
+  BI dashboard reads this file. When two or more features land in the
+  retrain zone, the operations team triggers `scripts/train.py` to
+  regenerate the artefacts under `artifacts/`, and the loop closes.
+
+### 4.7.2 What this means for the property
+
+The framework is deliberately minimalist. There is no cloud service to
+provision, no database server to administer, no model registry to
+maintain. A property's IT team needs only:
+
+- A Python environment (the project's `requirements.txt`).
+- One server process for FastAPI (single binary, started by
+  `python demo/start_server.py`).
+- A scheduled task (Windows Task Scheduler or cron) to run
+  `scripts/compute_live_drift.py` once a week.
+- Power BI Desktop on whichever workstation the revenue manager uses.
+
+Every artefact is a file. Every log is a SQLite database. Every report
+is a CSV. A non-technical manager can be handed the `.pbix` file plus
+the two CSVs and the dashboard works on first open — no ODBC drivers,
+no service accounts, no broken refresh tokens.
+
+### 4.7.3 Production readiness checklist
+
+Three properties make the framework production-ready rather than a
+demo:
+
+1. **Calibrated probabilities, not scores.** Because the model has
+   been isotonically calibrated (Section 4.4.3), the dashboard's risk
+   tier bands can be set directly off the probability number. There is
+   no need for a separate "score-to-probability" lookup or a hand-
+   tuned safety margin.
+2. **Multiple operating thresholds, not one.** The three policies
+   (`max_f1`, `high_precision`, `cost_sensitive`) ship with the model
+   and are resolvable per-request. The hotel can run the
+   cost-sensitive policy by default and switch to `high_precision`
+   for executive audits without retraining or redeploying.
+3. **Drift monitoring as part of the loop, not as an afterthought.**
+   The PSI computation is wired into the same dashboard the revenue
+   manager already reads. When the model needs retraining, the
+   dashboard tells her — she does not need to remember to ask.
+
+**Business takeaway.** The framework converts the model from a thesis
+artefact into an operational tool a hotel can run on commodity
+hardware with one Python process and one Power BI workstation. The
+ongoing operational cost is one weekly drift run; the trigger for
+human intervention is a coloured zone change on Page 8 of the
+dashboard.
+
+---
+
+## 4.8 Chapter Summary
 
 The chapter answered the four questions it opened with:
 
