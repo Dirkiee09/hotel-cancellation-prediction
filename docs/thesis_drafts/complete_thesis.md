@@ -515,7 +515,7 @@ chronological split honestly mimics what production looks like.
 | Test | 11,922 | 2017-06-21 → 2017-08-31 | 37.8 % |
 | **All cleaned** | **119,210** | **2015-07-01 → 2017-08-31** | **37.0 %** |
 
-Each booking is represented by **33 features** that are knowable at
+Each booking is represented by **34 features** that are knowable at
 the moment of reservation: things like the deposit type, lead time,
 country of origin, number of guests, requested room type, and so on.
 Features that only become available *after* the booking is made —

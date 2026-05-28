@@ -28,7 +28,7 @@ serving (FastAPI + Gradio) → evaluation → thesis reporting.
 | `mypy` | ✅ clean | 0 errors (40 source files checked) |
 | `scripts/check.py all` | ✅ pass | artifacts + metrics + sync + fairness gates |
 | `scripts/` | ✅ 4/4 scripts | train, benchmark, check, notebooks |
-| `notebooks/` | ✅ 21/21 notebooks | 10 Portugal + 11 Philippine, all with cached outputs |
+| `notebooks/` | ✅ 23/23 notebooks | 11 Portugal + 12 Philippine, all with cached outputs |
 | FastAPI Portugal | ✅ verified | `/healthz`, `/model-info`, `/predict` (with SHAP + ADR) on :8000 |
 | FastAPI Philippine | ✅ verified | `/healthz`, `/model-info`, `/predict` (with SHAP + caveat) on :8001 |
 
