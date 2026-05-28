@@ -1183,16 +1183,59 @@ score for later audit, surfaces the result in a dashboard the next
 morning, and tells the operations team when it is time to retrain —
 that is a business intelligence deliverable. This section documents
 the deployment framework that wraps the LightGBM champion into exactly
-that operational tool.
+that operational tool, told at **two levels**: first the conceptual
+positioning of the model inside the hotel's existing IT ecosystem
+(Figure 4.9), then the technical serving architecture that implements
+it (Figure 4.10).
+
+### 4.8.1 Where the model sits in the hotel's IT ecosystem
+
+A revenue manager asks a different question of the deployment than a
+serving engineer does. The manager asks *"where does this model plug
+into my distribution stack?"*. Figure 4.9 answers that question,
+adapting the deployment-framework template of António, Almeida, &
+Nunes (2017, Figure 6) — the same paper that introduced the Portugal
+benchmark dataset used throughout this thesis — to the present study's
+specific BI layer.
 
 **[Insert Figure 4.9 —
+`reports/figures/thesis/fig_conceptual_systems_positioning.png` here,
+showing the cancellation model and Power BI decision layer positioned
+inside the CRS, exchanging inventory/price and booking/cancellation
+messages with the PMS, channel manager, and distribution channels.]**
+
+The Hotel PMS is the centre of gravity. It exchanges inventory-and-price
+signals (forward) and new-bookings-and-cancellations signals (backward)
+with the channel manager on the left — which fans those signals out to
+OTAs, GDSs, and the hotel's own website — and with other distribution
+channels on the right. The novel element this thesis adds is the
+expanded **CRS layer** at the bottom of the figure. In the original
+António et al. framework the CRS contained a single "booking
+cancellation prediction model" box; in the present deployment that box
+is decomposed into the actual BI stack: the LightGBM cancellation
+classifier with isotonic calibration, the parallel Gradient-Boosted
+ADR regressor, the three threshold policies, the TreeSHAP
+per-prediction explanations, the SQLite audit log, and the eight-page
+Power BI decision-support dashboard. The PMS sends *all bookings* down
+to the CRS layer, and the CRS sends *cancellation classifications plus
+forecasted room nights* back up. The dashed amber lines show the
+secondary feedback loop between the CRS and the channel manager — when
+inventory or pricing decisions are revised on the basis of the model's
+output, those revised signals propagate back through the same
+channel-manager surface that handles every other distribution message.
+
+The figure is a positioning statement, not a runtime architecture.
+The question of *how* a single `/predict` call actually flows through
+the deployment is answered next.
+
+### 4.8.2 Technical serving architecture
+
+**[Insert Figure 4.10 —
 `reports/figures/thesis/fig_deployment_framework.png` here, showing
 the live-serving pipeline from a single booking entry through to the
 Power BI dashboard and back via drift-triggered retraining.]**
 
-### 4.8.1 Architecture at a glance
-
-Figure 4.9 maps the full request-to-dashboard data flow. The framework
+Figure 4.10 maps the full request-to-dashboard data flow. The framework
 has four layers, each with a clear job:
 
 - **The serving layer** is a FastAPI application running on
@@ -1227,7 +1270,7 @@ has four layers, each with a clear job:
   retrain zone, the operations team triggers `scripts/train.py` to
   regenerate the artefacts under `artifacts/`, and the loop closes.
 
-### 4.8.2 What this means for the property
+### 4.8.3 What this means for the property
 
 The framework is deliberately minimalist. There is no cloud service to
 provision, no database server to administer, no model registry to
@@ -1245,7 +1288,7 @@ is a CSV. A non-technical manager can be handed the `.pbix` file plus
 the two CSVs and the dashboard works on first open — no ODBC drivers,
 no service accounts, no broken refresh tokens.
 
-### 4.8.3 Production readiness checklist
+### 4.8.4 Production readiness checklist
 
 Three properties make the framework production-ready rather than a
 demo:
