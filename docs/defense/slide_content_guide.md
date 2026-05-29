@@ -44,8 +44,8 @@ the slide carries the proof.
 2. **Layout:** Title-only (centered)
 3. **Headline number:** *None* (this is the cover slide)
 4. **Body bullets:**
-   - Author: *Dirk Vincent B. Viñas*
-   - Program: Mapúa University — BS 
+   - Author: *Dirk Werner B. Viñas*
+   - Program: Mapúa University — BS Business Intelligence & Analytics
    - Adviser: *[insert adviser name]*
    - Defense date: *[insert date]*
 5. **Figure/image:** Mapúa logo top-left (small); a faint cropped
@@ -645,24 +645,35 @@ the slide carries the proof.
 1. **Title:** What Does the Booking Actually Charge?
 2. **Layout:** Picture-with-caption (scatter left; mini table right)
 3. **Headline number:** **Test RMSE = €44.31** (Gradient Boosting
-   champion)
+   champion, selected by *validation* RMSE)
 4. **Body bullets:**
-   - 7 regressors compared; Gradient Boosting wins
-   - R² 0.234 — directional signal, not exact prediction
+   - 8 regressors compared; **Gradient Boosting** wins on the
+     validation set (28.76 €) — the methodologically honest selection
+   - **XGBoost is fractionally better on the test set** (44.06 €) but
+     loses on validation (29.30 €) — we never select by test to avoid
+     test-set peeking
+   - R² 0.234 — directional pricing signal, not exact prediction
    - Used live by the Power BI Page 5 (ADR Forecasting)
-5. **Body bullets (right — top 4 of Table 4.3):**
-   | Regressor | Test RMSE | Test R² |
-   |---|---:|---:|
-   | **Gradient Boosting** | **44.31** | **0.234** |
-   | LightGBM | 44.65 | 0.227 |
-   | XGBoost | 44.78 | 0.224 |
-   | Random Forest | 45.91 | 0.193 |
+5. **Body bullets (right — top 4 by Test RMSE, from Table 4.8):**
+   | Regressor | Val RMSE | Test RMSE | Test R² |
+   |---|---:|---:|---:|
+   | XGBoost | 29.30 | **44.06** | 0.243 |
+   | **Gradient Boosting** *(champion)* | **28.76** | **44.31** | **0.234** |
+   | Random Forest | 31.89 | 44.52 | 0.227 |
+   | Decision Tree | 31.28 | 45.87 | 0.179 |
 6. **Figure/image:** `reports/figures/thesis/fig_45_adr_pred_vs_actual.png`
-7. **Caption / footer credit:** *Source: Table 4.3 + `fig_45_…`*
-8. **Color emphasis:** `#1F4E79` on the Gradient Boosting row
+7. **Caption / footer credit:** *Source: Chapter IV Table 4.8 +
+   `reports/regression_results.csv`*
+8. **Color emphasis:** `#1F4E79` on the Gradient Boosting row + a
+   `#107C41` highlight on its **Val RMSE 28.76** cell (the
+   tie-breaker)
 9. **Script reference:** Stage 14 backup + Q3
-10. **Speaker notes:** Be honest about the R² limit — say *"this is
-    a directional pricing signal, not an exact prediction"*.
+10. **Speaker notes:** If a panellist points at the XGBoost test
+    RMSE 44.06 and asks "why not XGBoost as champion?" — answer
+    *"selected by validation RMSE, not test RMSE; XGBoost lost on
+    val 29.30 vs Gradient Boosting 28.76 — we never select on the
+    test set"*. Then concede *"R² is moderate by design; ADR is
+    dominated by rate-card noise the model can't see"*.
 
 ---
 
@@ -675,7 +686,7 @@ the slide carries the proof.
 4. **Body bullets:**
    - Strongest segment: Groups (large, patterned bookings)
    - Weakest segment: Direct (small, idiosyncratic, low base rate)
-   - Resort Hotel slightly outperforms City Hotel (+0.04 PR-AUC)
+   - Resort Hotel slightly outperforms City Hotel (+0.029 PR-AUC)
    - Action: human review on Direct-tier flags below probability 0.70
 5. **Figure/image:** `reports/figures/thesis/fig_17_segment_performance_heatmap.png`
 6. **Caption / footer credit:** *Source: Table 4.11,

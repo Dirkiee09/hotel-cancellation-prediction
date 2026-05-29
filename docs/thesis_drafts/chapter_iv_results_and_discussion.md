@@ -454,17 +454,21 @@ predicted ADR (Section 4.8).
 
 ### 4.6.1 Regressor comparison
 
-Seven regression algorithms were fit on the same chronological train
+Eight regression algorithms were fit on the same chronological train
 split, tuned on the validation set, and evaluated on the held-out
-test set. Test RMSE is in euros, MAPE in percent.
+test set. The champion was selected by **validation RMSE** — XGBoost
+records a fractionally lower test RMSE (44.06 € vs 44.31 €) but loses
+on validation (29.30 € vs 28.76 €), and the methodology never selects
+on the test set. Test RMSE is in euros, MAPE in percent.
 
-**Table 4.8 — ADR regression performance, all seven models
+**Table 4.8 — ADR regression performance, all eight models
 (Portugal test set)**
 
 | Model | Train RMSE (€) | Val RMSE (€) | Test RMSE (€) | Test MAE (€) | Test R² | Test MAPE (%) |
 |---|---:|---:|---:|---:|---:|---:|
 | **Gradient Boosting (champion)** | **32.70** | **28.76** | **44.31** | **32.24** | **0.234** | **23.45** |
 | XGBoost | 32.89 | 29.30 | 44.06 | 32.14 | 0.243 | 23.48 |
+| Random Forest | 22.74 | 31.89 | 44.52 | 32.57 | 0.227 | 24.60 |
 | Decision Tree | 33.74 | 31.28 | 45.87 | 33.28 | 0.179 | 25.15 |
 | Ridge | 37.64 | 30.29 | 47.64 | 34.55 | 0.115 | 24.74 |
 | Linear Regression | 37.63 | 30.30 | 47.65 | 34.56 | 0.114 | 24.75 |
