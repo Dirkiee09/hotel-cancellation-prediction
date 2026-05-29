@@ -37,6 +37,7 @@
 - [H. Limitations & Honest Reporting](#h-limitations--honest-reporting) (3 questions)
 - [I. Trick & Hard Questions](#i-trick--hard-questions) (4 questions)
 - [J. Business & Industry Framing](#j-business--industry-framing) (4 questions)
+- [K. Codebase & Implementation Tour](#k-codebase--implementation-tour) (4 questions)
 
 ---
 
@@ -1419,6 +1420,152 @@ entire pipeline in a semester.
 
 **Source:** Chapter I motivation, CLAUDE.md project overview.
 **Fallback:** *"Vendors are closed-source; deployment friction is real but solvable."*
+
+---
+
+# K. Codebase & Implementation Tour
+
+### K1. Where exactly did you do the machine learning in Python? Walk me through the codebase.
+
+🟢 **Easy** — but easy to fumble. Rehearse the spoken answer.
+
+**30-sec core:**
+
+> All the machine-learning code lives in the `src/` package, organised
+> by responsibility — `src/data/` for loading, `src/features/` for
+> engineering and the chronological split, `src/models/` for
+> algorithm-specific trainers and metrics, `src/utils/` for threshold
+> logic, and `src/pipelines/train.py` for master orchestration. The
+> stack is pandas, numpy, scikit-learn, LightGBM, XGBoost, and SHAP.
+> Training runs via `python scripts/train.py` or `make train`. Serving
+> is in `src/serving/inference.py` behind a FastAPI endpoint. There
+> are 130 tests in `tests/` at 88 % coverage that verify the pipeline
+> end-to-end.
+
+**Deep dive (if asked to show on screen):**
+
+> Open three files in order:
+>
+> 1. **`src/pipelines/train.py`** — the master entry point. The
+>    `run_training` function loads the CSV, drops the five leakage
+>    columns, runs `split_time_aware` for the chronological 80/10/10,
+>    does rolling-origin champion-challenger selection across LightGBM,
+>    XGBoost, and Gradient Boosting, fits the isotonic calibrator on
+>    the validation set, runs the threshold sweep, and saves every
+>    artifact under `artifacts/` with SHA-256 lineage in
+>    `model_metadata.json`.
+> 2. **`src/models/train.py`** — three trainer functions:
+>    `train_lightgbm`, `train_xgboost`, `train_gradient_boosting`.
+>    Each returns an sklearn Pipeline with a ColumnTransformer (for
+>    OneHotEncoder + SimpleImputer) plus the classifier. Same shape,
+>    apples-to-apples comparison in the selection step.
+> 3. **`src/serving/inference.py`** — the live `/predict` runtime.
+>    Loads artifacts once at startup with double-checked locking via
+>    `_ARTIFACTS_LOCK`. Each call runs Pydantic validation, feature
+>    engineering, `predict_proba`, the isotonic calibrator, threshold
+>    resolution, the SHAP top-5 explanation (`explain_prediction`),
+>    and the parallel ADR forecast (`predict_adr`). End-to-end under
+>    500 ms.
+
+**Source:** `src/pipelines/train.py`, `src/models/train.py`, `src/serving/inference.py`.
+**Fallback:** *"`src/` package, master entry `src/pipelines/train.py`, CLI via `scripts/train.py`."*
+
+---
+
+### K2. Show me where you do the chronological train / val / test split.
+
+🟢 **Easy** — they want to see the leakage prevention.
+
+**30-sec core:**
+
+> The split function is `split_time_aware` in `src/features/build.py`.
+> It sorts the dataframe by `arrival_date_full` — a derived
+> datetime column from `arrival_date_year`, `arrival_date_month`,
+> and `arrival_date_day_of_month` — then slices into the 80/10/10
+> chunks chronologically. The split ratios are constants in
+> `src/config.py` (`TRAIN_RATIO = 0.80`, `VAL_RATIO = 0.10`). I
+> deliberately avoid `sklearn.model_selection.train_test_split`
+> because it shuffles by default. There's a test in
+> `tests/test_split_and_leakage.py` that asserts no train row's
+> arrival date is later than any val row's arrival date.
+
+**Deep dive:**
+
+> The function returns three DataFrames in date order — train, val,
+> test — with reset indices so downstream code doesn't accidentally
+> depend on row positions. The dropped leakage columns (`LEAKAGE_COLS`
+> from `src/config.py`) are removed *before* the split function is
+> called, in `src/pipelines/train.py` at the line
+> `df = df.drop(columns=LEAKAGE_COLS)`. That ordering matters — if
+> leakage columns were removed *after* the split, the validation set
+> would briefly have access to leaky data during fit.
+
+**Source:** `src/features/build.py::split_time_aware`, `src/config.py::TRAIN_RATIO`/`VAL_RATIO`/`LEAKAGE_COLS`, `tests/test_split_and_leakage.py`.
+**Fallback:** *"`src/features/build.py::split_time_aware`. Chronological, ratios in `src/config.py`."*
+
+---
+
+### K3. Where does the isotonic calibrator come from and how is it fitted?
+
+🟡 **Medium** — calibration-savvy panellist.
+
+**30-sec core:**
+
+> The calibrator is `sklearn.isotonic.IsotonicRegression`, fitted in
+> `src/pipelines/train.py` in the function `_fit_probability_calibrator`.
+> It's fitted on the *validation* set's raw model probabilities and
+> the validation labels — never on the test set. The fitted object is
+> pickled to `artifacts/probability_calibrator.pkl` alongside the
+> model. At inference time, `src/serving/inference.py` loads the
+> calibrator once and applies it to every raw probability via
+> `calibrator.predict(raw_proba)`.
+
+**Deep dive:**
+
+> The reason the validation set is used (not the training set) is to
+> avoid optimistic calibration — the model's training-set probabilities
+> are over-confident due to fit. The validation set is a held-out
+> slice the model hasn't seen during training, so the
+> probability-to-frequency mapping is honest. The calibrator's output
+> is clipped to [0, 1] in inference.py defensively, even though
+> isotonic regression already returns values in that range — that's a
+> belt-and-braces guarantee for the API.
+
+**Source:** `src/pipelines/train.py::_fit_probability_calibrator`, `src/serving/inference.py`, `artifacts/probability_calibrator.pkl`.
+**Fallback:** *"`IsotonicRegression` fitted on val set, in `src/pipelines/train.py`."*
+
+---
+
+### K4. Where are the thresholds (`max_f1`, `high_precision`, `cost_sensitive`) chosen — show me the code.
+
+🟡 **Medium** — operational-mechanics question.
+
+**30-sec core:**
+
+> Threshold selection logic is in `src/utils/thresholds.py`. The
+> three functions are `find_max_f1_threshold`,
+> `find_high_precision_threshold`, and
+> `find_cost_sensitive_threshold`. Each sweeps across the validation
+> set's predicted probabilities at 0.01 increments using
+> `np.linspace`, computes the policy's metric at each candidate
+> threshold, and picks the optimum. The chosen thresholds are saved
+> to `artifacts/thresholds.json` and the full sweep grid is saved to
+> `artifacts/threshold_sweep.csv` for the dashboard.
+
+**Deep dive:**
+
+> The cost-sensitive function uses
+> `FP_INTERVENTION_COST = 15.0` from `src/config.py` and computes
+> total cost as `FP_count * 15 + FN_revenue_at_risk`. It picks the
+> threshold that minimises this total. There's also a
+> `resolve_thresholds` helper that the FastAPI endpoint calls — it
+> handles the falsy-zero edge case (a cost-sensitive threshold of
+> 0.0 is valid, but `0.0 or 0.5` would silently fallback to 0.5; I
+> use explicit None-checks instead). Tests for this edge case are in
+> `tests/test_thresholds.py`.
+
+**Source:** `src/utils/thresholds.py`, `artifacts/thresholds.json`, `tests/test_thresholds.py`.
+**Fallback:** *"`src/utils/thresholds.py`. Sweep on val set at 0.01 steps."*
 
 ---
 
