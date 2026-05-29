@@ -2,8 +2,8 @@
 
 > Companion to `defense_script.md`. Every slide is rendered as a
 > **9-field card** so you can paste the content straight into PowerPoint
-> without re-thinking layout decisions on the day. Twenty-two main
-> slides cover the 15-minute talk; five backup slides at the end stay
+> without re-thinking layout decisions on the day. Twenty-three main
+> slides cover the 15-minute talk; six backup slides at the end stay
 > hidden in the deck and are only un-hidden during Q&A.
 
 ---
@@ -25,7 +25,7 @@
 | Footer (source citation) | Calibri, 12 pt, Italic, `#7A7A7A` |
 | Slide template | One headline number per slide, maximum |
 | File name | `defense_deck.pptx` |
-| Total slides | 22 main + 5 backup (hidden) = 27 |
+| Total slides | 23 main + 6 backup (hidden) = 29 |
 
 **Footer rule:** Every chart slide has a 12-pt italic footer with the
 data source (e.g., *Source: `reports/metrics.json`, n = 11,922 test
@@ -709,6 +709,41 @@ the slide carries the proof.
 
 ---
 
+## Slide B6 — Where Does the Model Plug Into the Hotel's IT Stack?
+
+1. **Title:** Where Does the Model Sit in the Hotel's Systems?
+2. **Layout:** Picture-with-caption (figure dominates; 3 short bullets
+   on the right)
+3. **Headline number:** **CRS** — the model lives inside the Central
+   Reservation System layer, alongside the dashboard
+4. **Body bullets:**
+   - **PMS is the hub** — exchanges inventory/prices + bookings with
+     the channel manager, OTAs, and other distribution channels
+   - **CRS hosts the BI stack** — LightGBM classifier, ADR regressor,
+     three threshold policies, TreeSHAP, SQLite audit log, Power BI
+   - **Dashed feedback loop** — model output revises inventory/price
+     signals back through the channel manager
+5. **Figure/image:**
+   `reports/figures/thesis/fig_conceptual_systems_positioning.png`
+6. **Caption / footer credit:** *Source: Chapter IV §4.8.1, Figure 4.9;
+   framework adapted from António, Almeida, & Nunes (2017), Figure 6.*
+7. **Color emphasis:** `#1F4E79` on the **CRS** word in the headline
+   (matches the navy border on the CRS box in the figure)
+8. **Script reference:** General operational-positioning question —
+   use this if a panellist asks *"where does this model plug into our
+   distribution stack?"* or *"how does it interact with the existing
+   PMS / channel manager?"* (no scripted Stage; deliver the three
+   bullets verbatim and trace the arrows with the cursor in ≤ 30 s)
+9. **Speaker notes:** Open with *"the PMS is the centre of gravity;
+   the CRS layer is where the model lives"*, then trace one solid
+   arrow (PMS → CRS "all bookings") and one dashed arrow (CRS →
+   Channel Manager "revised inventory/prices"). Reference António et
+   al. by name so the panel recognises the framework template — they
+   wrote the source dataset paper, so naming them earns credibility
+   in three words.
+
+---
+
 # Design Notes Appendix
 
 ## PowerPoint shortcuts you'll want on the day
@@ -734,7 +769,7 @@ the slide carries the proof.
       every primary title, no accidental theme colours
 - [ ] Confirm every chart slide has a 12 pt italic source footer
 - [ ] Confirm no slide exceeds ~30 words of body text
-- [ ] Confirm Q&A backup slides B1 – B5 are hidden (right-click
+- [ ] Confirm Q&A backup slides B1 – B6 are hidden (right-click
       → *Hide Slide*) but not deleted
 - [ ] Print this slide guide + the script as a paper backup —
       tape the script to the back of the laptop, paper-clip the
