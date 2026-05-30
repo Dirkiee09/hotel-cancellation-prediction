@@ -235,10 +235,11 @@ under a 4× perturbation of the €15 FP cost.
 the way it does ECE is that the discrimination part of Brier was
 already strong (the underlying model has PR-AUC 0.76). The
 calibration step only sharpens the probability magnitudes — it doesn't
-re-rank bookings. ECE 2.9 % is in the "well-calibrated" zone by the
-Niculescu-Mizil & Caruana threshold convention, and it's the number I
-quote in Chapter V Recommendation 1 (probability bands can be used
-directly as policy bands).
+re-rank bookings. ECE 2.9 % is comfortably in the "well-calibrated"
+range typical in the calibration literature (most empirical
+benchmarks treat ECE < 5 % as operationally usable). It's the number
+I quote in Chapter V Recommendation 1 — probability bands can be
+used directly as policy bands without a safety margin.
 
 **Source:** Chapter IV §4.4.3 + `reports/calibration_metrics.json`.
 **Fallback:** *"ECE measures calibration only; Brier measures both."*
@@ -917,13 +918,18 @@ risk). That's a one-flag change documented in the API schema.
 > some predictions might be missing from the log, but the operating
 > system never sees a 500 error from the API.
 
-**Deep dive:** I tested this explicitly — there's a test in
-`tests/test_integration_train_serve.py` that mocks a SQLite lock
-and confirms the API still returns 200. Under sustained high
-traffic, the right mitigation is connection pooling via SQLAlchemy
-or a switch to Postgres (see F2). For the single-property scale
-this thesis demonstrates, transient locks are unlikely — SQLite
-handles thousands of writes per second on commodity hardware.
+**Deep dive:** The non-blocking pattern is built into FastAPI's
+`BackgroundTasks` and the `log_prediction` function in
+`src/serving/prediction_log.py` wraps the SQLite write in a
+try/except that logs warnings without raising — so a transient lock
+or disk failure surfaces in logs but never propagates back to the
+caller. `tests/test_integration_train_serve.py` covers the
+train → load → predict roundtrip but doesn't exercise the lock path
+specifically. Under sustained high traffic, the right mitigation is
+connection pooling via SQLAlchemy or a switch to Postgres (see F2).
+For the single-property scale this thesis demonstrates, transient
+locks are unlikely — SQLite handles thousands of writes per second
+on commodity hardware.
 
 **Source:** `src/serving/prediction_log.py`, `tests/test_integration_train_serve.py`.
 **Fallback:** *"Background task — `/predict` never blocks on the log."*
@@ -1255,16 +1261,19 @@ al. 2017 and the Portugal benchmark).
 > the reason. A black-box critique applies to models with no
 > attribution layer; this deployment has one.
 
-**Deep dive:** The TreeSHAP approach I use is the same one Lundberg
-& Lee (2018) introduced specifically to address the
-"interpretability crisis" in ensemble methods. Every gradient-
-boosted tree decision can be decomposed back to feature
-contributions with mathematical guarantees (the Shapley axioms:
-efficiency, symmetry, dummy, additivity). The thesis Chapter IV
-§4.5 explains this in plain English; the technical details are in
-Notebook 05 and the SHAP literature.
+**Deep dive:** The TreeSHAP approach I use was introduced by
+Lundberg, Erion & Lee (2018, *Consistent Individualized Feature
+Attribution for Tree Ensembles*, arXiv:1802.03888) as a tree-
+specific algorithm with polynomial-time exact Shapley values. The
+broader SHAP unified framework is from Lundberg & Lee (NeurIPS
+2017). Every gradient-boosted tree decision can be decomposed back
+to feature contributions with mathematical guarantees (the Shapley
+axioms: efficiency, symmetry, dummy, additivity). The thesis
+Chapter IV §4.5 explains this in plain English; the technical
+details are in Notebook 05.
 
-**Source:** Chapter IV §4.5, Notebook 05, Lundberg & Lee 2018.
+**Source:** Chapter IV §4.5, Notebook 05, Lundberg & Lee 2017
+(unified SHAP); Lundberg, Erion & Lee 2018 (TreeSHAP).
 **Fallback:** *"SHAP top-5 per prediction; the dashboard shows the reasons."*
 
 ---
@@ -1447,25 +1456,32 @@ entire pipeline in a semester.
 > Open three files in order:
 >
 > 1. **`src/pipelines/train.py`** — the master entry point. The
->    `run_training` function loads the CSV, drops the five leakage
->    columns, runs `split_time_aware` for the chronological 80/10/10,
->    does rolling-origin champion-challenger selection across LightGBM,
->    XGBoost, and Gradient Boosting, fits the isotonic calibrator on
->    the validation set, runs the threshold sweep, and saves every
->    artifact under `artifacts/` with SHA-256 lineage in
->    `model_metadata.json`.
+>    `run_training_pipeline` function (around line 667) loads the CSV,
+>    drops the five leakage columns via `LEAKAGE_COLS`, runs
+>    `split_time_aware` for the chronological 80/10/10, does
+>    rolling-origin champion-challenger selection across LightGBM,
+>    XGBoost, and Gradient Boosting (via `_fit_model_family` and
+>    `_select_model_family`), fits the isotonic calibrator on the
+>    validation set (`_fit_probability_calibrator`), runs the
+>    threshold sweep, and saves every artifact under `artifacts/`
+>    with SHA-256 lineage in `model_metadata.json` (built by
+>    `_artifact_lineage` and persisted via `_save_json`).
 > 2. **`src/models/train.py`** — three trainer functions:
->    `train_lightgbm`, `train_xgboost`, `train_gradient_boosting`.
->    Each returns an sklearn Pipeline with a ColumnTransformer (for
->    OneHotEncoder + SimpleImputer) plus the classifier. Same shape,
->    apples-to-apples comparison in the selection step.
+>    `train_lgbm`, `train_xgb`, `train_gb`. Each returns an sklearn
+>    Pipeline with a ColumnTransformer (for OneHotEncoder +
+>    SimpleImputer) plus the classifier. Same shape, apples-to-apples
+>    comparison in the selection step. Default hyperparameters come
+>    from `get_default_lgbm_params`, `get_default_xgb_params`,
+>    `get_default_gb_params`.
 > 3. **`src/serving/inference.py`** — the live `/predict` runtime.
->    Loads artifacts once at startup with double-checked locking via
->    `_ARTIFACTS_LOCK`. Each call runs Pydantic validation, feature
->    engineering, `predict_proba`, the isotonic calibrator, threshold
->    resolution, the SHAP top-5 explanation (`explain_prediction`),
->    and the parallel ADR forecast (`predict_adr`). End-to-end under
->    500 ms.
+>    Loads artifacts once via `load_artifacts` and caches the result
+>    in the `_CACHED_ARTIFACTS` singleton protected by the
+>    `_CACHED_ARTIFACTS_LOCK` threading lock — that's the
+>    double-checked locking pattern. Each call runs Pydantic
+>    validation, feature engineering, `predict_proba`, the isotonic
+>    calibrator, threshold resolution, the SHAP top-5 explanation
+>    (`explain_prediction`), and the parallel ADR forecast
+>    (`predict_adr`). End-to-end under 500 ms.
 
 **Source:** `src/pipelines/train.py`, `src/models/train.py`, `src/serving/inference.py`.
 **Fallback:** *"`src/` package, master entry `src/pipelines/train.py`, CLI via `scripts/train.py`."*
@@ -1479,15 +1495,17 @@ entire pipeline in a semester.
 **30-sec core:**
 
 > The split function is `split_time_aware` in `src/features/build.py`.
-> It sorts the dataframe by `arrival_date_full` — a derived
-> datetime column from `arrival_date_year`, `arrival_date_month`,
-> and `arrival_date_day_of_month` — then slices into the 80/10/10
-> chunks chronologically. The split ratios are constants in
+> It calls a helper `sort_by_arrival_date` that builds a derived
+> `_arrival_date` datetime column from `arrival_date_year`,
+> `arrival_date_month`, and `arrival_date_day_of_month` (via
+> `add_arrival_date`), then slices the sorted DataFrame into the
+> 80/10/10 chunks chronologically. The split ratios are constants in
 > `src/config.py` (`TRAIN_RATIO = 0.80`, `VAL_RATIO = 0.10`). I
 > deliberately avoid `sklearn.model_selection.train_test_split`
 > because it shuffles by default. There's a test in
-> `tests/test_split_and_leakage.py` that asserts no train row's
-> arrival date is later than any val row's arrival date.
+> `tests/test_split_and_leakage.py::test_split_time_aware_is_chronological`
+> that asserts `train_dates.max() <= val_dates.min()` and
+> `val_dates.max() <= test_dates.min()` — no chronological overlap.
 
 **Deep dive:**
 
@@ -1543,11 +1561,12 @@ entire pipeline in a semester.
 **30-sec core:**
 
 > Threshold selection logic is in `src/utils/thresholds.py`. The
-> three functions are `find_max_f1_threshold`,
-> `find_high_precision_threshold`, and
-> `find_cost_sensitive_threshold`. Each sweeps across the validation
-> set's predicted probabilities at 0.01 increments using
-> `np.linspace`, computes the policy's metric at each candidate
+> three selectors are `select_max_f1_threshold`,
+> `select_high_precision_threshold`, and `select_min_cost_threshold`
+> (with helpers `threshold_sweep` and `cost_threshold_sweep` that
+> build the grids via `_make_threshold_grid`). Each sweeps across
+> the validation set's predicted probabilities at 0.01 increments
+> using `np.linspace`, computes the policy's metric at each candidate
 > threshold, and picks the optimum. The chosen thresholds are saved
 > to `artifacts/thresholds.json` and the full sweep grid is saved to
 > `artifacts/threshold_sweep.csv` for the dashboard.
