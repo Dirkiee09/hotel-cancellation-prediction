@@ -118,7 +118,14 @@ class PHBookingRequest(BaseModel):
         y = self.arrival_date_year
         m = self.arrival_date_month
         d = self.arrival_date_day_of_month
-        assert y is not None and m is not None and d is not None  # enforced by validator
+        # Explicit check (not `assert`) so the integrity guarantee survives
+        # under `python -O`. The model_validator above also raises on
+        # missing date parts; this is a belt-and-braces type-narrowing.
+        if y is None or m is None or d is None:
+            raise ValueError(
+                "arrival_date_year/month/day_of_month must all be set "
+                "before _iso_arrival_date is called"
+            )
         return f"{y:04d}-{m:02d}-{d:02d}"
 
 
