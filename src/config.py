@@ -92,16 +92,22 @@ ROLLING_SELECTION_MIN_TRAIN_ROWS = 1500
 ROLLING_SELECTION_MIN_VAL_ROWS = 500
 
 # CI metric gates — conservative floors. Tighten to (observed - 0.02) after training.
+# Metric quality gates: tightened to (observed - 0.02) per CLAUDE.md
+# guidance after the Portugal champion was confirmed. The 0.02 buffer
+# absorbs normal retraining noise while still catching real regressions.
+# Observed values (from reports/metrics.json on the chronological test set):
+#   max_f1: ROC=0.864, PR=0.760, F1=0.735, Recall=0.841
+#   high_precision: Precision=1.000, Recall=0.094
 METRIC_GATES = {
     "max_f1": {
-        "roc_auc_min": 0.70,
-        "pr_auc_min": 0.50,
-        "f1_min": 0.50,
-        "recall_min": 0.50,
+        "roc_auc_min": 0.84,
+        "pr_auc_min": 0.74,
+        "f1_min": 0.71,
+        "recall_min": 0.82,
     },
     "high_precision": {
-        "precision_min": 0.90,
-        "recall_min": 0.05,
+        "precision_min": 0.98,
+        "recall_min": 0.07,
     },
 }
 
