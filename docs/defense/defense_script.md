@@ -187,9 +187,12 @@ on the title slide. Click forward as soon as you finish line 2.*
 *Click to slide 9.*
 
 > **(mandatory)** Here is the head-to-head on the chronological
-> test set. LightGBM wins on every threshold-dependent metric —
-> ROC-AUC **point eight six four**, PR-AUC **point seven six**,
-> and F1 **point seven three five** — but the field is close.
+> test set. The floor is the Dummy baseline — guessing the
+> majority class — at PR-AUC **point three seven eight**. Every
+> trained model beats it. LightGBM wins on every threshold-
+> dependent metric — ROC-AUC **point eight six four**, PR-AUC
+> **point seven six**, and F1 **point seven three five** — but the
+> field is close above the baseline.
 
 > **(mandatory)** The gap to second-place Gradient Boosting on
 > PR-AUC is **point zero zero six**, small enough to dismiss as

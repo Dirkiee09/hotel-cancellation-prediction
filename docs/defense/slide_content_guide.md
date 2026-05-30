@@ -244,8 +244,9 @@ the slide carries the proof.
 
 1. **Title:** LightGBM Wins — But the Field Is Close
 2. **Layout:** Title + table (Comparison)
-3. **Headline number:** **PR-AUC 0.760** (LightGBM, calibrated)
-4. **Body bullets (compressed Table 4.2):**
+3. **Headline number:** **PR-AUC 0.760** (LightGBM, calibrated) —
+   **+0.38 over the Dummy baseline**
+4. **Body bullets (compressed Table 4.2 + Dummy anchor row):**
    | Algorithm | F1 | ROC-AUC | PR-AUC |
    |---|---:|---:|---:|
    | **LightGBM (champion)** | **0.735** | **0.864** | **0.760** |
@@ -254,15 +255,20 @@ the slide carries the proof.
    | Random Forest | 0.704 | 0.851 | 0.739 |
    | Logistic Regression | 0.713 | 0.839 | 0.739 |
    | Decision Tree | 0.596 | 0.675 | 0.508 |
+   | *Dummy (majority-class baseline)* | *0.000* | *0.500* | *0.378* |
 5. **Figure/image:** None — table is the visual
-6. **Caption / footer credit:** *Source: Table 4.2, n = 11,922 test
-   rows; threshold = `max_f1` per model*
+6. **Caption / footer credit:** *Source: Table 4.2 chronological test
+   set (n = 11,922; threshold = `max_f1` per model); Dummy row is the
+   theoretical floor at the 37.8 % positive-class base rate*
 7. **Color emphasis:** Highlight the LightGBM row with a `#1F4E79`
-   left-border accent
+   left-border accent; render the Dummy row in italic grey (`#7A7A7A`)
+   to mark it as the baseline-floor reference
 8. **Script reference:** Stage 7
-9. **Speaker notes:** The PR-AUC gap to GB is 0.006 — don't oversell
-   the lead. The bootstrap p = .001 line on the next slide does that
-   for you.
+9. **Speaker notes:** Anchor against the Dummy first ("our floor is
+   PR-AUC 0.378") *then* point at LightGBM ("the champion delivers
+   0.760 — a 38-point lift over guessing the majority class"). The
+   PR-AUC gap to GB is 0.006 — don't oversell the *internal* lead.
+   The bootstrap p = .001 line on the next slide does that for you.
 
 ---
 
