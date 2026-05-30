@@ -109,10 +109,12 @@ plane.
 > Isotonic regression is non-parametric — it can fit any monotone
 > mapping from raw model score to probability, including non-linear
 > shapes. Platt scaling assumes the relationship is a sigmoid, which
-> is fine for SVMs but not always for gradient-boosted trees. I tested
-> both during model selection; isotonic gave a lower test ECE (2.9 %)
-> than Platt (around 4 %), so I shipped isotonic. Brier improved
-> too — from 0.150 raw to 0.146 calibrated.
+> is fine for SVMs but not always for gradient-boosted trees. The
+> calibration literature (Niculescu-Mizil & Caruana 2005, cited in
+> the chapter) shows isotonic typically reduces ECE more than Platt
+> for tree ensembles, so isotonic was the methodologically motivated
+> choice. The deployed isotonic calibrator gives a test ECE of 2.9 %
+> from a raw ECE of 5.8 %, and Brier from 0.150 to 0.146.
 
 **Deep dive:** The risk with isotonic is overfitting on small
 calibration sets. I fit the calibrator on the validation slice
@@ -143,12 +145,14 @@ more flexible than Platt.
 > 4,000 wouldn't change the headline numbers — the CIs are already
 > tight (PR-AUC width 0.024).
 
-**Deep dive:** I verified the stability empirically — re-running at
-1,000 vs 2,000 vs 5,000 changes the CI endpoints by less than 0.0005,
-which is well under the precision I report (3 decimal places). For
-the paired tests in `benchmarks/14_paired_significance_vs_champion.csv`,
-2,000 is also enough to resolve p-values down to p=0.001 with
-confidence, which is the level the thesis claims.
+**Deep dive:** The bootstrap CI width at 2,000 resamples is already
+narrow (PR-AUC 0.024, ROC-AUC 0.013) — well below the precision the
+thesis reports (3 decimal places). The non-parametric bootstrap
+literature (Efron & Tibshirani 1993) recommends 1,000+ for stable
+percentile CIs and 5,000+ only when resolving p-values at the
+0.0001 level. The thesis only claims p down to 0.001 (paired
+bootstrap in `benchmarks/14_paired_significance_vs_champion.csv`),
+which is well within 2,000-resample resolution.
 
 **Source:** `reports/benchmarks/13_bootstrap_confidence_intervals.csv` + `14_paired_significance_vs_champion.csv`.
 **Fallback:** *"Literature standard; CIs are stable."*
@@ -324,14 +328,18 @@ auditors can reproduce them.
 > get the same effect by tuning the *threshold* on the validation set,
 > which is exactly what `max_f1` and `cost_sensitive` do.
 
-**Deep dive:** I verified this empirically — I trained a version with
-`class_weight='balanced'` and the PR-AUC was within 0.003 of the
-unweighted version. The threshold sweeps in
-`artifacts/threshold_sweep.csv` and `cost_threshold_sweep.csv` give
-me much finer control over the operating point than class weights
-would. SMOTE specifically is also dangerous for categorical features
-like `country` and `agent` where synthetic interpolation produces
-nonsense values.
+**Deep dive:** The methodological case for thresholds over class
+weights is that the threshold sweeps in `artifacts/threshold_sweep.csv`
+and `cost_threshold_sweep.csv` give *finer* control over the
+operating point than class weights would — weights shift the
+*scoring* function, while thresholds shift the *decision* function
+without retraining. The codebase's Logistic Regression baseline does
+use `class_weight='balanced'` (`src/models/baselines.py`) but the
+LightGBM champion doesn't need it because its native handling of
+imbalance plus calibrated probabilities plus tuned thresholds is
+already sufficient. SMOTE specifically is also dangerous for
+categorical features like `country` and `agent` where synthetic
+interpolation produces nonsense values.
 
 **Source:** Chapter IV §4.7.2 (threshold sweep replaces class weighting).
 **Fallback:** *"Threshold tuning replaces class balancing here."*
@@ -356,11 +364,12 @@ nonsense values.
 **Deep dive:** `booking_changes` is the most tempting one to include
 because it's a strong correlate of cancellation — bookings that get
 modified often cancel more. But the modification happens *between*
-booking and arrival, not at booking time. If I trained on it, the
-test PR-AUC would jump from 0.760 to roughly 0.84-0.85 (I tested
-this), but every production prediction would have to guess
-`booking_changes = 0` at booking time, which is wrong for ~40 % of
-bookings. The honest deployment number is the one I report.
+booking and arrival, not at booking time. Including it would inflate
+test PR-AUC academically, but every production prediction would have
+to guess `booking_changes = 0` at booking time — which is wrong
+whenever the booking later gets modified. The honest deployment
+number is the one I report, computed only on features that exist
+at the moment a reservation is made.
 
 **Source:** Chapter IV §4.2, `src/config.py::LEAKAGE_COLS`,
 `model_metadata.json::leakage_columns_excluded`.
@@ -435,10 +444,11 @@ the period.
 
 > Three reasons. First, the rolling-origin champion-challenger
 > selection picked LightGBM by PR-AUC mean (0.8696 vs XGBoost 0.8668
-> vs Gradient Boosting 0.8666). Second, LightGBM trains roughly four
-> times faster than the equivalent Gradient Boosting on this data,
-> which matters for monthly retraining. Third, inference is under
-> two milliseconds per booking — well inside the API latency budget.
+> vs Gradient Boosting 0.8666). Second, LightGBM's leaf-wise growth
+> plus histogram binning makes it noticeably faster to train than
+> Gradient Boosting on this data, which matters for monthly
+> retraining. Third, the end-to-end `/predict` latency (including
+> SHAP and the audit log write) is well under the 500 ms API budget.
 > I didn't include CatBoost in the selection because it adds a
 > dependency without a clear performance gain at this dataset size.
 
@@ -476,9 +486,10 @@ generic sklearn-compatible Pipeline and calls `predict_proba`. It
 doesn't care whether the underlying classifier is LightGBM, XGBoost,
 RF, or a stacked ensemble. The FastAPI endpoint and the Gradio UI
 would not need any code change. The dashboard would refresh on the
-new predictions. The only real difference would be the inference
-latency (XGBoost is ~2× slower in my benchmark) and the PR-AUC drop
-of about 0.011 from XGBoost being the second-best algorithm.
+new predictions. The only real differences would be the inference
+latency (XGBoost is typically a bit slower than LightGBM on
+histogram-binned tabular data) and the PR-AUC drop of about 0.011
+from XGBoost being the second-best algorithm.
 
 **Source:** `src/config.py::SELECTED_MODEL_FAMILY`, `src/pipelines/train.py`.
 **Fallback:** *"Algorithm is a config setting; ~5 minutes to swap."*
@@ -500,13 +511,15 @@ of about 0.011 from XGBoost being the second-best algorithm.
 > and 3× the retraining cost. For a production system, the
 > simplicity of a single model trumps the marginal gain.
 
-**Deep dive:** The stacking experiment is on Notebook 09 — I
-implemented a simple mean-of-three ensemble and showed it tracks the
-champion at within 0.003 PR-AUC for most bookings but disagrees on a
-small minority. The disagreement is what's interesting: bookings
-where the three algorithms disagree are the ones where SHAP gives
-the noisiest explanations, so I'd rather defer to single-model
-clarity for the operational risk-tier assignment.
+**Deep dive:** Notebook 09 (`09_model_comparison.ipynb`) compares
+per-row probabilities across the three gradient-boosted algorithms
+and shows the "three-way tie at the top" — they cluster within
+~0.005 PR-AUC. A combined ensemble would average those three
+correlated outputs and gain marginally at the cost of SHAP
+interpretation clarity (per-row attribution becomes
+algorithm-weighted rather than tree-traced). For a production
+deployment where the operational risk-tier assignment is the
+target, single-model SHAP traceability wins.
 
 **Source:** Notebook 09 (model comparison + mean-of-three ensemble).
 **Fallback:** *"Stacking gains 0.005 PR-AUC, loses SHAP clarity."*
@@ -739,14 +752,14 @@ this distinction explicit in the chapter to avoid the common
 > don't use. The deposit doesn't change guest behaviour — it changes
 > *who books*.
 
-**Deep dive:** The SHAP dependence plot in Notebook 05 (section 5.6)
-shows this clearly — when you condition on `market_segment` and
-`agent`, the deposit_type effect attenuates significantly. That's
-the confounding signal. The operational implication for the hotel:
-the lever isn't changing the deposit policy structure (which would
-hurt revenue from genuine bookers), it's auditing the *channels*
-that offer non-refundable rates. Recommendation 2 in Chapter V is
-explicit about this.
+**Deep dive:** Notebook 05 section 5.4 ("How Do the Top Features
+Affect Predictions in Detail?") shows the SHAP dependence pattern —
+when conditioned on `market_segment` and `agent`, the deposit_type
+effect attenuates significantly. That's the confounding signal. The
+operational implication for the hotel: the lever isn't changing the
+deposit policy structure (which would hurt revenue from genuine
+bookers), it's auditing the *channels* that offer non-refundable
+rates. Recommendation 2 in Chapter V is explicit about this.
 
 **Source:** Chapter IV §4.5.2 + Notebook 05 dependence plots +
 Chapter V Recommendation 2.
@@ -893,12 +906,15 @@ forecast" section.
 **Deep dive:** For very large batches, the bottleneck isn't the
 model — it's the per-row Pydantic validation overhead and the SHAP
 computation. SHAP especially: TreeSHAP is fast per row but doing it
-for 50,000 rows would take a minute or two. The deployment supports
-batch mode by passing a list to the `/predict` endpoint and skipping
-SHAP for the bulk rows (computing SHAP only for the top-100 highest
-risk). That's a one-flag change documented in the API schema.
+for 50,000 rows would take a minute or two. The current `/predict`
+endpoint takes one booking at a time; a batch mode that accepts a
+list and runs SHAP only for the top-N high-risk rows is a
+straightforward extension of the existing `predict_proba` (which
+already vectorises across rows internally), but isn't implemented
+in the current thesis deployment — it's a logical next step for a
+multi-property rollout.
 
-**Source:** `src/serving/inference.py`, `src/serving/inference.py::explain_prediction`.
+**Source:** `src/serving/inference.py::predict_proba`, `src/serving/inference.py::explain_prediction`.
 **Fallback:** *"Sub-second for 1,000; SHAP is the bottleneck at scale."*
 
 ---
@@ -957,10 +973,12 @@ on commodity hardware.
 not an agent name. The Power BI dashboard aggregates these into
 counts and risk-tier distributions; individual guest identification
 requires joining back to the PMS, which the hotel's existing
-processes already control. For a strict GDPR audit, the addition
-would be a retention policy on the SQLite log — e.g.,
-auto-purge predictions older than 90 days — which is a one-line
-addition to `compute_live_drift.py`.
+processes already control. For a strict GDPR audit, the recommended
+addition would be a retention policy on the SQLite log — e.g.,
+auto-purge predictions older than 90 days. This isn't implemented
+in the current thesis deployment but would be a straightforward
+scheduled-task addition on the same cadence as the drift
+monitoring run.
 
 **Source:** `src/serving/prediction_log.py` schema, CLAUDE.md.
 **Fallback:** *"Pseudonymised by design; retention policy is a one-liner."*
