@@ -111,21 +111,54 @@ paper exists in the literature and is correctly attributed.
 
 # References
 
+> **⚠ IMPORTANT — Bibliographic Verification Required Before Submission**
+>
+> The author-and-year citations below were extracted from the
+> in-text citations in Chapters I–V of this thesis and reflect the
+> sources cited by the author. **The full bibliographic metadata
+> (journal name, volume, issue, page range, DOI) was assembled with
+> AI assistance.**
+>
+> Entries are split into two reliability tiers:
+>
+> **Tier 1 — High-confidence canonical citations.** Foundational
+> machine-learning, statistics, and strategic-management papers
+> whose bibliographic metadata is well-known and verifiable in any
+> general ML/IS bibliography (e.g., NeurIPS, ICML, JMLR, *Strategic
+> Management Journal*). These can be submitted as-is.
+>
+> **Tier 2 — Verify-against-source.** Modern hospitality and
+> domain-specific papers (mostly 2021–2025). Author + year is
+> correct (matches the in-text citation), but volume/issue/pages/DOI
+> must be **independently verified** by looking up the actual paper
+> in Google Scholar, the publisher's website, or DOI.org before
+> submission. The metadata below is a placeholder template — replace
+> with the real values.
+>
+> The Tier-2 verification should take ~30 minutes total: copy the
+> author + year into Google Scholar, open the matching paper,
+> confirm the title, journal, volume, issue, pages, and DOI.
+
 ## Academic Papers and Books
+
+> Entries marked **⚠ VERIFY** below need their journal/volume/page/DOI
+> looked up against the original paper before submission. Entries
+> without the marker are foundational citations whose bibliographic
+> metadata is well-established in the ML/IS literature.
 
 Abedin, B. (2020). Managing the tension between opposing effects of
 explainability of artificial intelligence: A contingency theory
-perspective. *Internet Research*, *32*(2), 425–453.
+perspective. *Internet Research*, *32*(2), 425–453. **⚠ VERIFY**
 
 Alqahtani, A., Aldhyani, T., Alsubari, S., & Algarni, A. (2025).
 Predicting hotel booking cancellation using ensemble machine
 learning models. *Journal of Hospitality and Tourism Technology*.
-Advance online publication.
+Advance online publication. **⚠ VERIFY**
 
 Altin, M., Cifter, A., & Yilmaz, A. (2025). Forecasting hotel
 cancellations through machine learning: A comparative study.
 *International Journal of Contemporary Hospitality Management*,
-*37*(2), 510–532.
+*37*(2), 510–532. **⚠ VERIFY**
 
 António, N., de Almeida, A., & Nunes, L. (2017). Predicting hotel
 booking cancellations to decrease uncertainty and increase revenue.
@@ -139,7 +172,7 @@ https://doi.org/10.1016/j.dib.2018.11.126
 Boston University School of Hospitality Administration. (2021). The
 hospitality industry's recovery from the pandemic: Trends in
 revenue management and cancellation behaviour. *Boston Hospitality
-Review*. https://www.bu.edu/bhr
+Review*. https://www.bu.edu/bhr **⚠ VERIFY**
 
 Breiman, L. (1996). Bagging predictors. *Machine Learning*, *24*(2),
 123–140. https://doi.org/10.1007/BF00058655
@@ -155,32 +188,32 @@ ACM. https://doi.org/10.1145/2939672.2939785
 Chen, M.-H. (2011). The response of hotel performance to
 international tourism development and crisis events.
 *International Journal of Hospitality Management*, *30*(4),
-1006–1014. https://doi.org/10.1016/j.ijhm.2011.03.003
+1006–1014. https://doi.org/10.1016/j.ijhm.2011.03.003 **⚠ VERIFY**
 
 Chen, Y., Zhang, L., & Wang, H. (2023). Booking cancellation
 prediction in the hospitality industry: A machine learning
 approach with cost-sensitive optimization. *Information &
-Management*, *60*(5), 103795.
+Management*, *60*(5), 103795. **⚠ VERIFY**
 
 Choe, Y. (2023). Hotel cancellation prediction with calibrated
 gradient-boosted trees: A case study of US urban properties.
-*Journal of Travel & Tourism Marketing*, *40*(7), 580–598.
+*Journal of Travel & Tourism Marketing*, *40*(7), 580–598. **⚠ VERIFY**
 
 Choi, S. (2024). Determinants of overbooking and cancellation
 strategies in revenue management. *Cornell Hospitality Quarterly*,
-*65*(2), 234–248.
+*65*(2), 234–248. **⚠ VERIFY**
 
 CoStar Group. (2024). *2024 hotel performance benchmarks: STR
-global hotel market review*. CoStar Realty Information.
+global hotel market review*. CoStar Realty Information. **⚠ VERIFY**
 
 Cross-Sánchez, F., & Sánchez-Medina, P. (2024). Cost-sensitive
 threshold optimization for booking-cancellation classifiers:
 A revenue-recovery framework. *International Journal of
-Hospitality Management*, *119*, 103693.
+Hospitality Management*, *119*, 103693. **⚠ VERIFY**
 
 Diwan, A. (2025). Explainable AI in hospitality: Combining SHAP
 values with revenue management for transparent decision support.
-*Journal of Hospitality and Tourism Insights*, *8*(1), 122–139.
+*Journal of Hospitality and Tourism Insights*, *8*(1), 122–139. **⚠ VERIFY**
 
 Efron, B., & Tibshirani, R. J. (1993). *An introduction to the
 bootstrap*. Chapman & Hall.
@@ -195,16 +228,16 @@ https://doi.org/10.1214/aos/1013203451
 
 Gong, Y. (2024). Predictive modelling of hotel cancellations using
 deep learning and tree-based ensembles. *International Journal of
-Information Management*, *76*, 102758.
+Information Management*, *76*, 102758. **⚠ VERIFY**
 
 Herrera, F., García-Salmones, M., & Castelltort, J. (2024).
 Calibrated probability outputs for revenue-management decisions
 in European hotels. *International Journal of Hospitality
-Management*, *118*, 103651.
+Management*, *118*, 103651. **⚠ VERIFY**
 
 Hewapathirana, K. (2023). Machine learning for hotel demand
 forecasting: A regional analysis of Southeast Asian markets.
-*Asia Pacific Journal of Tourism Research*, *28*(4), 372–390.
+*Asia Pacific Journal of Tourism Research*, *28*(4), 372–390. **⚠ VERIFY**
 
 Ho, T. K. (1995). Random decision forests. In *Proceedings of the
 3rd International Conference on Document Analysis and Recognition*
@@ -213,15 +246,15 @@ Ho, T. K. (1995). Random decision forests. In *Proceedings of the
 Jishan, S. T., Rashid, M. R. A., & Hasan, T. (2024). Empirical
 analysis of cancellation determinants in upscale chain hotels:
 A machine learning perspective. *Tourism Management Perspectives*,
-*51*, 101244.
+*51*, 101244. **⚠ VERIFY**
 
 Kristomus, R. (2023). Bayesian optimisation for gradient-boosted
 revenue management classifiers in the hotel sector.
-*Expert Systems with Applications*, *228*, 120407.
+*Expert Systems with Applications*, *228*, 120407. **⚠ VERIFY**
 
 Liu, F., Wang, J., Zhang, Y., & Chen, K. (2025). Concept drift in
 hospitality demand forecasting: Empirical evidence from the
-post-pandemic recovery period. *Tourism Management*, *107*, 105074.
+post-pandemic recovery period. *Tourism Management*, *107*, 105074. **⚠ VERIFY**
 
 Lundberg, S. M., Erion, G. G., & Lee, S.-I. (2018). Consistent
 individualized feature attribution for tree ensembles.
@@ -235,14 +268,14 @@ Associates. https://proceedings.neurips.cc/paper/2017/hash/8a20a8621978632d76c43
 
 Lynn, M. (2025). Operational impact of cancellation-risk prediction
 on front-of-house workflows. *Cornell Hospitality Quarterly*,
-*66*(1), 88–104.
+*66*(1), 88–104. **⚠ VERIFY**
 
 Mason, R. B., Lind, D. A., & Marchal, W. G. (2000). *Statistical
 techniques in business and economics* (10th ed.). McGraw-Hill.
 
 Mele, C., Spena, T. R., & Colurcio, M. (2023). Service ecosystems
 and digital transformation in hospitality: A dynamic capabilities
-lens. *Journal of Service Theory and Practice*, *33*(4), 564–588.
+lens. *Journal of Service Theory and Practice*, *33*(4), 564–588. **⚠ VERIFY**
 
 Mikalef, P., Pappas, I. O., Krogstie, J., & Giannakos, M. (2019).
 Big data analytics capabilities: A systematic literature review
@@ -261,26 +294,26 @@ black box of dynamic capabilities. *Decision Sciences*, *42*(1),
 
 Payares, D. F. (2024). Production-ready calibration pipelines for
 revenue-management classifiers: An operational framework.
-*Journal of Revenue and Pricing Management*, *23*(3), 245–263.
+*Journal of Revenue and Pricing Management*, *23*(3), 245–263. **⚠ VERIFY**
 
 Pereira-Moliner, J., López-Gamero, M. D., Font, X., Molina-Azorín,
 J. F., Tarí, J. J., & Pertusa-Ortega, E. M. (2021). Sustainability,
 competitive advantages, and performance in the hotel industry:
 A synergistic relationship. *Journal of Tourism and Services*,
-*12*(23), 132–149. https://doi.org/10.29036/jots.v12i23.282
+*12*(23), 132–149. https://doi.org/10.29036/jots.v12i23.282 **⚠ VERIFY**
 
 Prusty, S., Patnaik, S., & Dash, S. K. (2022). Machine learning
 techniques for hotel booking cancellation prediction: A review.
 *International Journal of Information Technology and Management*,
-*21*(1), 1–24.
+*21*(1), 1–24. **⚠ VERIFY**
 
 Roa, A., Nakanishi, Y., & Liu, X. (2022). Booking-time feature
 engineering for hospitality revenue management. *International
-Journal of Hospitality Management*, *107*, 103328.
+Journal of Hospitality Management*, *107*, 103328. **⚠ VERIFY**
 
 Sayed, A., Mahmoud, M. A., & Hassan, M. K. (2024). Power BI
 dashboards for hotel-revenue analytics: A practitioner's framework.
-*Information Systems Frontiers*, *26*(4), 1485–1502.
+*Information Systems Frontiers*, *26*(4), 1485–1502. **⚠ VERIFY**
 
 Sharma, R., Mithas, S., & Kankanhalli, A. (2014). Transforming
 decision-making processes: A research agenda for understanding
@@ -293,7 +326,7 @@ https://doi.org/10.1016/j.inffus.2021.11.011
 
 Srivastava, P. (2025). Drift monitoring in deployed ML systems:
 The PSI rule and its extensions. *Journal of Machine Learning
-Research*, *26*, 1–34.
+Research*, *26*, 1–34. **⚠ VERIFY**
 
 Steinberg, D., & Colla, P. (2009). CART: Classification and
 regression trees. In X. Wu & V. Kumar (Eds.), *The top ten
@@ -317,19 +350,19 @@ in the wireless world. *Research Policy*, *47*(8), 1367–1387.
 
 Xiao, Y., Liu, Y., & Chen, P. (2024). Cancellation prediction in
 hospitality: An integrated approach combining deep learning and
-SHAP-based interpretation. *Tourism Management*, *102*, 104894.
+SHAP-based interpretation. *Tourism Management*, *102*, 104894. **⚠ VERIFY**
 
 Yang, Y., & Miao, R. (2024). Predicting last-minute hotel
 cancellations using gradient-boosted trees: A two-year case
 study. *Journal of Hospitality and Tourism Technology*, *15*(2),
-185–204.
+185–204. **⚠ VERIFY**
 
 Yang, Y. (2014). Big data analytics in hospitality and tourism:
-A review and research agenda. *Tourism Management*, *68*, 301–323.
+A review and research agenda. *Tourism Management*, *68*, 301–323. **⚠ VERIFY**
 
 Zhai, R., Wang, S., & Liu, T. (2023). Revenue-at-risk modelling
 for hospitality firms: A machine learning approach.
-*International Journal of Production Economics*, *264*, 108963.
+*International Journal of Production Economics*, *264*, 108963. **⚠ VERIFY**
 
 ---
 
@@ -436,6 +469,89 @@ scikit-learn developers. (2026). *scikit-learn user guide
 
 SHAP developers. (2026). *SHAP documentation*.
 https://shap.readthedocs.io
+
+---
+
+# Verification Checklist (28 Tier-2 entries)
+
+> Before submission, look up each entry below in **Google Scholar**
+> (https://scholar.google.com) or the publisher's website. Confirm
+> the title, journal name, volume, issue, page range, and DOI.
+> Replace the placeholder metadata in the references list above
+> with the real values, then tick the box.
+>
+> **Estimated time: ~30 minutes total** (≈ 1 min per entry).
+
+- [ ] Abedin, B. (2020) — *Internet Research*
+- [ ] Alqahtani, A., Aldhyani, T., Alsubari, S., & Algarni, A. (2025) — *Journal of Hospitality and Tourism Technology*
+- [ ] Altin, M., Cifter, A., & Yilmaz, A. (2025) — *Int. J. of Contemporary Hospitality Management*
+- [ ] Boston University School of Hospitality Administration (2021) — *Boston Hospitality Review*
+- [ ] Chen, M.-H. (2011) — *Int. J. of Hospitality Management*
+- [ ] Chen, Y., Zhang, L., & Wang, H. (2023) — *Information & Management*
+- [ ] Choe, Y. (2023) — *Journal of Travel & Tourism Marketing*
+- [ ] Choi, S. (2024) — *Cornell Hospitality Quarterly*
+- [ ] CoStar Group (2024) — STR hotel market review
+- [ ] Cross-Sánchez, F., & Sánchez-Medina, P. (2024) — *Int. J. of Hospitality Management*
+- [ ] Diwan, A. (2025) — *Journal of Hospitality and Tourism Insights*
+- [ ] Gong, Y. (2024) — *Int. J. of Information Management*
+- [ ] Herrera, F., García-Salmones, M., & Castelltort, J. (2024) — *Int. J. of Hospitality Management*
+- [ ] Hewapathirana, K. (2023) — *Asia Pacific Journal of Tourism Research*
+- [ ] Jishan, S. T., Rashid, M. R. A., & Hasan, T. (2024) — *Tourism Management Perspectives*
+- [ ] Kristomus, R. (2023) — *Expert Systems with Applications*
+- [ ] Liu, F., Wang, J., Zhang, Y., & Chen, K. (2025) — *Tourism Management*
+- [ ] Lynn, M. (2025) — *Cornell Hospitality Quarterly*
+- [ ] Mele, C., Spena, T. R., & Colurcio, M. (2023) — *Journal of Service Theory and Practice*
+- [ ] Payares, D. F. (2024) — *Journal of Revenue and Pricing Management*
+- [ ] Pereira-Moliner, J., López-Gamero, M. D., Font, X., et al. (2021) — *Journal of Tourism and Services*
+- [ ] Prusty, S., Patnaik, S., & Dash, S. K. (2022) — *Int. J. of Information Technology and Management*
+- [ ] Roa, A., Nakanishi, Y., & Liu, X. (2022) — *Int. J. of Hospitality Management*
+- [ ] Sayed, A., Mahmoud, M. A., & Hassan, M. K. (2024) — *Information Systems Frontiers*
+- [ ] Srivastava, P. (2025) — *Journal of Machine Learning Research*
+- [ ] Xiao, Y., Liu, Y., & Chen, P. (2024) — *Tourism Management*
+- [ ] Yang, Y. (2014) — *Tourism Management*
+- [ ] Yang, Y., & Miao, R. (2024) — *Journal of Hospitality and Tourism Technology*
+- [ ] Zhai, R., Wang, S., & Liu, T. (2023) — *Int. J. of Production Economics*
+
+## How to verify quickly
+
+For each unchecked entry:
+
+1. Open Google Scholar (or your institution's library database)
+2. Paste the **author surname + year** into the search box
+3. Click on the matching paper (titles should approximately match
+   what's in the references list — if the title doesn't match,
+   you have the wrong paper; remove and replace with the correct one)
+4. Click "Cite" or open the paper and copy the citation in APA format
+5. Replace the corresponding entry in the references list above
+6. Tick the box here
+
+## Tier-1 entries (no verification needed)
+
+These are foundational citations with well-known bibliographic
+metadata. They can be submitted as-is:
+
+- Breiman (1996, 2001) — Bagging + Random Forests
+- Chen & Guestrin (2016) — XGBoost
+- Eisenhardt & Martin (2000) — Dynamic capabilities
+- Efron & Tibshirani (1993) — Bootstrap methods
+- Friedman (2001) — Gradient boosting
+- Ho (1995) — Random decision forests
+- Lundberg & Lee (2017) — SHAP unified framework
+- Lundberg, Erion & Lee (2018) — TreeSHAP
+- Mason et al. (2000) — Statistical techniques textbook
+- Mikalef et al. (2019) — Big data analytics capabilities
+- Niculescu-Mizil & Caruana (2005) — Probability calibration
+- Pavlou & El Sawy (2011) — Dynamic capabilities
+- Sharma, Mithas, & Kankanhalli (2014) — Business analytics
+- Shwartz-Ziv & Armon (2022) — Tabular deep learning
+- Steinberg & Colla (2009) — CART
+- Teece (1997, 2012, 2017, 2018) — Dynamic capabilities theory
+- António, de Almeida, & Nunes (2017, 2019) — Source dataset papers
+
+Plus all **software citations** in the section above (Pedregosa,
+Ke, Harris, McKinney, Hunter, Virtanen, Waskom, Abid, Akiba,
+Ramírez, Colvin, Anthropic, Microsoft, Google) — these are
+canonical citations established in their own canonical sources.
 
 ---
 
