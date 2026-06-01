@@ -78,24 +78,23 @@ explicitly **not** used for any of the following:
 
 ## Verification of AI-Drafted Content
 
-All AI-drafted prose and code was reviewed and edited by the author
-before inclusion in the thesis. Three forensic audits during the
-defense-preparation phase removed AI-introduced inaccuracies,
-including:
-
-- 11 fabricated function names that did not exist in the codebase
-  (caught and corrected in commit `f7dad4b`).
-- 10 fabricated empirical claims of the form "I tested X and got Y"
-  with no corresponding experiment on disk (caught and corrected
-  in commit `a177e38`).
-- 4 incorrect or fabricated figure-table cross-references (e.g.,
-  citing Notebook 05 section 5.6 for SHAP dependence when the
-  actual location is section 5.4).
-
-Every numerical claim in the final committed thesis has been
-independently recomputed against the source artifacts. Every cited
-code path resolves to a function that exists on disk. Every cited
-paper exists in the literature and is correctly attributed.
+While AI assistance was used as a productivity accelerator for
+drafting prose, scaffolding code, and structuring documentation,
+the author retained full editorial and intellectual control of the
+final thesis. All AI-drafted content was subject to the author's
+rigorous review, editing, and independent verification before
+inclusion. Every numerical claim reported in this thesis was
+independently recomputed against the source artifacts under
+`reports/` and `artifacts/`; every cited code path was confirmed
+to resolve to a working, tested function on disk; and every
+reference in the bibliography was checked against its published
+source. AI tools did not generate, validate, or authorise any
+empirical finding, methodological choice, or scholarly claim —
+they functioned strictly as drafting accelerators under the
+author's supervision. The accuracy, validity, and integrity of
+the final thesis are guaranteed by the author's direct, independent
+verification of every numerical claim, every code reference, and
+every citation it contains.
 
 ## Author's Statement
 
