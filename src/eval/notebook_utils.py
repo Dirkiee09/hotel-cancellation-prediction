@@ -3336,3 +3336,176 @@ def load_ph_context() -> dict[str, Any]:
         "feature_columns": feature_cols,
         **optional,
     }
+
+
+def plot_champion_split_decision(sig_df, champion: str = "xgboost", rival: str = "lightgbm"):
+    """Forest plot of per-metric test deltas (rival - champion) with 95% CIs.
+
+    Visualises the matched-capacity split decision: bars hugging zero mean the
+    two GBT implementations are practically interchangeable, so the
+    prespecified validation protocol (not test metrics) decides the champion.
+    Expects rows from reports/benchmarks/14_paired_significance_vs_champion.csv.
+    """
+    rows = sig_df[(sig_df["champion_model"] == champion) & (sig_df["challenger_model"] == rival)]
+    label_map = {
+        "pr_auc": "PR-AUC",
+        "roc_auc": "ROC-AUC",
+        "f1_max_f1_threshold": "F1 @ max-F1 thr",
+    }
+    metrics, deltas, lows, highs, sigs = [], [], [], [], []
+    for _, r in rows.iterrows():
+        if r["metric"] not in label_map:
+            continue
+        # Table stores champion - challenger; flip to rival - champion so
+        # "right of zero" consistently reads as "rival (LightGBM) better".
+        metrics.append(label_map[r["metric"]])
+        deltas.append(-float(r["observed_delta"]))
+        lows.append(-float(r["delta_ci_upper"]))
+        highs.append(-float(r["delta_ci_lower"]))
+        sigs.append(bool(r["significant_at_05"]))
+
+    fig, ax = plt.subplots(figsize=(9, 4.2))
+    y = np.arange(len(metrics))
+    for i, (d, lo, hi, sig) in enumerate(zip(deltas, lows, highs, sigs)):
+        color = "#1f77b4" if d > 0 else "#ff7f0e"
+        ax.errorbar(
+            d,
+            i,
+            xerr=[[d - lo], [hi - d]],
+            fmt="o",
+            color=color,
+            ecolor=color,
+            elinewidth=2.2,
+            capsize=5,
+            markersize=9,
+        )
+        ax.annotate(
+            f"{d:+.4f}" + (" *" if sig else " (n.s.)"),
+            (d, i),
+            textcoords="offset points",
+            xytext=(0, 12),
+            ha="center",
+            fontsize=9,
+        )
+    ax.axvline(0, color="black", linewidth=1.2, linestyle="--")
+    ax.set_yticks(y)
+    ax.set_yticklabels(metrics, fontsize=10)
+    ax.set_xlabel(f"{rival} − {champion}  (test set, paired bootstrap 95% CI)", fontsize=10)
+    ax.set_title(
+        "Champion split decision at matched capacity:\n"
+        "each model wins one metric by a tiny margin → protocol + efficiency decide",
+        fontsize=11,
+        fontweight="bold",
+    )
+    ax.grid(True, axis="x", alpha=0.3)
+    fig.tight_layout()
+    return fig
+
+
+def plot_policy_cost_ladder(test_cost: dict):
+    """Bar ladder of test-set intervention cost for every decision policy.
+
+    Visualises the de-circularised H4: the cost-sensitive threshold was chosen
+    on validation data and is evaluated here on the untouched test set against
+    all three trivial baselines — including intervene-on-everyone, the
+    strongest honest comparator.
+    Expects the metrics.json -> cost_thresholding_test dict.
+    """
+    bars = [
+        ("Do nothing\n(no model)", float(test_cost["no_model_cost"]), "#9e9e9e"),
+        ("Threshold 0.5\n(naive model)", float(test_cost["baseline_050_cost"]), "#9e9e9e"),
+        ("Intervene on all\n(no model needed)", float(test_cost["intervene_all_cost"]), "#ff7f0e"),
+        (
+            f"Cost-sensitive policy\n(thr={float(test_cost['threshold']):.2f}, val-selected)",
+            float(test_cost["total_cost"]),
+            "#2ca02c",
+        ),
+    ]
+    bars.sort(key=lambda b: -b[1])
+    labels = [b[0] for b in bars]
+    values = [b[1] for b in bars]
+    colors = [b[2] for b in bars]
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    pos = np.arange(len(bars))
+    ax.bar(pos, values, color=colors, edgecolor="white", width=0.62)
+    for i, v in enumerate(values):
+        ax.annotate(
+            f"€{v:,.0f}",
+            (i, v),
+            textcoords="offset points",
+            xytext=(0, 6),
+            ha="center",
+            fontsize=10,
+            fontweight="bold",
+        )
+    saving_pct = float(test_cost["savings_vs_intervene_all"]) / float(
+        test_cost["intervene_all_cost"]
+    )
+    ax.set_xticks(pos)
+    ax.set_xticklabels(labels, fontsize=9)
+    ax.set_ylabel("Total intervention + lost-revenue cost (test set, EUR)", fontsize=10)
+    ax.set_title(
+        f"Decision-policy cost on the held-out test set — the model beats even the\n"
+        f"intervene-on-everyone baseline by {saving_pct:.0%}",
+        fontsize=11,
+        fontweight="bold",
+    )
+    ax.grid(True, axis="y", alpha=0.3)
+    fig.tight_layout()
+    return fig
+
+
+def plot_cross_market_rank_slope(pt_ranking, ph_ranking, rho: float, pval: float):
+    """Bump chart: per-algorithm PR-AUC rank in Portugal vs the Philippines.
+
+    Lines that stay roughly horizontal mean the algorithm ordering transfers
+    across markets. GBT family coloured, simple baselines grey.
+    Expects the 'ranking' lists from the stratified-CV summary JSONs.
+    """
+    pt = {e["algorithm"]: e["rank"] for e in pt_ranking}
+    ph = {e["algorithm"]: e["rank"] for e in ph_ranking}
+    algos = [a for a in pt if a in ph]
+    gbt = {"LightGBM", "XGBoost", "GradientBoosting"}
+
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+    for a in algos:
+        is_gbt = a in gbt
+        color = PALETTE.get(a.lower(), "#1f77b4") if is_gbt else "#b0b0b0"
+        lw = 2.6 if is_gbt else 1.4
+        ax.plot([0, 1], [pt[a], ph[a]], marker="o", color=color, linewidth=lw, markersize=7)
+        ax.annotate(
+            f"{a}  ({pt[a]})",
+            (0, pt[a]),
+            textcoords="offset points",
+            xytext=(-8, 0),
+            ha="right",
+            va="center",
+            fontsize=9,
+            fontweight="bold" if is_gbt else "normal",
+        )
+        ax.annotate(
+            f"({ph[a]})  {a}",
+            (1, ph[a]),
+            textcoords="offset points",
+            xytext=(8, 0),
+            ha="left",
+            va="center",
+            fontsize=9,
+            fontweight="bold" if is_gbt else "normal",
+        )
+    ax.set_xlim(-0.55, 1.55)
+    ax.set_ylim(len(algos) + 0.6, 0.4)  # rank 1 on top
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels(["Portugal\n(119k bookings)", "Philippines\n(193 bookings)"], fontsize=10)
+    ax.set_yticks(range(1, len(algos) + 1))
+    ax.set_ylabel("PR-AUC rank (stratified 10-fold CV)", fontsize=10)
+    ax.set_title(
+        f"Algorithm ranking transfers across markets\n"
+        f"(Spearman ρ = {rho:.2f}, p = {pval:.3f}; GBT family in colour)",
+        fontsize=11,
+        fontweight="bold",
+    )
+    ax.grid(True, axis="y", alpha=0.25)
+    fig.tight_layout()
+    return fig
