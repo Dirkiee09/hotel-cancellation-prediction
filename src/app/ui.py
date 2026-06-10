@@ -27,7 +27,13 @@ from src.config import (
     RISK_TIER_HIGH_THRESHOLD,
     RISK_TIER_MEDIUM_THRESHOLD,
 )
-from src.serving.inference import ModelArtifacts, get_cached_artifacts, predict_proba
+from src.serving.inference import (
+    ModelArtifacts,
+    get_cached_artifacts,
+    predict_adr,
+    predict_proba,
+)
+from src.serving.prediction_log import export_to_csv, log_prediction
 from src.utils.thresholds import resolve_thresholds
 
 logger = logging.getLogger(__name__)
@@ -988,7 +994,7 @@ def _predict_output(values: Dict[str, Any]) -> tuple[str, str, str, str, Dict[st
     try:
         artifacts = _get_artifacts()
         prob = float(predict_proba(record, artifacts)[0][0])
-        resolved, _, _, _ = resolve_thresholds(artifacts.thresholds or {})
+        resolved, sources, fallback_used, _ = resolve_thresholds(artifacts.thresholds or {})
         thr_f1 = resolved["max_f1"]
         thr_hp = resolved["high_precision"]
         timestamp_utc = _format_utc(datetime.now(timezone.utc))
@@ -996,6 +1002,7 @@ def _predict_output(values: Dict[str, Any]) -> tuple[str, str, str, str, Dict[st
         summary, details_json, risk_html, decision_notes = _format_prediction_output(
             prob, thr_f1, thr_hp, timestamp_utc, model_ts, record, artifacts
         )
+        _log_to_prediction_db(record, prob, resolved, sources, fallback_used, artifacts)
         return summary, details_json, risk_html, decision_notes, record
     except Exception as exc:
         logger.exception("Prediction failed")
@@ -1003,6 +1010,58 @@ def _predict_output(values: Dict[str, Any]) -> tuple[str, str, str, str, Dict[st
             f"Prediction failed: {exc}", exc
         )
         return summary, details_json, risk_html, decision_notes, None
+
+
+def _log_to_prediction_db(
+    record: Dict[str, Any],
+    prob: float,
+    thresholds: Dict[str, float],
+    sources: Dict[str, str],
+    fallback_used: bool,
+    artifacts: ModelArtifacts,
+) -> None:
+    """Mirror the REST path's persistence contract for Gradio predictions.
+
+    CLAUDE.md promises every scored booking (HTTP or Gradio) lands in the
+    SQLite prediction log with live ADR fields, and that the Power BI CSV is
+    auto-refreshed. Non-raising: a logging failure must never break Predict.
+    """
+    try:
+        predicted = predict_adr(record, artifacts)
+        entered_adr = record.get("adr")
+        adr_residual = (
+            round(float(entered_adr) - predicted, 2)
+            if predicted is not None and entered_adr is not None
+            else None
+        )
+        if prob >= RISK_TIER_HIGH_THRESHOLD:
+            tier = "high"
+        elif prob >= RISK_TIER_MEDIUM_THRESHOLD:
+            tier = "medium"
+        else:
+            tier = "low"
+        log_prediction(
+            dict(record),
+            {
+                "probability": prob,
+                "label_high_precision": int(prob >= thresholds["high_precision"]),
+                "label_max_f1": int(prob >= thresholds["max_f1"]),
+                "label_cost_sensitive": int(prob >= thresholds["cost_sensitive"]),
+                "risk_tier": tier,
+                "threshold_high_precision": thresholds["high_precision"],
+                "threshold_max_f1": thresholds["max_f1"],
+                "threshold_cost_sensitive": thresholds["cost_sensitive"],
+                "cost_threshold_source": sources.get("cost_sensitive", "artifact"),
+                "cost_threshold_fallback_used": bool(fallback_used),
+                "alerts": [],
+                "top_features": [],
+                "predicted_adr": predicted,
+                "adr_residual": adr_residual,
+            },
+        )
+        export_to_csv()
+    except Exception:
+        logger.exception("ui_prediction_log_failed (non-fatal)")
 
 
 def _log_case(record: Dict[str, Any], label: str, flagged: bool = False) -> None:
