@@ -44,14 +44,10 @@ reports/figures/*
 !reports/figures/.gitkeep
 data/*.csv
 !data/.gitkeep
-# Live-demo prediction stores (sqlite/CSV written at serving time, never tracked)
+# Live prediction stores (sqlite/CSV written at serving time by the UI and
+# FastAPI /predict, read by Power BI — never tracked)
 data/predictions/
 *.sqlite
-# Thesis manuscripts do not belong in the repo root
-/*.pdf
-
-# Live prediction log (written by FastAPI /predict, read by Power BI)
-data/predictions/
 
 # Secrets
 .env
@@ -59,5 +55,5 @@ data/predictions/
 !.env.example
 
 # Thesis source manuscripts (kept locally, not in version control)
-Revisions of Predicting Hotel Booking Cancellations_ A Machine Learning Approach.pdf
+/*.pdf
 *.docx
