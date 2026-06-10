@@ -13,8 +13,8 @@ results remain reproducible and defensible.
 | Local output | Producer (on `master`) | Commit | Notes |
 |---|---|---|---|
 | `artifacts/ph/*` (PH model, calibrator, thresholds, ADR regressor) | `scripts/train_ph.py` | `8c03059` | Needs the PH support layer: `src/data/load_ph.py`, `PH_*` constants in `src/config.py`, `clean_raw_ph`/`validate_raw_ph` in `src/utils/validate_data.py`. **The PH PMS dataset is private and is NOT in the repository** — reproduction requires the original CSV. |
-| `reports/ph/*` (transferability, SHAP, baselines, learning curves) | `scripts/train_ph.py` | `8c03059` | Same requirements as above. |
-| `reports/cv/*` (Portugal + Philippine stratified 10-fold, 7 algorithms) | `scripts/stratified_cv.py` | `351a75c` | Portugal half runs from this branch's data; PH half needs the private dataset. |
+| `reports/ph/*` (transferability, SHAP, baselines, learning curves) | `scripts/train_ph.py` | `8c03059` | Same requirements as above. **Aggregated result JSONs are committed on this branch** (2026-06-10) so Notebook 11 renders everywhere; row-level prediction CSVs stay local (private PMS rows). |
+| `reports/cv/*` (Portugal + Philippine stratified 10-fold, 7 algorithms) | `scripts/stratified_cv.py` | `351a75c` | Portugal half runs from this branch's data; PH half needs the private dataset. **Summary + fold-level metric files are committed on this branch** and rendered by `notebooks/11_transferability_ph.ipynb`. |
 | `data/predictions/` (deleted in cleanup, 2026-06-10) | `scripts/seed_demo_predictions.py`, `scripts/compute_live_drift.py`, `scripts/export_predictions.py` | `0cf4b4a` | Power BI / live-demo seeding. Regenerable at will; now gitignored. |
 | Chapter IV tables & paper figures | `docs/thesis_drafts/` on `master` | various | Includes the test-set threshold-policy table referenced by older `metrics.json` notes. |
 

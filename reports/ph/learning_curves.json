@@ -1,0 +1,36 @@
+{
+  "curves": [
+    {
+      "fraction": 0.25,
+      "n_samples": 38,
+      "train_pr_auc": 0.02631578947368421,
+      "train_roc_auc": 0.5,
+      "val_pr_auc": 0.15789473684210525,
+      "val_roc_auc": 0.5
+    },
+    {
+      "fraction": 0.5,
+      "n_samples": 77,
+      "train_pr_auc": 1.0,
+      "train_roc_auc": 1.0,
+      "val_pr_auc": 0.6984126984126984,
+      "val_roc_auc": 0.8958333333333334
+    },
+    {
+      "fraction": 0.75,
+      "n_samples": 115,
+      "train_pr_auc": 1.0,
+      "train_roc_auc": 1.0,
+      "val_pr_auc": 0.8333333333333333,
+      "val_roc_auc": 0.9375
+    },
+    {
+      "fraction": 1.0,
+      "n_samples": 154,
+      "train_pr_auc": 1.0,
+      "train_roc_auc": 1.0,
+      "val_pr_auc": 0.4772727272727273,
+      "val_roc_auc": 0.625
+    }
+  ]
+}

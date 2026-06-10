@@ -1,0 +1,43 @@
+{
+  "cutoffs_fractions": [
+    0.4,
+    0.55,
+    0.7,
+    0.85
+  ],
+  "folds": [
+    {
+      "balanced_accuracy": 1.0,
+      "f1": 1.0,
+      "fold": 1,
+      "n_test": 29,
+      "n_train": 77,
+      "pr_auc": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "roc_auc": 1.0
+    },
+    {
+      "balanced_accuracy": 0.75,
+      "f1": 0.6666666666666666,
+      "fold": 2,
+      "n_test": 29,
+      "n_train": 106,
+      "pr_auc": 0.8269230769230769,
+      "precision": 1.0,
+      "recall": 0.5,
+      "roc_auc": 0.9099999999999999
+    },
+    {
+      "balanced_accuracy": 0.5,
+      "f1": 0.0,
+      "fold": 3,
+      "n_test": 29,
+      "n_train": 135,
+      "pr_auc": 0.45476190476190476,
+      "precision": 0.0,
+      "recall": 0.0,
+      "roc_auc": 0.8115942028985508
+    }
+  ]
+}
