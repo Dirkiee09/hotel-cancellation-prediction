@@ -75,3 +75,16 @@ def test_preprocessor_handles_missing_values_and_schema() -> None:
     assert transformed.shape[0] == frame.shape[0]
     assert transformed.shape[1] >= len(BOOKING_TIME_FEATURES)
     assert np.isfinite(np.asarray(transformed)).all()
+
+
+def test_week_number_is_not_a_model_feature() -> None:
+    """arrival_date_week_number must stay out of the model feature set.
+
+    The raw dataset's week numbering disagrees with ISO-8601 for ~54% of dates,
+    so any serving-side derivation produces a different distribution than the
+    training data (training/serving skew). Seasonality is already captured by
+    month one-hot + month_sin/month_cos.
+    """
+    from src.config import BOOKING_TIME_FEATURES
+
+    assert "arrival_date_week_number" not in BOOKING_TIME_FEATURES

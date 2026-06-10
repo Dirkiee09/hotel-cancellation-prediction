@@ -25,14 +25,6 @@ warnings.filterwarnings(
     message="X does not have valid feature names",
     category=UserWarning,
 )
-# SHAP 0.51 emits this on every TreeExplainer.shap_values() call for LightGBM.
-# It is informational ("output format changed to list of ndarray") and we already
-# handle both shapes in explain_prediction(). Suppress to keep server logs clean.
-warnings.filterwarnings(
-    "ignore",
-    message="LightGBM binary classifier with TreeExplainer",
-    category=UserWarning,
-)
 _LOGGED_ARTIFACT_DIRS: set[str] = set()
 
 # Shared singleton so FastAPI + Gradio share one copy in memory.
@@ -63,8 +55,6 @@ class ModelArtifacts:
         thresholds,
         metadata,
         is_pipeline: bool,
-        adr_regressor: Any = None,
-        adr_metadata: dict[str, Any] | None = None,
     ):
         self.model = model
         self.preprocessor = preprocessor
@@ -73,11 +63,9 @@ class ModelArtifacts:
         self.thresholds = thresholds
         self.metadata = metadata
         self.is_pipeline = is_pipeline
-        # Optional ADR regressor — used for the live "predicted ADR" column on
-        # every /predict call. None if artifacts/adr_regressor.pkl is absent
-        # (cancellation predictions are unaffected in that case).
-        self.adr_regressor = adr_regressor
-        self.adr_metadata = adr_metadata or {}
+        # Lazily built by _get_tree_explainer(); TreeExplainer construction parses
+        # every tree in the model, so it must not happen per request.
+        self.shap_explainer: Any | None = None
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -155,25 +143,6 @@ def load_artifacts(artifacts_dir: Path = ARTIFACTS_DIR) -> ModelArtifacts:
                 calibrator_path,
                 exc,
             )
-
-    # Optional ADR regressor — best-effort load, never fatal.
-    adr_regressor: Any = None
-    adr_metadata: dict[str, Any] = {}
-    adr_path = artifacts_dir / "adr_regressor.pkl"
-    adr_metadata_path = artifacts_dir / "adr_regressor_metadata.pkl"
-    if adr_path.exists() and adr_metadata_path.exists():
-        try:
-            adr_regressor = joblib.load(adr_path)
-            adr_metadata = joblib.load(adr_metadata_path)
-        except Exception as exc:
-            logger.warning(
-                "Failed to load ADR regressor %s: %s. Live ADR forecasts disabled.",
-                adr_path,
-                exc,
-            )
-            adr_regressor = None
-            adr_metadata = {}
-
     return ModelArtifacts(
         model,
         preprocessor,
@@ -182,8 +151,6 @@ def load_artifacts(artifacts_dir: Path = ARTIFACTS_DIR) -> ModelArtifacts:
         thresholds,
         metadata,
         is_pipeline=hasattr(model, "named_steps"),
-        adr_regressor=adr_regressor,
-        adr_metadata=adr_metadata,
     )
 
 
@@ -234,58 +201,36 @@ def predict_proba(records: Any, artifacts: ModelArtifacts) -> tuple[list[float],
     return probs.tolist(), df
 
 
-# Placeholders for ADR features that the regressor was trained on but that are
-# NOT known at booking time. These are post-booking signals (whether the guest
-# eventually cancelled, what room they were actually assigned, how many times
-# they modified the booking, etc.). Passing zeros / sensible defaults lets the
-# regressor produce a live forecast — at the cost of slightly degraded accuracy
-# vs the training-time test RMSE. Documented in CLAUDE.md.
-_ADR_BOOKING_TIME_DEFAULTS: dict[str, Any] = {
-    "is_canceled": 0,
-    "booking_changes": 0,
-    "days_in_waiting_list": 0,
-}
+def _extract_tree_model_and_preprocessor(artifacts: ModelArtifacts) -> tuple[Any, Any]:
+    """Split the artifact into (tree model, preprocessor-or-None)."""
+    model = artifacts.model
+    if hasattr(model, "named_steps"):
+        # Pipeline: preprocessor → model
+        step_names = list(model.named_steps.keys())
+        return model.named_steps[step_names[-1]], model.named_steps.get(step_names[0])
+    return model, artifacts.preprocessor
 
 
-def predict_adr(record: dict[str, Any], artifacts: ModelArtifacts) -> float | None:
-    """Predict ADR for one booking using the trained ADR regressor.
+def _get_tree_explainer(artifacts: ModelArtifacts) -> Any | None:
+    """Return a cached shap.TreeExplainer for the artifact's model (None if unavailable).
 
-    Returns None when the ADR regressor isn't loaded or the prediction fails —
-    never raises, so a degraded ADR path can't break /predict.
-
-    Note: the ADR regressor was trained with post-booking features (is_canceled,
-    assigned_room_type, booking_changes, days_in_waiting_list) that aren't
-    available at booking time. We substitute sensible defaults:
-        * is_canceled = 0           (booking just made, not yet cancelled)
-        * assigned_room_type = reserved_room_type  (no upgrade yet)
-        * booking_changes = 0       (no modifications yet)
-        * days_in_waiting_list = 0  (immediate confirmation assumed)
+    Built once per ModelArtifacts instance: TreeExplainer construction walks the
+    full tree ensemble, which is far too expensive to repeat on every request.
     """
-    if artifacts.adr_regressor is None or not artifacts.adr_metadata:
-        return None
+    if artifacts.shap_explainer is not None:
+        return artifacts.shap_explainer
     try:
-        features = artifacts.adr_metadata.get("features") or []
-        if not features:
-            return None
-        row: dict[str, Any] = {**record}
-        # Apply booking-time defaults for features the request doesn't carry.
-        for key, default in _ADR_BOOKING_TIME_DEFAULTS.items():
-            row.setdefault(key, default)
-        # assigned_room_type defaults to the reserved type (most common case
-        # at booking time — upgrades / downgrades happen on arrival).
-        if "assigned_room_type" not in row or row["assigned_room_type"] is None:
-            row["assigned_room_type"] = row.get("reserved_room_type")
-        # company is optional in BookingRequest — let the model's pipeline
-        # handle missingness via its imputer.
-        X = pd.DataFrame([{feat: row.get(feat) for feat in features}])
-        pred = float(artifacts.adr_regressor.predict(X)[0])
-        if not np.isfinite(pred):
-            return None
-        # Clip to the same valid range used elsewhere for ADR sanity.
-        return round(max(0.0, pred), 2)
-    except Exception as exc:
-        logger.debug("predict_adr_failed (non-fatal): %s", exc)
+        import shap
+    except ImportError:
+        logger.debug("shap not installed; skipping prediction explanation")
         return None
+    tree_model, _ = _extract_tree_model_and_preprocessor(artifacts)
+    try:
+        artifacts.shap_explainer = shap.TreeExplainer(tree_model)
+    except Exception as exc:
+        logger.debug("TreeExplainer construction failed (non-fatal): %s", exc)
+        return None
+    return artifacts.shap_explainer
 
 
 def explain_prediction(
@@ -298,32 +243,17 @@ def explain_prediction(
     Falls back gracefully to an empty list if SHAP is unavailable or the model
     type is unsupported.  This keeps the /predict endpoint fast and never fails.
     """
-    try:
-        import shap  # noqa: F811
-    except ImportError:
-        logger.debug("shap not installed; skipping prediction explanation")
+    explainer = _get_tree_explainer(artifacts)
+    if explainer is None:
         return []
 
     try:
-        # Extract the underlying tree model from the sklearn Pipeline
-        model = artifacts.model
-        if hasattr(model, "named_steps"):
-            # Pipeline: preprocessor → model
-            step_names = list(model.named_steps.keys())
-            tree_model = model.named_steps[step_names[-1]]
-            preprocessor = model.named_steps.get(step_names[0])
-            if preprocessor is not None:
-                X = preprocessor.transform(feature_df)
-            else:
-                X = feature_df.values
+        _, preprocessor = _extract_tree_model_and_preprocessor(artifacts)
+        if preprocessor is not None:
+            X = preprocessor.transform(feature_df)
         else:
-            tree_model = model
-            if artifacts.preprocessor is not None:
-                X = artifacts.preprocessor.transform(feature_df)
-            else:
-                X = feature_df.values
+            X = feature_df.values
 
-        explainer = shap.TreeExplainer(tree_model)
         shap_values = explainer.shap_values(X)
 
         # For binary classification, shap_values may be a list [class_0, class_1]
@@ -376,8 +306,8 @@ def _get_encoded_feature_names(artifacts: ModelArtifacts) -> list[str]:
     if preprocessor is not None and hasattr(preprocessor, "get_feature_names_out"):
         try:
             return list(preprocessor.get_feature_names_out())
-        except (AttributeError, ValueError) as exc:
-            logger.debug("encoded_feature_names_unavailable error=%s", exc)
+        except Exception as exc:
+            logger.debug("get_feature_names_out failed; SHAP aggregation degrades: %s", exc)
     return []
 
 
@@ -393,11 +323,17 @@ def _aggregate_encoded_contributions(
         # Fallback: can't map — return empty
         return agg
 
+    # Longest names first so a feature that is a prefix of another (e.g. "adr"
+    # vs "adr_per_person") can never absorb the longer feature's contributions.
+    ordered_features = sorted(raw_features, key=len, reverse=True)
     for enc_name, val in zip(encoded_names, contributions):
-        # Encoded names look like "cat__feature_value" or "num__feature"
+        # Encoded names look like "cat__feature_value" or "num__feature";
+        # strip the transformer prefix, then require an exact name match or a
+        # "feature_" one-hot prefix — bare substring matching misattributes.
+        base = enc_name.split("__", 1)[-1]
         matched = False
-        for raw in raw_features:
-            if raw in enc_name:
+        for raw in ordered_features:
+            if base == raw or base.startswith(raw + "_"):
                 agg[raw] += float(val)
                 matched = True
                 break

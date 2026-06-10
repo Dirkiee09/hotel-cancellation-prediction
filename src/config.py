@@ -16,7 +16,10 @@ BOOKING_TIME_FEATURES = [
     "lead_time",
     "arrival_date_year",
     "arrival_date_month",
-    "arrival_date_week_number",
+    # arrival_date_week_number is deliberately excluded: the raw dataset's week
+    # numbering disagrees with ISO-8601 for ~54% of dates, so serving-side
+    # derivation would feed the model a different distribution than training
+    # (training/serving skew). Seasonality is covered by month + month_sin/cos.
     "arrival_date_day_of_month",
     "stays_in_weekend_nights",
     "stays_in_week_nights",
@@ -80,6 +83,10 @@ ADR_MAX_VALID = 50_000.0  # outlier ceiling; adjust per currency (~1000 EUR, ~50
 
 # Fallback when threshold sweep produces no valid result
 DEFAULT_FALLBACK_THRESHOLD = 0.5
+
+# Rounds without val-metric improvement before boosting stops when an eval_set
+# is supplied to train_xgb/train_lgbm (the use_early_stopping=True path).
+EARLY_STOPPING_ROUNDS = 50
 
 # Probability calibration controls
 CALIBRATION_METHOD = "isotonic"

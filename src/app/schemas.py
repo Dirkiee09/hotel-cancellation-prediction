@@ -100,14 +100,16 @@ class BookingRequest(BaseModel):
                 raise ValueError("arrival_date_year conflicts with arrival_date")
             if self.arrival_date_month is not None and self.arrival_date_month != month:
                 raise ValueError("arrival_date_month conflicts with arrival_date")
-            if self.arrival_date_week_number is not None and self.arrival_date_week_number != week:
-                raise ValueError("arrival_date_week_number conflicts with arrival_date")
             if self.arrival_date_day_of_month is not None and self.arrival_date_day_of_month != day:
                 raise ValueError("arrival_date_day_of_month conflicts with arrival_date")
 
             self.arrival_date_year = year
             self.arrival_date_month = month
-            self.arrival_date_week_number = week
+            # week_number is informational only (not a model feature) and the raw
+            # dataset's week convention is not ISO-8601, so a client-supplied value
+            # is accepted as-is rather than conflict-checked against the date.
+            if self.arrival_date_week_number is None:
+                self.arrival_date_week_number = week
             self.arrival_date_day_of_month = day
 
         missing = [
@@ -115,7 +117,6 @@ class BookingRequest(BaseModel):
             for name in (
                 "arrival_date_year",
                 "arrival_date_month",
-                "arrival_date_week_number",
                 "arrival_date_day_of_month",
             )
             if getattr(self, name) is None
