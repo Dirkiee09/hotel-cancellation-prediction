@@ -7,6 +7,7 @@ artifacts/reports and centralizing plotting behavior.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,8 @@ from src.config import (
 from src.data.load import load_raw_data
 from src.features.build import add_arrival_date, build_preprocessor, split_time_aware
 from src.utils.validate_data import clean_raw, validate_raw
+
+logger = logging.getLogger(__name__)
 
 PALETTE = {
     "champion": "#1f77b4",
@@ -1936,7 +1939,8 @@ def plot_learning_dynamics(
                     "train_log_loss": float(log_loss(y_train, p_train)),
                 }
             )
-        except Exception:
+        except Exception as exc:
+            logger.debug("learning-curve point skipped (non-fatal): %s", exc)
             continue
 
     curve_df = pd.DataFrame(rows)
@@ -2744,7 +2748,8 @@ def dataset_size_sensitivity(
                 roc_aucs.append(roc_auc_score(y_val, probs))
                 pr_aucs.append(average_precision_score(y_val, probs))
                 f1s.append(f1_score(y_val, preds))
-            except Exception:
+            except Exception as exc:
+                logger.debug("data-hunger repeat skipped (non-fatal): %s", exc)
                 continue
 
         if roc_aucs:

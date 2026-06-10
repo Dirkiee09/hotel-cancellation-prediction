@@ -1,10 +1,11 @@
 """Send sample predictions to the running server and display results.
 
 Usage:
-    1. Start the server:  python demo/start_server.py
-    2. In another terminal: python demo/sample_requests.py
+    1. Start the server:  uvicorn src.app.main:app
+    2. In another terminal: python scripts/sample_requests.py
 
 Sends 4 contrasting booking scenarios and prints a comparison table.
+Useful as a live demo during the thesis defense.
 """
 
 from __future__ import annotations
@@ -146,24 +147,32 @@ SCENARIOS: list[dict] = [
 ]
 
 
+def _open_local(req: Request | str, timeout: float):
+    """urlopen restricted to the hardcoded localhost BASE_URL (http only)."""
+    url = req.full_url if isinstance(req, Request) else req
+    if not url.startswith(BASE_URL):
+        raise ValueError(f"Refusing non-local URL: {url}")
+    return urlopen(req, timeout=timeout)  # noqa: S310  # nosec B310 - scheme checked above
+
+
 def _post(url: str, data: dict) -> dict:
     req = Request(url, data=json.dumps(data).encode(), headers={"Content-Type": "application/json"})
-    with urlopen(req, timeout=30) as resp:  # noqa: S310
+    with _open_local(req, timeout=30) as resp:
         return json.loads(resp.read())
 
 
 def main() -> None:
     # Check server is running
     try:
-        with urlopen(f"{BASE_URL}/healthz", timeout=5):  # noqa: S310
+        with _open_local(f"{BASE_URL}/healthz", timeout=5):
             pass
     except (URLError, ConnectionError, OSError):
         print("ERROR: Server is not running.")
-        print("Start it first:  python demo/start_server.py")
+        print("Start it first:  uvicorn src.app.main:app")
         sys.exit(1)
 
     # Print model info
-    with urlopen(f"{BASE_URL}/model-info", timeout=10) as resp:  # noqa: S310
+    with _open_local(f"{BASE_URL}/model-info", timeout=10) as resp:
         info = json.loads(resp.read())
     print(
         f"Model: {info['model_type']}  |  Features: {info['feature_count']}  |  "

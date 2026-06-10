@@ -22,7 +22,7 @@ serving (FastAPI + Gradio) → evaluation → thesis reporting.
 
 | Check | Status | Detail |
 |-------|--------|--------|
-| `pytest` | ✅ 91/91 | 89.15% coverage (gate: ≥80%) |
+| `pytest` | ✅ 114/114 | 89.87% coverage (gate: ≥80%) |
 | `ruff check` | ✅ clean | E, F, I rules |
 | `ruff format` | ✅ clean | line length 100 |
 | `mypy` | ✅ clean | 0 errors (48 source files checked) |
@@ -96,8 +96,13 @@ scripts/                      # CLI entry points (thin wrappers over src/)
   benchmark.py                # make benchmark (16 CSV tables)
   check.py                    # make check (subcommands: artifacts, metrics, sync, fairness, all)
   notebooks.py                # headless notebook execution (all 10 notebooks)
+  adapt_dataset.py            # plug-and-play adapter for new hotel CSVs (e.g. PH dataset)
+  sample_requests.py          # defense demo: send 4 contrasting bookings to a running server
 
-tests/                        # pytest suite (91 tests, ≥80% coverage required)
+docs/
+  provenance.md               # maps local ph/cv/adr outputs to their producers on `master`
+
+tests/                        # pytest suite (114 tests, ≥80% coverage required)
   test_preprocessing.py
   test_split_and_leakage.py
   test_training_pipeline.py
@@ -144,7 +149,7 @@ python -m pip install -e . -r requirements.txt
 make lint                     # ruff check .
 make format                   # ruff format --check .
 make typecheck                # mypy src/
-make test                     # pytest (91 tests, coverage ≥80%)
+make test                     # pytest (114 tests, coverage ≥80%)
 make security                 # bandit
 make train                    # Run full training pipeline
 make eval                     # Post-train verification (existing artifacts)
@@ -203,6 +208,12 @@ All project-wide numbers live here. Edit `config.py` first, never hardcode value
 | `BOOTSTRAP_N_ITERATIONS` | 2000 | Bootstrap resamples for confidence intervals |
 | `CALIBRATION_METHOD` | `"isotonic"` | Probability calibration method |
 | `THRESHOLD_STEP` | 0.01 | Grid step for threshold sweep (uses np.linspace) |
+| `EARLY_STOPPING_ROUNDS` | 50 | Early-stopping patience when an eval_set is passed to train_xgb/train_lgbm |
+
+**Feature-list note**: `arrival_date_week_number` is intentionally NOT a model feature.
+The raw dataset's week numbering disagrees with ISO-8601 for ~54% of dates, so deriving
+it at serving time would create training/serving skew. The API still accepts the field
+(informational only); seasonality is captured by month one-hot + `month_sin`/`month_cos`.
 
 **Metric quality gates** (enforced by `scripts/check.py metrics`, must pass or CI fails):
 - `max_f1` policy: ROC-AUC ≥ 0.70, PR-AUC ≥ 0.50, F1 ≥ 0.50, Recall ≥ 0.50
@@ -222,11 +233,11 @@ data/hotel_bookings.csv  (119k rows, 32 raw features)
   │
   ├─▶ clean_raw()                        [src/utils/validate_data.py]
   │     ├── fill children NaN → 0
-  │     ├── encode agent=0 as "Direct"
+  │     ├── fill agent NaN → 0 (kept as category "0" ≈ direct booking)
   │     ├── add_derived_booking_features() → had_company, total_stay,
   │     │   total_guests, adr_per_person, revenue_at_risk,
   │     │   month_sin, month_cos, is_late_window, is_weekend_heavy
-  │     └── drop rows: negative ADR, ADR ≥ 1000, zero/null guests
+  │     └── drop rows: negative ADR, ADR ≥ ADR_MAX_VALID (50,000), zero/null guests
   │
   ├─▶ validate_raw()                     [src/utils/validate_data.py]
   │     └── schema checks, target binary, no negative numerics
@@ -248,17 +259,28 @@ data/hotel_bookings.csv  (119k rows, 32 raw features)
   │                                                                 │
   ├─▶ rolling-origin champion/challenger selection                  │
   │     ├── cutoffs: [60%, 70%, 80%] of train                      │
-  │     ├── candidates: LightGBM, XGBoost, GradientBoosting        │
-  │     └── primary metric: PR-AUC → champion = LightGBM ──────────┘
+  │     ├── candidates: LightGBM, XGBoost (matched capacity:        │
+  │     │   300 trees / depth 7 / lr 0.05 / subsample 0.8) +        │
+  │     │   GradientBoosting (classical reference, 100/5/0.1 —      │
+  │     │   exact-greedy sklearn GB is too slow to match)           │
+  │     ├── no class weighting for ANY candidate (symmetric, and    │
+  │     │   identical to benchmark specs → sync check holds;        │
+  │     │   imbalance handled by calibration + threshold policies)  │
+  │     └── primary metric: PR-AUC ─────────────────────────────────┘
   │
   ├─▶ isotonic calibration              [sklearn.isotonic.IsotonicRegression]
   │     └── fitted on val set predictions → saved to artifacts/probability_calibrator.pkl
   │
   ├─▶ threshold selection               [src/utils/thresholds.py]
-  │     ├── max_f1            (F1-maximising, ~0.35)
-  │     ├── high_precision    (Precision ≥ 0.98, ~0.80)
-  │     └── cost_sensitive    (min FP×15€ + FN×revenue_at_risk)
+  │     ├── max_f1            (F1-maximising, ~0.40)
+  │     ├── high_precision    (max precision s.t. recall ≥ 0.20; floor is often
+  │     │                      unsatisfiable → logged fallback, observed recall ~0.09)
+  │     └── cost_sensitive    (min FP×15€ + FN×revenue_at_risk; summary reports
+  │           │                no-model, threshold-0.5 AND intervene-all baselines)
   │           └── sweep runs on val set → saved to artifacts/thresholds.json
+  │               (test-set evaluation of the selected threshold lands in
+  │                metrics.json → cost_thresholding_test; H2/H4 in
+  │                hypothesis_summary.json are judged on TEST, never val)
   │
   ├─▶ save artifacts/                   [artifacts/*.pkl, *.json, *.csv]
   ├─▶ save reports/                     [metrics.json, segment_metrics.csv, …]
@@ -277,7 +299,7 @@ data/hotel_bookings.csv  (119k rows, 32 raw features)
 ```
 BookingRequest (Pydantic)
   ├── field coercion: agent/company → str, arrival_date components validated
-  ├── adr validated: 0 ≤ adr < 1000 EUR
+  ├── adr validated: 0 ≤ adr ≤ ADR_MAX_VALID (50,000, currency-agnostic)
   └── adults ≥ 1 (schema + UI both enforce)
 
 predict_proba() [src/serving/inference.py]
@@ -400,9 +422,9 @@ artifact has exactly one writer; multiple consumers are normal.
 `reports/thesis/model_family_summary.json`, and `reports/benchmarks/07_thresholds_per_model.csv`
 within `REPRO_TOLERANCE = 1e-6`. If those drift, retrain.
 
-**Note on `reports/threshold_summary.json`**: this is a redundant copy of
-`artifacts/thresholds.json` kept for the thesis report. `artifacts/thresholds.json` is the
-canonical source; consumers should prefer it.
+**Note**: the former `reports/threshold_summary.json` (a redundant copy of
+`artifacts/thresholds.json`) was removed in the 2026-06 cleanup; `artifacts/thresholds.json`
+is the single canonical source.
 
 ---
 

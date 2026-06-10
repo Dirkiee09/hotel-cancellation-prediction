@@ -59,6 +59,37 @@ def compute_fn_cost_vector(df: pd.DataFrame, fn_recovery_nights: float) -> np.nd
     return (adr * lost_nights).to_numpy(dtype=float)
 
 
+def evaluate_cost_at_threshold(
+    y_true,
+    y_prob,
+    fn_cost,
+    *,
+    fp_cost: float,
+    threshold: float,
+) -> dict[str, float]:
+    """Total intervention cost at one fixed threshold (no re-optimisation).
+
+    Used to evaluate a previously selected threshold on held-out data, where
+    re-running the sweep would constitute tuning on the evaluation set.
+    """
+    y_true_arr = np.asarray(y_true).astype(int)
+    y_prob_arr = np.asarray(y_prob, dtype=float)
+    fn_cost_arr = np.asarray(fn_cost, dtype=float)
+    y_pred = (y_prob_arr >= threshold).astype(int)
+    fp_mask = (y_pred == 1) & (y_true_arr == 0)
+    fn_mask = (y_pred == 0) & (y_true_arr == 1)
+    fp_total = float(np.sum(fp_mask)) * float(fp_cost)
+    fn_total = float(fn_cost_arr[fn_mask].sum())
+    return {
+        "threshold": float(threshold),
+        "fp_count": int(np.sum(fp_mask)),
+        "fn_count": int(np.sum(fn_mask)),
+        "fp_cost_total": fp_total,
+        "fn_cost_total": fn_total,
+        "total_cost": fp_total + fn_total,
+    }
+
+
 def compute_cost_threshold_policy(
     y_true,
     y_prob,
@@ -74,6 +105,11 @@ def compute_cost_threshold_policy(
 
     idx_050 = int((sweep_df["threshold"] - 0.50).abs().idxmin())
     baseline_050 = sweep_df.iloc[idx_050].to_dict()
+    # Trivial policies the model must beat: do nothing (every cancellation
+    # costs its FN value) and intervene-on-everyone (every non-cancellation
+    # costs one FP intervention). Reporting only "no model" overstates value.
+    idx_000 = int(sweep_df["threshold"].abs().idxmin())
+    intervene_all = sweep_df.iloc[idx_000].to_dict()
     no_model_cost = float(np.asarray(fn_cost, dtype=float)[y_true_arr == 1].sum())
 
     summary = {
@@ -86,8 +122,10 @@ def compute_cost_threshold_policy(
         "fp_cost_assumption": float(fp_cost),
         "no_model_cost": no_model_cost,
         "baseline_050_cost": float(baseline_050["total_cost"]),
+        "intervene_all_cost": float(intervene_all["total_cost"]),
         "savings_vs_050": float(baseline_050["total_cost"] - best["total_cost"]),
         "savings_vs_no_model": float(no_model_cost - best["total_cost"]),
+        "savings_vs_intervene_all": float(intervene_all["total_cost"] - best["total_cost"]),
     }
     return summary, sweep_df
 

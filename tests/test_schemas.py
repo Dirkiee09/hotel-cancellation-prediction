@@ -87,3 +87,27 @@ class TestBookingRequestInvalid:
     def test_negative_lead_time_rejected(self):
         with pytest.raises(ValidationError):
             BookingRequest(**{**_BASE, "lead_time": -1})
+
+
+class TestWeekNumberHandling:
+    def test_week_number_mismatch_with_arrival_date_accepted(self):
+        """The raw dataset's week numbering is not ISO-8601 (54% of dates differ).
+
+        A client echoing the dataset's week value alongside arrival_date must not
+        be rejected — the field is informational and no longer a model feature.
+        """
+        req = BookingRequest(
+            hotel="Resort Hotel",
+            lead_time=100,
+            arrival_date=date(2024, 3, 15),  # ISO week 11
+            arrival_date_week_number=12,  # dataset-convention value
+            adults=2,
+            adr=100.0,
+        )
+        assert req.arrival_date_year == 2024
+        assert req.arrival_date_day_of_month == 15
+
+    def test_week_number_not_required(self):
+        data = {k: v for k, v in _BASE.items() if k != "arrival_date_week_number"}
+        req = BookingRequest(**data)
+        assert req.arrival_date_day_of_month == 1
