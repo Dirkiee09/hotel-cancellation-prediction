@@ -318,6 +318,13 @@ predict_proba() [src/serving/inference.py]
   ├── assign risk tier: low / medium / high
   └── PredictionResponse: probability, 3 binary labels, risk_tier, alerts
 
+Prediction storage (Gradio UI only):
+  └── every Predict/Flag click appends one row (timestamp, risk label, flagged,
+      arrival_date + all model features) to data/predictions/predictions.csv
+      — gitignored runtime data, file-locked for concurrent writers.
+      The REST /predict endpoint is stateless by design; callers that need
+      persistence use the UI or write their own log from the JSON response.
+
 Thread safety: _ARTIFACTS singleton protected by _ARTIFACTS_LOCK
   → safe for multi-worker uvicorn deployments
 ```
