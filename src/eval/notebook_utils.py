@@ -3509,3 +3509,104 @@ def plot_cross_market_rank_slope(pt_ranking, ph_ranking, rho: float, pval: float
     ax.grid(True, axis="y", alpha=0.25)
     fig.tight_layout()
     return fig
+
+
+def aggregate_encoded_shap_to_raw(mean_abs_shap, encoded_names, raw_features):
+    """Sum per-encoded-column mean |SHAP| back to raw feature level.
+
+    Public wrapper over the serving layer's prefix-safe aggregation so
+    notebooks never reimplement the one-hot -> raw mapping (which has a
+    history: bare substring matching once misattributed adr_per_person
+    to adr).
+    """
+    from src.serving.inference import _aggregate_encoded_contributions
+
+    return _aggregate_encoded_contributions(list(mean_abs_shap), list(encoded_names), raw_features)
+
+
+def plot_cross_market_feature_importance(pt_importance, ph_importance, top_n: int = 10):
+    """Back-to-back bar chart: normalised SHAP importance, Portugal vs Philippines.
+
+    Shares are normalised within each market (|SHAP| / total |SHAP|) because raw
+    magnitudes are not comparable across different models and label scales.
+    Portugal features the PH PMS export does not capture are explicitly marked
+    instead of silently shown as zero.
+    """
+    pt_total = sum(pt_importance.values()) or 1.0
+    ph_total = sum(ph_importance.values()) or 1.0
+    pt_share = {f: v / pt_total for f, v in pt_importance.items()}
+    ph_share = {f: v / ph_total for f, v in ph_importance.items()}
+
+    pt_top = sorted(pt_share, key=lambda f: -pt_share[f])[:top_n]
+    ph_top = sorted(ph_share, key=lambda f: -ph_share[f])[:top_n]
+    features = sorted(
+        set(pt_top) | set(ph_top), key=lambda f: -max(pt_share.get(f, 0), ph_share.get(f, 0))
+    )
+
+    fig, ax = plt.subplots(figsize=(11, 0.5 * len(features) + 2.5))
+    y = np.arange(len(features))
+    shared_color, pt_color, ph_color = "#2ca02c", "#1f77b4", "#ff7f0e"
+
+    for i, f in enumerate(features):
+        in_ph = f in ph_share
+        pt_v = pt_share.get(f, 0.0)
+        ph_v = ph_share.get(f, 0.0)
+        both = pt_v > 0 and in_ph and ph_v > 0
+        ax.barh(i, -pt_v, color=shared_color if both else pt_color, height=0.62, edgecolor="white")
+        if in_ph:
+            ax.barh(
+                i, ph_v, color=shared_color if both else ph_color, height=0.62, edgecolor="white"
+            )
+        else:
+            ax.annotate(
+                "not captured by PMS",
+                (0.004, i),
+                va="center",
+                ha="left",
+                fontsize=8,
+                color="#999999",
+                style="italic",
+            )
+        if pt_v > 0:
+            ax.annotate(
+                f"{pt_v:.0%}",
+                (-pt_v, i),
+                textcoords="offset points",
+                xytext=(-6, 0),
+                ha="right",
+                va="center",
+                fontsize=8.5,
+            )
+        if in_ph and ph_v > 0:
+            ax.annotate(
+                f"{ph_v:.0%}",
+                (ph_v, i),
+                textcoords="offset points",
+                xytext=(6, 0),
+                ha="left",
+                va="center",
+                fontsize=8.5,
+            )
+
+    ax.axvline(0, color="black", linewidth=1.1)
+    ax.set_yticks(y)
+    ax.set_yticklabels(features, fontsize=9.5)
+    ax.invert_yaxis()
+    max_x = max([pt_share.get(f, 0) for f in features] + [ph_share.get(f, 0) for f in features])
+    ax.set_xlim(-max_x * 1.3, max_x * 1.3)
+    ticks = ax.get_xticks()
+    ax.set_xticklabels([f"{abs(t):.0%}" for t in ticks], fontsize=9)
+    ax.set_xlabel(
+        "Share of total |SHAP| within each market   "
+        "(← Portugal, 119k bookings | Philippines, 193 bookings →)",
+        fontsize=10,
+    )
+    ax.set_title(
+        "What drives cancellations in each market?\n"
+        "Green = feature matters in BOTH markets; grey notes = unavailable in the PH PMS export",
+        fontsize=11.5,
+        fontweight="bold",
+    )
+    ax.grid(True, axis="x", alpha=0.25)
+    fig.tight_layout()
+    return fig
