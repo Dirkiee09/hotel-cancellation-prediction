@@ -1,0 +1,25 @@
+{
+  "caveats": [
+    "n_test = 20 rows; bootstrap 95% CIs on PR-AUC span roughly \u00b115 percentage points at this sample size",
+    "Feature set includes deposit_type and total_of_special_requests (two top-10 Portugal SHAP features) but still excludes market_segment, country, agent, customer_type, and previous_cancellations \u2014 the real PMS export does not capture them",
+    "No rolling-origin CV (insufficient data for the project's standard 3 folds); metrics use a single chronological 80/10/10 split",
+    "Constant-variance columns (Meals = 100% 'Breakfast (Complimentary)', Guest_Type = 100% 'Walk-In') were dropped during clean_raw_ph",
+    "Treat all reported metrics as directional, not as gates"
+  ],
+  "champion_model": "lightgbm",
+  "feature_set_note": "PH 10-raw-feature set (vs Portugal 32 raw); includes deposit_type and total_of_special_requests but still excludes country, market_segment, customer_type, agent, and previous_cancellations (not captured by the PMS export).",
+  "feature_set_size": 18,
+  "n_test": 20,
+  "n_train": 154,
+  "n_val": 19,
+  "selected_at": "2026-05-20T10:31:35.686756+00:00",
+  "selected_by": "single chronological 80/10/10 split (N=193 too small for rolling-origin selection)",
+  "test_ece": 0.3781892683143718,
+  "test_f1_at_max_f1": 0.0,
+  "test_pr_auc": 0.541943241943242,
+  "test_roc_auc": 0.6111111111111112,
+  "thresholds": {
+    "high_precision": 0.19,
+    "max_f1": 0.19
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "all_features_ranked": [
+    {
+      "feature": "deposit_type",
+      "mean_abs_shap": 2.323238804380141
+    },
+    {
+      "feature": "adr",
+      "mean_abs_shap": 1.8291836542243616
+    },
+    {
+      "feature": "reserved_room_type",
+      "mean_abs_shap": 0.8437995263979913
+    },
+    {
+      "feature": "revenue_at_risk",
+      "mean_abs_shap": 0.7830427473341195
+    },
+    {
+      "feature": "lead_time",
+      "mean_abs_shap": 0.717900217164199
+    },
+    {
+      "feature": "month_cos",
+      "mean_abs_shap": 0.5498337311604643
+    },
+    {
+      "feature": "total_of_special_requests",
+      "mean_abs_shap": 0.4806352778509296
+    },
+    {
+      "feature": "adults",
+      "mean_abs_shap": 0.43181709877608654
+    },
+    {
+      "feature": "is_weekend_heavy",
+      "mean_abs_shap": 0.430617233627215
+    },
+    {
+      "feature": "stays_in_weekend_nights",
+      "mean_abs_shap": 0.3665847091707063
+    },
+    {
+      "feature": "total_guests",
+      "mean_abs_shap": 0.2869871750961469
+    },
+    {
+      "feature": "total_stay",
+      "mean_abs_shap": 0.25897450371745234
+    },
+    {
+      "feature": "month_sin",
+      "mean_abs_shap": 0.19401166043508272
+    },
+    {
+      "feature": "stays_in_week_nights",
+      "mean_abs_shap": 0.11846026514484916
+    },
+    {
+      "feature": "children",
+      "mean_abs_shap": 0.10620777538934185
+    }
+  ],
+  "method": "treeshap",
+  "n_encoded_features": 23,
+  "n_test_rows": 20,
+  "top_features": [
+    {
+      "feature": "deposit_type",
+      "mean_abs_shap": 2.323238804380141
+    },
+    {
+      "feature": "adr",
+      "mean_abs_shap": 1.8291836542243616
+    },
+    {
+      "feature": "reserved_room_type",
+      "mean_abs_shap": 0.8437995263979913
+    },
+    {
+      "feature": "revenue_at_risk",
+      "mean_abs_shap": 0.7830427473341195
+    },
+    {
+      "feature": "lead_time",
+      "mean_abs_shap": 0.717900217164199
+    },
+    {
+      "feature": "month_cos",
+      "mean_abs_shap": 0.5498337311604643
+    },
+    {
+      "feature": "total_of_special_requests",
+      "mean_abs_shap": 0.4806352778509296
+    },
+    {
+      "feature": "adults",
+      "mean_abs_shap": 0.43181709877608654
+    },
+    {
+      "feature": "is_weekend_heavy",
+      "mean_abs_shap": 0.430617233627215
+    },
+    {
+      "feature": "stays_in_weekend_nights",
+      "mean_abs_shap": 0.3665847091707063
+    }
+  ]
+}

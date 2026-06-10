@@ -12,6 +12,7 @@ import pytest
 from src.utils.thresholds import (
     _make_threshold_grid,
     resolve_thresholds,
+    select_high_precision_threshold,
     select_max_f1_threshold,
     select_min_cost_threshold,
     threshold_sweep,
@@ -192,3 +193,38 @@ def test_make_threshold_grid_no_accumulation() -> None:
     assert len(grid) == 100
     assert float(grid[-1]) < 1.0
     assert float(grid[0]) == pytest.approx(0.0)
+
+
+def test_resolve_thresholds_rejects_bool_payload() -> None:
+    """bool is an int subclass; True must not be accepted as threshold 1.0."""
+    thresholds, sources, _, _ = resolve_thresholds(
+        {
+            "max_f1": {"threshold": True},
+            "high_precision": {"threshold": False},
+            "cost_sensitive": {"threshold": 0.3},
+        }
+    )
+    assert thresholds["max_f1"] == 0.5
+    assert thresholds["high_precision"] == 0.5
+    assert thresholds["cost_sensitive"] == 0.3
+
+
+def test_high_precision_selector_warns_when_constraints_unmet(caplog) -> None:
+    """A silent constraint-violating fallback must at least log a warning."""
+    import logging
+
+    import pandas as pd
+
+    sweep = pd.DataFrame(
+        {
+            "threshold": [0.9, 0.95],
+            "precision": [0.99, 1.0],
+            "recall": [0.10, 0.05],  # both below min_recall=0.2
+            "f1": [0.18, 0.10],
+            "positive_rate": [0.04, 0.02],
+        }
+    )
+    with caplog.at_level(logging.WARNING):
+        result = select_high_precision_threshold(sweep, min_positive_rate=0.05, min_recall=0.2)
+    assert result["constraint_met"] is False
+    assert any("high_precision" in rec.message for rec in caplog.records)

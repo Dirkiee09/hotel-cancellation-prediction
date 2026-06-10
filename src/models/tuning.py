@@ -19,7 +19,7 @@ from src.config import (
     TARGET_COL,
 )
 from src.features.build import build_preprocessor
-from src.models.train import train_gb, train_lgbm, train_xgb
+from src.models.train import is_lightgbm_available, train_gb, train_lgbm, train_xgb
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,21 @@ def _suggest_xgb_params(trial: Any) -> dict[str, Any]:
     }
 
 
+def _suggest_lgbm_params(trial: Any) -> dict[str, Any]:
+    # Search space mirrors _suggest_xgb_params where the knobs are comparable,
+    # so the families are tuned under an equivalent budget.
+    return {
+        "n_estimators": trial.suggest_int("n_estimators", 50, 500),
+        "max_depth": trial.suggest_int("max_depth", 2, 8),
+        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+        "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
+        "min_child_samples": trial.suggest_int("min_child_samples", 5, 50),
+        "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
+        "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
+    }
+
+
 def _suggest_gb_params(trial: Any) -> dict[str, Any]:
     return {
         "n_estimators": trial.suggest_int("n_estimators", 50, 500),
@@ -54,18 +69,6 @@ def _suggest_gb_params(trial: Any) -> dict[str, Any]:
         "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
         "subsample": trial.suggest_float("subsample", 0.6, 1.0),
         "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 20),
-    }
-
-
-def _suggest_lgbm_params(trial: Any) -> dict[str, Any]:
-    return {
-        "n_estimators": trial.suggest_int("n_estimators", 50, 500),
-        "max_depth": trial.suggest_int("max_depth", 2, 12),
-        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
-        "subsample": trial.suggest_float("subsample", 0.5, 1.0),
-        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
-        "num_leaves": trial.suggest_int("num_leaves", 20, 150),
-        "min_child_samples": trial.suggest_int("min_child_samples", 5, 50),
     }
 
 
@@ -78,10 +81,12 @@ def _rolling_origin_objective(
     """Objective: mean PR-AUC across rolling-origin windows."""
     if model_family == "xgboost":
         params = _suggest_xgb_params(trial)
+    elif model_family == "lightgbm":
+        if not is_lightgbm_available():
+            raise ImportError("lightgbm is not installed; cannot tune the lightgbm family")
+        params = _suggest_lgbm_params(trial)
     elif model_family == "gradient_boosting":
         params = _suggest_gb_params(trial)
-    elif model_family == "lightgbm":
-        params = _suggest_lgbm_params(trial)
     else:
         raise ValueError(f"Unsupported model family for tuning: {model_family}")
 
@@ -110,23 +115,9 @@ def _rolling_origin_objective(
         X_val_t = preprocessor.transform(X_val)
 
         if model_family == "xgboost":
-            model = train_xgb(
-                X_tr_t,
-                y_tr,
-                X_val=X_val_t,
-                y_val=y_val,
-                params=params,
-                early_stopping_rounds=10,
-            )
+            model = train_xgb(X_tr_t, y_tr, params=params)
         elif model_family == "lightgbm":
-            model = train_lgbm(
-                X_tr_t,
-                y_tr,
-                X_val=X_val_t,
-                y_val=y_val,
-                params=params,
-                early_stopping_rounds=10,
-            )
+            model = train_lgbm(X_tr_t, y_tr, params=params)
         else:
             model = train_gb(X_tr_t, y_tr, params=params)
 

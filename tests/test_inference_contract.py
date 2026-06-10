@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
 import src.app.main as app_main
@@ -230,6 +231,55 @@ def test_explain_prediction_returns_top_n_dicts(trained_artifacts_dir, sample_re
         assert set(entry.keys()) >= {"feature", "value", "contribution"}
         assert isinstance(entry["feature"], str)
         assert isinstance(entry["contribution"], float)
+
+
+def test_aggregate_encoded_contributions_no_prefix_collision() -> None:
+    """A raw feature that is a prefix of another must not absorb its contributions.
+
+    Regression guard: substring matching attributed `num__adr_per_person` to `adr`
+    because "adr" appears earlier in the raw feature list.
+    """
+    from src.serving.inference import _aggregate_encoded_contributions
+
+    encoded_names = ["num__adr", "num__adr_per_person", "cat__hotel_City Hotel"]
+    contributions = [0.1, 0.5, 0.2]
+    raw_features = ["hotel", "adr", "adr_per_person"]
+
+    agg = _aggregate_encoded_contributions(contributions, encoded_names, raw_features)
+
+    assert agg["adr"] == pytest.approx(0.1)
+    assert agg["adr_per_person"] == pytest.approx(0.5)
+    assert agg["hotel"] == pytest.approx(0.2)
+
+
+def test_aggregate_encoded_contributions_onehot_columns_sum() -> None:
+    """One-hot columns of the same categorical feature are summed together."""
+    from src.serving.inference import _aggregate_encoded_contributions
+
+    encoded_names = [
+        "cat__deposit_type_No Deposit",
+        "cat__deposit_type_Non Refund",
+        "num__lead_time",
+    ]
+    contributions = [0.3, -0.1, 0.7]
+    raw_features = ["deposit_type", "lead_time"]
+
+    agg = _aggregate_encoded_contributions(contributions, encoded_names, raw_features)
+
+    assert agg["deposit_type"] == pytest.approx(0.2)
+    assert agg["lead_time"] == pytest.approx(0.7)
+
+
+def test_tree_explainer_is_cached_per_artifacts(trained_artifacts_dir) -> None:
+    """The SHAP TreeExplainer must be built once and reused across predictions."""
+    pytest.importorskip("shap")
+    from src.serving.inference import _get_tree_explainer
+
+    artifacts = load_artifacts(trained_artifacts_dir)
+    explainer_a = _get_tree_explainer(artifacts)
+    explainer_b = _get_tree_explainer(artifacts)
+    assert explainer_a is not None
+    assert explainer_a is explainer_b
 
 
 def test_healthz_returns_503_when_calibrator_missing(monkeypatch, trained_artifacts_dir) -> None:

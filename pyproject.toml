@@ -62,6 +62,9 @@ line-ending = "lf"
 
 [tool.mypy]
 python_version = "3.11"
+# Pin the analysis platform so local runs (Windows) and CI (Linux) check the
+# same code paths; sys.platform-guarded branches are pruned consistently.
+platform = "linux"
 ignore_missing_imports = true
 warn_unused_ignores = true
 warn_unreachable = true

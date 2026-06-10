@@ -4,13 +4,13 @@ else
     PYTHON := .venv/bin/python
 endif
 
-.PHONY: install-dev lint format typecheck test security train eval benchmark thesis check demo-check full-pipeline export-predictions export-adr clean help
+.PHONY: install-dev lint format typecheck test security train eval benchmark thesis check demo full-pipeline export-predictions export-adr clean help
 
 help: ## Show this help message
 	@$(PYTHON) -c "import re, sys; lines = open('Makefile').readlines(); targets = [(m.group(1), m.group(2)) for l in lines if (m := re.match(r'^([a-zA-Z_-]+):.*?## (.*)$$', l))]; [print(f'  \033[36m{t[0]:<24}\033[0m {t[1]}') for t in sorted(targets)]"
 
-install-dev: ## Install package in editable mode with all dependencies
-	$(PYTHON) -m pip install -e . -r requirements.txt
+install-dev: ## Install package in editable mode with all dependencies (incl. dev tools)
+	$(PYTHON) -m pip install -e . -r requirements.txt -r requirements-dev.txt
 
 lint: ## Check code style with ruff
 	$(PYTHON) -m ruff check .
@@ -42,8 +42,8 @@ thesis: ## Full thesis analysis including SHAP and Optuna
 check: ## Run all quality gates (artifacts, metrics, sync, fairness)
 	$(PYTHON) scripts/check.py all
 
-demo-check: ## Pre-demo readiness check (artifacts, model load, predictions, live server)
-	$(PYTHON) scripts/demo_check.py
+demo: ## Launch the local prediction app (FastAPI + Gradio UI, opens browser)
+	$(PYTHON) demo/start_server.py
 
 full-pipeline: train eval benchmark check ## Full refresh: train → eval → benchmark → check
 	@echo "full-pipeline complete — all checks passed."

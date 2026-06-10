@@ -1,0 +1,7 @@
+# Developer-workstation tooling only — NOT needed for CI, training, serving,
+# or headless notebook execution (those need only requirements.txt).
+# Versions of ruff/mypy/bandit pinned in requirements.txt are mirrored in
+# .pre-commit-config.yaml; keep them in sync when bumping.
+jupyterlab==4.5.5
+pre-commit==4.0.1
+detect-secrets==1.5.0

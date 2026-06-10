@@ -705,12 +705,12 @@ def run_thesis_analysis(
     # 3. Optuna tuning
     if not skip_tuning:
         logger.info("thesis: running Optuna tuning")
-        if champion_family in {"xgboost", "gradient_boosting"}:
+        if champion_family in {"xgboost", "gradient_boosting", "lightgbm"}:
             tuning = _run_tuning(selection_df, feature_cols, champion_family)
         else:
             tuning = {
                 "skipped": True,
-                "reason": "Optuna tuning currently implemented for xgboost/gradient_boosting only",
+                "reason": f"No Optuna search space defined for family '{champion_family}'",
             }
         path = thesis_dir / "optuna_tuning.json"
         _save_json(path, tuning)

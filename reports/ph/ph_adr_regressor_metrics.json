@@ -1,0 +1,39 @@
+{
+  "feature_cols": [
+    "lead_time",
+    "stays_in_weekend_nights",
+    "stays_in_week_nights",
+    "adults",
+    "children",
+    "babies",
+    "reserved_room_type",
+    "deposit_type",
+    "total_of_special_requests",
+    "month_sin",
+    "month_cos",
+    "total_stay",
+    "total_guests",
+    "is_weekend_heavy",
+    "is_late_window"
+  ],
+  "feature_count": 15,
+  "n_test": 20,
+  "n_train": 154,
+  "n_val": 19,
+  "test": {
+    "mae": 603.5399469621698,
+    "r2": -0.9743088303198246,
+    "rmse": 615.359950001763
+  },
+  "train": {
+    "mae": 200.07222048344,
+    "r2": 0.8668493034707573,
+    "rmse": 292.7001877779003
+  },
+  "trained_at": "2026-05-20T10:31:35.678187+00:00",
+  "val": {
+    "mae": 651.2349202462328,
+    "r2": -1.8028940987445607,
+    "rmse": 720.2225837140568
+  }
+}

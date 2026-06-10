@@ -204,115 +204,6 @@ def load_main_context() -> dict[str, Any]:
     }
 
 
-def load_ph_context() -> dict[str, Any]:
-    """Load PH report/artifact-backed context for the notebooks/ph/ suite.
-
-    Mirrors load_main_context's dict shape so the same plot helpers
-    (plot_main_roc_pr, plot_main_calibration_hist, plot_main_confusion,
-    plot_baseline_comparison, plot_learning_dynamics, etc.) work without
-    modification — the helpers consume a context dict, not Portugal paths.
-
-    Required artifacts (produced by ``python scripts/train_ph.py``):
-        artifacts/ph/ph_model.pkl
-        artifacts/ph/ph_calibrator.pkl
-        artifacts/ph/ph_thresholds.json
-        reports/ph/ph_transferability.json
-        reports/ph/ph_test_predictions.csv
-
-    Optional (gracefully skipped if missing):
-        reports/ph/champion_summary.json
-        reports/ph/baseline_comparison.json
-        reports/ph/learning_curves.json
-        reports/ph/expanding_window_cv.json
-        reports/ph/shap_analysis.json
-        reports/ph/shap_feature_importance.csv
-        artifacts/ph/cost_threshold_sweep.csv
-    """
-    root = project_root()
-    ph_art = root / "artifacts" / "ph"
-    ph_rep = root / "reports" / "ph"
-
-    required = [
-        ph_art / "ph_model.pkl",
-        ph_art / "ph_thresholds.json",
-        ph_rep / "ph_transferability.json",
-        ph_rep / "ph_test_predictions.csv",
-    ]
-    missing = [str(p) for p in required if not p.exists()]
-    if missing:
-        raise FileNotFoundError(
-            "Missing required PH files (run `python scripts/train_ph.py`):\n" + "\n".join(missing)
-        )
-
-    metrics = load_json(ph_rep / "ph_transferability.json")
-    thresholds = load_json(ph_art / "ph_thresholds.json")
-    test_predictions = pd.read_csv(ph_rep / "ph_test_predictions.csv")
-
-    model_pipeline = joblib.load(ph_art / "ph_model.pkl")
-    calibrator_path = ph_art / "ph_calibrator.pkl"
-    calibrator = joblib.load(calibrator_path) if calibrator_path.exists() else None
-
-    feature_cols_path = ph_art / "ph_feature_columns.json"
-    feature_cols = (
-        load_json(feature_cols_path).get("features")
-        if feature_cols_path.exists()
-        else metrics.get("feature_columns", [])
-    )
-
-    y_test = (
-        test_predictions[metrics.get("target_column", "is_canceled")].astype(int)
-        if "is_canceled" in test_predictions.columns
-        else test_predictions["is_canceled"].astype(int)
-    )
-    y_prob = test_predictions["cancel_probability"].astype(float).to_numpy()
-    threshold_max_f1 = float(thresholds["max_f1"]["threshold"])
-    threshold_high_precision = float(thresholds["high_precision"]["threshold"])
-    y_pred_max_f1 = (y_prob >= threshold_max_f1).astype(int)
-
-    sweep_path = ph_rep / "ph_threshold_sweep.csv"
-    threshold_sweep_df = pd.read_csv(sweep_path) if sweep_path.exists() else pd.DataFrame()
-
-    optional: dict[str, Any] = {}
-    for name, path in [
-        ("champion_summary", ph_rep / "champion_summary.json"),
-        ("baseline_comparison", ph_rep / "baseline_comparison.json"),
-        ("learning_curves", ph_rep / "learning_curves.json"),
-        ("expanding_window_cv", ph_rep / "expanding_window_cv.json"),
-        ("shap_analysis", ph_rep / "shap_analysis.json"),
-    ]:
-        if path.exists():
-            optional[name] = load_json(path)
-
-    shap_importance_path = ph_rep / "shap_feature_importance.csv"
-    if shap_importance_path.exists():
-        optional["shap_feature_importance"] = pd.read_csv(shap_importance_path)
-
-    cost_sweep_path = ph_art / "cost_threshold_sweep.csv"
-    if cost_sweep_path.exists():
-        optional["cost_sensitivity_sweep"] = pd.read_csv(cost_sweep_path)
-
-    return {
-        "root": root,
-        "ph_artifacts_dir": ph_art,
-        "ph_reports_dir": ph_rep,
-        "test_df": test_predictions,
-        "X_test": test_predictions[feature_cols] if feature_cols else None,
-        "y_test": y_test,
-        "y_test_np": y_test.to_numpy(),
-        "y_prob": y_prob,
-        "y_pred_max_f1": y_pred_max_f1,
-        "metrics": metrics,
-        "thresholds": thresholds,
-        "threshold_sweep": threshold_sweep_df,
-        "threshold_max_f1": threshold_max_f1,
-        "threshold_high_precision": threshold_high_precision,
-        "model_pipeline": model_pipeline,
-        "calibrator": calibrator,
-        "feature_columns": feature_cols,
-        **optional,
-    }
-
-
 def main_summary_table(ctx: dict[str, Any]) -> pd.DataFrame:
     metrics = ctx["metrics"]
     return pd.DataFrame(
@@ -1223,7 +1114,7 @@ def grouped_permutation_stats(
             return name
 
         group_map = {c: feature_group(c) for c in repeat_df.columns}
-        grouped_repeat = repeat_df.T.groupby(group_map).sum().T  # type: ignore[arg-type, unused-ignore]
+        grouped_repeat = repeat_df.T.groupby(group_map).sum().T  # type: ignore[arg-type]
     except Exception:
         # Fallback for preprocessors that do not expose transformed feature names.
         # In this mode, importance is already at original feature granularity.
@@ -1504,7 +1395,7 @@ def load_shap_context(ctx: dict[str, Any]) -> dict[str, Any]:
         pd.DataFrame({"feature_name": feature_names, "group": groups, "mean_abs_shap": mean_abs})
         .groupby("group", as_index=False)["mean_abs_shap"]
         .sum()
-        .sort_values("mean_abs_shap", ascending=False)  # type: ignore[call-overload, unused-ignore]
+        .sort_values("mean_abs_shap", ascending=False)  # type: ignore[call-overload]
         .reset_index(drop=True)
     )
 
@@ -1968,7 +1859,7 @@ def plot_split_feature_importance(
     grouped = (
         fi_df.groupby("group", as_index=False)["importance"]
         .sum()
-        .sort_values("importance", ascending=False)  # type: ignore[call-overload, unused-ignore]
+        .sort_values("importance", ascending=False)  # type: ignore[call-overload]
         .reset_index(drop=True)
     )
 
@@ -2048,8 +1939,8 @@ def plot_learning_dynamics(
                     "train_log_loss": float(log_loss(y_train, p_train)),
                 }
             )
-        except (ValueError, RuntimeError, MemoryError) as exc:
-            logger.debug("learning_curve_skip n_estimators=%d error=%s", int(n_est), exc)
+        except Exception as exc:
+            logger.debug("learning-curve point skipped (non-fatal): %s", exc)
             continue
 
     curve_df = pd.DataFrame(rows)
@@ -2517,369 +2408,6 @@ def plot_top_correlations_bar(
     return top_corr.to_frame("correlation")
 
 
-def plot_metric_forest(
-    ci_df: pd.DataFrame,
-    fig_dir: Path,
-    fig_no: int | str = 6,
-    *,
-    point_col: str = "point_estimate",
-    lower_col: str = "ci_lower",
-    upper_col: str = "ci_upper",
-    metric_col: str = "metric",
-    title: str | None = None,
-    stem: str = "bootstrap_ci_forest",
-    x_label: str = "Metric value (95% bootstrap CI)",
-    reference_line: float | None = None,
-    sig_col: str | None = None,
-) -> None:
-    """Forest plot of point estimates with 95% CIs — one row per metric.
-
-    Handles both absolute metrics (Round 1 use: bootstrap CI table at 0-1
-    scale) and signed deltas (Round 2 use: paired challenger-vs-champion
-    deltas which can be negative).  Auto-detects x-limits from the data
-    so it does not clip negative values.
-
-    Optional features:
-        reference_line: draw a vertical line at this x (e.g. 0 for "no
-            difference" when plotting deltas).
-        sig_col: name of a boolean column.  Rows where this is True are
-            drawn in red (significant); other rows stay blue.
-    """
-    df = ci_df.copy().reset_index(drop=True)
-    if df.empty:
-        print("plot_metric_forest: empty input — skipping.")
-        return
-    n = len(df)
-    fig, ax = plt.subplots(figsize=(9, max(3.5, n * 0.55 + 1.2)))
-    y_pos = np.arange(n)
-
-    # Determine x-limits with padding so annotations don't get clipped
-    all_lo = float(df[lower_col].astype(float).min())
-    all_hi = float(df[upper_col].astype(float).max())
-    span = max(all_hi - all_lo, 1e-9)
-    pad_left = max(span * 0.10, 0.005)
-    pad_right = max(span * 0.30, 0.05)  # extra right padding for annotations
-
-    cap = 0.18
-    for i, (_, row) in enumerate(df.iterrows()):
-        lo, hi, pt = float(row[lower_col]), float(row[upper_col]), float(row[point_col])
-        is_sig = bool(row[sig_col]) if sig_col and sig_col in df.columns else False
-        ci_color = "#e15759" if is_sig else "#4e79a7"
-        # CI bar + end caps
-        ax.plot([lo, hi], [i, i], color=ci_color, linewidth=2.2, alpha=0.75)
-        ax.plot([lo, lo], [i - cap, i + cap], color=ci_color, linewidth=2.2)
-        ax.plot([hi, hi], [i - cap, i + cap], color=ci_color, linewidth=2.2)
-        # Annotation to the right of the upper end
-        sig_marker = "  *" if is_sig else ""
-        ax.text(
-            hi + pad_right * 0.08,
-            i,
-            f"{pt:+.4f}  [{lo:+.4f}, {hi:+.4f}]{sig_marker}",
-            va="center",
-            ha="left",
-            fontsize=9,
-            color="#333333",
-        )
-
-    # Point estimates as filled dots on top
-    dot_colors = [
-        "#9B1C1F"
-        if (sig_col and sig_col in df.columns and bool(df[sig_col].iloc[i]))
-        else "#1b3a5c"
-        for i in range(n)
-    ]
-    ax.scatter(
-        df[point_col].astype(float),
-        y_pos,
-        c=dot_colors,
-        s=90,
-        zorder=5,
-        edgecolor="white",
-        linewidth=1.3,
-        label="Point estimate",
-    )
-
-    if reference_line is not None:
-        ax.axvline(reference_line, color="#444444", linewidth=1.0, linestyle="--", alpha=0.7)
-
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels(df[metric_col])
-    ax.set_xlabel(x_label)
-    ax.set_title(
-        title or f"Figure {fig_no}. Bootstrap 95% Confidence Intervals",
-        fontweight="bold",
-    )
-    ax.grid(True, axis="x", alpha=0.25)
-    ax.set_xlim(all_lo - pad_left, all_hi + pad_right)
-    ax.invert_yaxis()  # first row at the top
-    fig.tight_layout()
-    save_thesis_figure(fig, fig_no, stem, fig_dir)
-    plt.show()
-
-
-def plot_pareto_frontier(
-    df: pd.DataFrame,
-    x_col: str,
-    y_col: str,
-    label_col: str,
-    fig_dir: Path,
-    fig_no: int | str,
-    *,
-    x_label: str | None = None,
-    y_label: str | None = None,
-    lower_x_better: bool = True,
-    higher_y_better: bool = True,
-    title: str | None = None,
-    stem: str = "pareto_frontier",
-    highlight: str | None = None,
-    annotate: bool = True,
-) -> pd.DataFrame:
-    """Scatter with Pareto-optimal points highlighted and connected by a line.
-
-    Points are split into two layers:
-      * Pareto-optimal (no other point dominates them on both axes) → dark dots
-        connected with a dashed frontier line.
-      * Dominated (some other point is better on both axes) → grey dots.
-
-    If `highlight` matches a row's label_col value, that row gets a red star on
-    top — useful for marking the champion.  Returns the frontier subset.
-    """
-    data = df.copy().reset_index(drop=True)
-    if len(data) < 2:
-        print(f"plot_pareto_frontier: need >=2 points, got {len(data)}; skipping.")
-        return data
-
-    x = data[x_col].astype(float).to_numpy()
-    y = data[y_col].astype(float).to_numpy()
-
-    # Compute Pareto frontier (O(n^2) but n is always small here)
-    n = len(data)
-    is_optimal = np.ones(n, dtype=bool)
-    for i in range(n):
-        for j in range(n):
-            if i == j:
-                continue
-            x_better = (x[j] <= x[i]) if lower_x_better else (x[j] >= x[i])
-            y_better = (y[j] >= y[i]) if higher_y_better else (y[j] <= y[i])
-            strict = (x[j] != x[i]) or (y[j] != y[i])
-            x_strict = (x[j] < x[i]) if lower_x_better else (x[j] > x[i])
-            y_strict = (y[j] > y[i]) if higher_y_better else (y[j] < y[i])
-            if x_better and y_better and strict and (x_strict or y_strict):
-                is_optimal[i] = False
-                break
-
-    frontier = data[is_optimal].sort_values(x_col, ascending=lower_x_better).reset_index(drop=True)
-    dominated = data[~is_optimal]
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    if not dominated.empty:
-        ax.scatter(
-            dominated[x_col],
-            dominated[y_col],
-            s=85,
-            color="#cccccc",
-            edgecolor="white",
-            linewidth=1.5,
-            zorder=3,
-            label="Dominated",
-        )
-        if annotate:
-            for _, row in dominated.iterrows():
-                ax.annotate(
-                    str(row[label_col]).replace("_", " ").title(),
-                    (row[x_col], row[y_col]),
-                    textcoords="offset points",
-                    xytext=(8, 4),
-                    fontsize=9,
-                    color="#888888",
-                )
-
-    if not frontier.empty:
-        ax.scatter(
-            frontier[x_col],
-            frontier[y_col],
-            s=130,
-            color="#1b3a5c",
-            edgecolor="white",
-            linewidth=1.8,
-            zorder=5,
-            label="Pareto-optimal",
-        )
-        if annotate:
-            for _, row in frontier.iterrows():
-                ax.annotate(
-                    str(row[label_col]).replace("_", " ").title(),
-                    (row[x_col], row[y_col]),
-                    textcoords="offset points",
-                    xytext=(8, 4),
-                    fontsize=10,
-                    fontweight="bold",
-                )
-        # Frontier line connecting the optimal points
-        if len(frontier) >= 2:
-            ax.plot(
-                frontier[x_col],
-                frontier[y_col],
-                color="#4e79a7",
-                linewidth=1.8,
-                linestyle="--",
-                alpha=0.6,
-                zorder=4,
-            )
-
-    # Champion star
-    if highlight is not None:
-        hl = data[data[label_col].astype(str) == str(highlight)]
-        if not hl.empty:
-            ax.scatter(
-                hl[x_col],
-                hl[y_col],
-                s=260,
-                color="#e15759",
-                marker="*",
-                edgecolor="white",
-                linewidth=1.8,
-                zorder=6,
-                label=f"Champion ({highlight})",
-            )
-
-    ax.set_xlabel(x_label or x_col, fontsize=11)
-    ax.set_ylabel(y_label or y_col, fontsize=11)
-    ax.set_title(
-        title or f"Figure {fig_no}. Pareto Frontier: {x_col} vs {y_col}",
-        fontweight="bold",
-    )
-    ax.grid(True, alpha=0.3)
-    ax.legend(loc="best", framealpha=0.92, fontsize=9)
-    fig.tight_layout()
-    save_thesis_figure(fig, fig_no, stem, fig_dir)
-    plt.show()
-    return frontier
-
-
-def plot_parallel_coordinates(
-    df: pd.DataFrame,
-    value_cols: list[str],
-    label_col: str,
-    fig_dir: Path,
-    fig_no: int | str,
-    *,
-    higher_better: list[bool] | None = None,
-    highlight: str | None = None,
-    title: str | None = None,
-    stem: str = "parallel_coordinates",
-    column_labels: list[str] | None = None,
-) -> None:
-    """Parallel-coordinates plot — one line per row across multiple normalised axes.
-
-    Each axis is rescaled to [0, 1] where 1 is always "best" (flipping when the
-    metric is one where lower is better, e.g. training time, business cost).
-    Useful for visualising multi-criteria trade-offs across N models when no
-    single composite score captures the picture.
-
-    If `highlight` matches a row, that line is drawn in red on top of greyed
-    others — directly answers "where does the champion win and lose?"
-    """
-    data = df.copy().reset_index(drop=True)
-    n_cols = len(value_cols)
-    if n_cols < 2:
-        print("plot_parallel_coordinates: need >=2 value columns; skipping.")
-        return
-    if higher_better is None:
-        higher_better = [True] * n_cols
-
-    # Normalize each column to [0, 1] in the "better" direction
-    normed = pd.DataFrame(index=data.index)
-    for col, hib in zip(value_cols, higher_better):
-        vals = data[col].astype(float)
-        lo, hi = float(vals.min()), float(vals.max())
-        if hi == lo:
-            normed[col] = 0.5
-        elif hib:
-            normed[col] = (vals - lo) / (hi - lo)
-        else:
-            normed[col] = (hi - vals) / (hi - lo)
-
-    fig, ax = plt.subplots(figsize=(max(8, n_cols * 1.6), 6))
-    x_pos = np.arange(n_cols)
-
-    # Distinct fallback colours for the no-highlight case so each model line is
-    # visually separable in the legend. Used positionally; PALETTE is keyed by
-    # metric/family name and can't be indexed by integer position.
-    _LINE_CYCLE = [
-        "#4e79a7",
-        "#f28e2b",
-        "#e15759",
-        "#76b7b2",
-        "#59a14f",
-        "#edc949",
-        "#af7aa1",
-        "#ff9da7",
-    ]
-
-    # Two-pass draw: greyed lines first, highlighted last
-    for i, (_, row) in enumerate(data.iterrows()):
-        label = str(row[label_col])
-        is_hl = highlight is not None and label == str(highlight)
-        if is_hl:
-            continue  # draw last
-        color = _LINE_CYCLE[i % len(_LINE_CYCLE)] if highlight is None else "#cccccc"
-        ax.plot(
-            x_pos,
-            normed.iloc[i].to_numpy(),
-            color=color,
-            linewidth=1.4,
-            alpha=0.75,
-            zorder=2,
-            marker="o",
-            markersize=6,
-            label=label.replace("_", " ").title() if highlight is None else None,
-        )
-
-    if highlight is not None:
-        # Iterate the full data once and draw highlight matches on top. Using
-        # enumerate gives a positional `i` for `normed.iloc[i]` rather than the
-        # original index — important because `hl_rows` filtering would keep the
-        # parent index, breaking the positional lookup if any caller passes a
-        # non-default-indexed DataFrame.
-        for i, (_, row) in enumerate(data.iterrows()):
-            if str(row[label_col]) != str(highlight):
-                continue
-            ax.plot(
-                x_pos,
-                normed.iloc[i].to_numpy(),
-                color="#e15759",
-                linewidth=2.8,
-                alpha=0.95,
-                zorder=5,
-                marker="o",
-                markersize=9,
-                label=f"{str(row[label_col]).replace('_', ' ').title()} (champion)",
-            )
-
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(column_labels or value_cols, rotation=20, ha="right")
-    ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-    ax.set_yticklabels(["Worst", "", "Mid", "", "Best"])
-    ax.set_ylabel("Normalised rank per metric (1.0 = best across models)")
-    ax.set_ylim(-0.05, 1.08)
-
-    # Light vertical lines at each axis
-    for xp in x_pos:
-        ax.axvline(float(xp), color="#888888", linewidth=0.6, alpha=0.4)
-
-    ax.set_title(
-        title or f"Figure {fig_no}. Multi-Criteria Model Comparison",
-        fontweight="bold",
-    )
-    ax.grid(True, axis="y", alpha=0.25)
-    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), fontsize=9, framealpha=0.92)
-    fig.tight_layout()
-    save_thesis_figure(fig, fig_no, stem, fig_dir)
-    plt.show()
-
-
 def plot_significance_bar(
     ctx: dict[str, Any],
     fig_dir: Path,
@@ -3220,8 +2748,8 @@ def dataset_size_sensitivity(
                 roc_aucs.append(roc_auc_score(y_val, probs))
                 pr_aucs.append(average_precision_score(y_val, probs))
                 f1s.append(f1_score(y_val, preds))
-            except (ValueError, RuntimeError, MemoryError) as exc:
-                logger.debug("data_hunger_skip frac=%s seed=%d error=%s", frac, seed, exc)
+            except Exception as exc:
+                logger.debug("data-hunger repeat skipped (non-fatal): %s", exc)
                 continue
 
         if roc_aucs:

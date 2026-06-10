@@ -15,12 +15,14 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
-from sklearn.metrics import brier_score_loss
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import average_precision_score, brier_score_loss
 from sklearn.pipeline import Pipeline
 
 from src.config import (
     ARTIFACTS_DIR,
     BOOKING_TIME_FEATURES,
+    BOOTSTRAP_N_ITERATIONS,
     CALIBRATION_ECE_BINS,
     CALIBRATION_METHOD,
     DATA_PATH,
@@ -47,6 +49,7 @@ from src.config import (
     VAL_RATIO,
 )
 from src.data.load import load_raw_data
+from src.eval.statistical import paired_bootstrap_test
 from src.features.build import build_preprocessor, split_time_aware
 from src.models.metrics import (
     compute_confusion,
@@ -60,6 +63,7 @@ from src.utils.business import (
     assign_risk_tiers,
     compute_cost_threshold_policy,
     compute_fn_cost_vector,
+    evaluate_cost_at_threshold,
     safe_threshold_metrics,
 )
 from src.utils.reproducibility import set_global_seed
@@ -327,11 +331,79 @@ def _late_window_report(
     }
 
 
+def _test_cost_report(
+    y_test: np.ndarray,
+    test_probs: np.ndarray,
+    fn_cost: np.ndarray,
+    *,
+    selected_threshold: float,
+) -> dict[str, Any]:
+    """Evaluate the validation-selected cost threshold on the held-out test set.
+
+    The threshold itself is NOT re-optimised here — doing so would tune on the
+    evaluation set. Trivial-policy baselines (threshold 0.5, intervene-on-all,
+    no-model) are evaluated on the same test rows for a fair comparison.
+    """
+    at_selected = evaluate_cost_at_threshold(
+        y_test, test_probs, fn_cost, fp_cost=FP_INTERVENTION_COST, threshold=selected_threshold
+    )
+    at_050 = evaluate_cost_at_threshold(
+        y_test, test_probs, fn_cost, fp_cost=FP_INTERVENTION_COST, threshold=0.5
+    )
+    at_000 = evaluate_cost_at_threshold(
+        y_test, test_probs, fn_cost, fp_cost=FP_INTERVENTION_COST, threshold=0.0
+    )
+    no_model_cost = float(np.asarray(fn_cost, dtype=float)[np.asarray(y_test) == 1].sum())
+    return {
+        "dataset": "test",
+        **at_selected,
+        "baseline_050_cost": float(at_050["total_cost"]),
+        "intervene_all_cost": float(at_000["total_cost"]),
+        "no_model_cost": no_model_cost,
+        "savings_vs_050": float(at_050["total_cost"] - at_selected["total_cost"]),
+        "savings_vs_intervene_all": float(at_000["total_cost"] - at_selected["total_cost"]),
+        "savings_vs_no_model": float(no_model_cost - at_selected["total_cost"]),
+        "fp_cost_assumption": float(FP_INTERVENTION_COST),
+        "fn_recovery_nights": float(FN_RECOVERY_NIGHTS),
+    }
+
+
+def _h2_baseline_comparison(
+    X_train_t: Any,
+    y_train: pd.Series,
+    X_test_t: Any,
+    y_test: np.ndarray,
+    champion_test_probs: np.ndarray,
+) -> dict[str, Any]:
+    """Champion vs logistic-regression baseline on the test set (paired bootstrap).
+
+    H2 claims gradient-boosted trees beat simpler baselines; that requires an
+    actual baseline in the comparison, not a vote among GBT families.
+    """
+    baseline = LogisticRegression(max_iter=2000, solver="lbfgs", random_state=RANDOM_STATE)
+    baseline.fit(X_train_t, np.asarray(y_train).astype(int))
+    baseline_probs = baseline.predict_proba(X_test_t)[:, 1]
+    comparison = paired_bootstrap_test(
+        y_test,
+        champion_test_probs,
+        baseline_probs,
+        lambda yt, yp: float(average_precision_score(yt, yp)),
+        n_bootstraps=BOOTSTRAP_N_ITERATIONS,
+    )
+    return {
+        "baseline_model": "logistic_regression",
+        "champion_pr_auc": safe_pr_auc(y_test, champion_test_probs),
+        "baseline_pr_auc": safe_pr_auc(y_test, baseline_probs),
+        **comparison,
+    }
+
+
 def _hypothesis_summary(
     *,
     selected_model_family: str,
     selection_report: dict[str, Any],
-    cost_summary: dict[str, Any],
+    test_cost_report: dict[str, Any],
+    h2_comparison: dict[str, Any],
     late_window_report: dict[str, Any],
 ) -> dict[str, Any]:
     model_scores = {
@@ -341,8 +413,10 @@ def _hypothesis_summary(
         }
         for row in selection_report.get("candidates", [])
     }
-    h2_supported = selected_model_family in {"xgboost", "lightgbm"}
-    h4_supported = float(cost_summary.get("savings_vs_050", 0.0)) > 0
+    h2_supported = float(h2_comparison.get("observed_delta", 0.0)) > 0 and bool(
+        h2_comparison.get("significant_at_05", False)
+    )
+    h4_supported = float(test_cost_report.get("savings_vs_050", 0.0)) > 0
 
     return {
         "H1": {
@@ -353,6 +427,12 @@ def _hypothesis_summary(
         "H2": {
             "statement": "Gradient-boosted trees outperform simpler baselines.",
             "status": "supported" if h2_supported else "not_supported",
+            "evaluation_dataset": "test",
+            "baseline_model": h2_comparison["baseline_model"],
+            "champion_pr_auc": h2_comparison["champion_pr_auc"],
+            "baseline_pr_auc": h2_comparison["baseline_pr_auc"],
+            "observed_delta": h2_comparison["observed_delta"],
+            "p_value": h2_comparison["p_value"],
             "selected_model_family": selected_model_family,
             "rolling_selection_scores": model_scores,
         },
@@ -364,8 +444,12 @@ def _hypothesis_summary(
         "H4": {
             "statement": "Cost-sensitive thresholding reduces expected revenue loss.",
             "status": "supported" if h4_supported else "not_supported",
-            "savings_vs_threshold_050": float(cost_summary.get("savings_vs_050", 0.0)),
-            "savings_vs_no_model": float(cost_summary.get("savings_vs_no_model", 0.0)),
+            "evaluation_dataset": "test",
+            "savings_vs_threshold_050": float(test_cost_report.get("savings_vs_050", 0.0)),
+            "savings_vs_intervene_all": float(
+                test_cost_report.get("savings_vs_intervene_all", 0.0)
+            ),
+            "savings_vs_no_model": float(test_cost_report.get("savings_vs_no_model", 0.0)),
             "late_window_cancel_rate": float(
                 late_window_report.get("cancel_rate_late_window", 0.0)
             ),
@@ -426,10 +510,12 @@ def _fit_model_family(
     scale_pos_weight: float | None = None,
     use_early_stopping: bool = False,
 ):
+    # When scale_pos_weight is provided it is applied to every family (sample
+    # weights for sklearn GB) so callers can weight all candidates identically.
+    # The training pipeline passes None: candidates and benchmark specs are
+    # both unweighted, keeping the champion identical across the two paths.
     if model_family == "gradient_boosting":
-        # sklearn GradientBoostingClassifier has no scale_pos_weight parameter;
-        # class imbalance is handled via the deviance loss function.
-        return train_gb(X_train, y_train)
+        return train_gb(X_train, y_train, scale_pos_weight=scale_pos_weight)
     if model_family == "xgboost":
         if use_early_stopping and X_val is not None and y_val is not None:
             return train_xgb(
@@ -447,8 +533,9 @@ def _fit_model_family(
                 y_train,
                 X_val=X_val,
                 y_val=y_val,
+                scale_pos_weight=scale_pos_weight,
             )
-        return train_lgbm(X_train, y_train)
+        return train_lgbm(X_train, y_train, scale_pos_weight=scale_pos_weight)
     raise ValueError(f"Unsupported model family: {model_family}")
 
 
@@ -511,11 +598,17 @@ def _select_model_family(selection_df: pd.DataFrame, feature_cols: list[str]) ->
             X_train_t = preprocessor.fit_transform(X_train_fold)
             X_val_t = preprocessor.transform(X_val_fold)
 
+            # No class weighting for ANY candidate: every family must receive
+            # identical imbalance treatment, and the benchmark specs
+            # (src/eval/benchmark.py) train unweighted — the champion must be
+            # bit-identical in both paths or `scripts/check.py sync` fails.
+            # Imbalance is handled downstream by isotonic calibration and the
+            # threshold policies.
             model = _fit_model_family(
                 model_family,
                 X_train_t,
                 y_train_fold,
-                scale_pos_weight=_compute_scale_pos_weight(y_train_fold),
+                scale_pos_weight=None,
                 use_early_stopping=False,
             )
             probs = model.predict_proba(X_val_t)[:, 1]
@@ -632,7 +725,7 @@ def _model_metadata(
     train_rows: int,
     val_rows: int,
     test_rows: int,
-    scale_pos_weight: float,
+    class_imbalance_ratio: float,
     model_family: str,
     selection_summary: dict[str, Any],
     calibration_summary: dict[str, Any],
@@ -655,7 +748,10 @@ def _model_metadata(
             "rows_train": train_rows,
             "rows_val": val_rows,
             "rows_test": test_rows,
-            "scale_pos_weight": scale_pos_weight if model_family == "xgboost" else None,
+            # Lineage info only: training is unweighted across all families so the
+            # champion is identical to its benchmark counterpart.
+            "scale_pos_weight": None,
+            "class_imbalance_ratio": class_imbalance_ratio,
         },
         "model_selection": selection_summary,
         "calibration": calibration_summary,
@@ -743,15 +839,20 @@ def run_training_pipeline(
         X_train_t.shape[1],
     )
 
-    scale_pos_weight = _compute_scale_pos_weight(y_train)
+    # Recorded as lineage info only — the final fit is unweighted, matching the
+    # rolling-selection candidates and the benchmark specs (see comment in
+    # _select_model_family). Calibration + threshold policies handle imbalance.
+    class_imbalance_ratio = _compute_scale_pos_weight(y_train)
     logger.info(
-        "model_fit_start family=%s scale_pos_weight=%.3f", selected_model_family, scale_pos_weight
+        "model_fit_start family=%s class_imbalance_ratio=%.3f",
+        selected_model_family,
+        class_imbalance_ratio,
     )
     model = _fit_model_family(
         selected_model_family,
         X_train_t,
         y_train,
-        scale_pos_weight=scale_pos_weight,
+        scale_pos_weight=None,
         use_early_stopping=False,
     )
 
@@ -805,12 +906,28 @@ def run_training_pipeline(
         "cost_sensitive": cost_sensitive,
     }
 
+    y_test_np = y_test.to_numpy().astype(int)
+    test_cost = _test_cost_report(
+        y_test_np,
+        test_probs,
+        compute_fn_cost_vector(test_df, fn_recovery_nights=FN_RECOVERY_NIGHTS),
+        selected_threshold=float(cost_sensitive["threshold"]),
+    )
+    h2_comparison = _h2_baseline_comparison(X_train_t, y_train, X_test_t, y_test_np, test_probs)
+    logger.info(
+        "h2_baseline_comparison champion_pr_auc=%.4f baseline_pr_auc=%.4f p_value=%.4f",
+        h2_comparison["champion_pr_auc"],
+        h2_comparison["baseline_pr_auc"],
+        h2_comparison["p_value"],
+    )
+
     metrics = {
         "high_precision": evaluate_at_threshold(y_test, test_probs, high_precision["threshold"]),
         "max_f1": evaluate_at_threshold(y_test, test_probs, max_f1["threshold"]),
         "cost_sensitive": evaluate_at_threshold(y_test, test_probs, cost_sensitive["threshold"]),
         "selected_model_family": selected_model_family,
-        "scale_pos_weight": scale_pos_weight if selected_model_family == "xgboost" else None,
+        "scale_pos_weight": None,
+        "class_imbalance_ratio": class_imbalance_ratio,
         "model_selection": {
             "policy": selection_report["policy"],
             "winner": selected_model_family,
@@ -821,9 +938,12 @@ def run_training_pipeline(
         "data_cleaning": cleaning_issues,
         "cost_thresholding": {
             **cost_summary,
+            "dataset": "validation",
             "risk_tier_medium_threshold": float(RISK_TIER_MEDIUM_THRESHOLD),
             "risk_tier_high_threshold": float(RISK_TIER_HIGH_THRESHOLD),
         },
+        "cost_thresholding_test": test_cost,
+        "h2_baseline_comparison": h2_comparison,
     }
 
     confusion_high_precision = compute_confusion(y_test, test_probs, high_precision["threshold"])
@@ -834,7 +954,8 @@ def run_training_pipeline(
     hypothesis = _hypothesis_summary(
         selected_model_family=selected_model_family,
         selection_report=selection_report,
-        cost_summary=cost_summary,
+        test_cost_report=test_cost,
+        h2_comparison=h2_comparison,
         late_window_report=late_window,
     )
 
@@ -893,7 +1014,7 @@ def run_training_pipeline(
             train_rows=len(train_df),
             val_rows=len(val_df),
             test_rows=len(test_df),
-            scale_pos_weight=scale_pos_weight,
+            class_imbalance_ratio=class_imbalance_ratio,
             model_family=selected_model_family,
             selection_summary={
                 "policy": selection_report["policy"],
@@ -949,8 +1070,6 @@ def run_training_pipeline(
         index=["actual_0", "actual_1"],
         columns=["pred_0", "pred_1"],
     ).to_csv(reports_dir / "confusion_matrix_cost_sensitive.csv")
-
-    _save_json(reports_dir / "threshold_summary.json", thresholds)
 
     logger.info(
         "training_complete artifacts_dir=%s reports_dir=%s rows_train=%s rows_val=%s rows_test=%s selected_model=%s",

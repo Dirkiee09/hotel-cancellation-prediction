@@ -91,11 +91,27 @@ def select_high_precision_threshold(
     else:
         recall_only = df[recall_ok]
         if not recall_only.empty:
+            logger.warning(
+                "high_precision threshold: positive-rate constraint (>= %.2f) unmet; "
+                "falling back to recall-only candidates.",
+                min_positive_rate,
+            )
             best = recall_only.sort_values(
                 ["precision", "recall", "threshold"],
                 ascending=[False, False, True],
             ).iloc[0]
         else:
+            logger.warning(
+                "high_precision threshold: no sweep row satisfies recall >= %.2f; "
+                "selecting max-precision row regardless (selected recall=%.4f). "
+                "The deployed policy violates its documented recall floor.",
+                min_recall,
+                float(
+                    df.sort_values(
+                        ["precision", "recall", "threshold"], ascending=[False, False, True]
+                    ).iloc[0]["recall"]
+                ),
+            )
             best = df.sort_values(
                 ["precision", "recall", "threshold"],
                 ascending=[False, False, True],
@@ -213,7 +229,8 @@ def resolve_thresholds(
     def _threshold_or_none(payload: object) -> float | None:
         if isinstance(payload, dict):
             value = payload.get("threshold")
-            if isinstance(value, int | float):
+            # bool is an int subclass; True/False must not pass as 1.0/0.0.
+            if isinstance(value, int | float) and not isinstance(value, bool):
                 return float(value)
         return None
 

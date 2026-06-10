@@ -1,0 +1,42 @@
+{
+  "champion": "lightgbm",
+  "n_bootstrap": 200,
+  "n_test": 20,
+  "paired_deltas_vs_champion": {
+    "gradient_boosting": {
+      "delta_pr_auc_ci_high": 0.2894187062937063,
+      "delta_pr_auc_ci_low": -0.10418869325119319,
+      "delta_pr_auc_mean": 0.1050604842356027,
+      "significant": false
+    },
+    "xgboost": {
+      "delta_pr_auc_ci_high": 0.19000446428571424,
+      "delta_pr_auc_ci_low": -0.15377664920863446,
+      "delta_pr_auc_mean": 0.04067565964669214,
+      "significant": false
+    }
+  },
+  "per_family_metrics": {
+    "gradient_boosting": {
+      "ece_test": 0.2820512820512821,
+      "pr_auc_ci_high": 0.6730387375782114,
+      "pr_auc_ci_low": 0.17972732843137254,
+      "pr_auc_test": 0.40555555555555556,
+      "roc_auc_test": 0.38888888888888884
+    },
+    "lightgbm": {
+      "ece_test": 0.3781892683143718,
+      "pr_auc_ci_high": 0.8169097222222222,
+      "pr_auc_ci_low": 0.3166477272727273,
+      "pr_auc_test": 0.541943241943242,
+      "roc_auc_test": 0.6111111111111112
+    },
+    "xgboost": {
+      "ece_test": 0.24404694065451624,
+      "pr_auc_ci_high": 0.7355109148922728,
+      "pr_auc_ci_low": 0.2998611111111111,
+      "pr_auc_test": 0.47469135802469137,
+      "roc_auc_test": 0.5505050505050505
+    }
+  }
+}
