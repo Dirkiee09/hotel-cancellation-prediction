@@ -55,6 +55,8 @@ class ModelArtifacts:
         thresholds,
         metadata,
         is_pipeline: bool,
+        adr_regressor: Any = None,
+        adr_metadata: dict[str, Any] | None = None,
     ):
         self.model = model
         self.preprocessor = preprocessor
@@ -63,6 +65,10 @@ class ModelArtifacts:
         self.thresholds = thresholds
         self.metadata = metadata
         self.is_pipeline = is_pipeline
+        # Optional ADR regressor for live rate forecasts on /predict.
+        # None if artifacts/adr_regressor.pkl is absent — never fatal.
+        self.adr_regressor = adr_regressor
+        self.adr_metadata = adr_metadata or {}
         # Lazily built by _get_tree_explainer(); TreeExplainer construction parses
         # every tree in the model, so it must not happen per request.
         self.shap_explainer: Any | None = None
@@ -143,6 +149,24 @@ def load_artifacts(artifacts_dir: Path = ARTIFACTS_DIR) -> ModelArtifacts:
                 calibrator_path,
                 exc,
             )
+    # Optional ADR regressor — best-effort load, never fatal.
+    adr_regressor: Any = None
+    adr_metadata: dict[str, Any] = {}
+    adr_path = artifacts_dir / "adr_regressor.pkl"
+    adr_metadata_path = artifacts_dir / "adr_regressor_metadata.pkl"
+    if adr_path.exists() and adr_metadata_path.exists():
+        try:
+            adr_regressor = joblib.load(adr_path)
+            adr_metadata = joblib.load(adr_metadata_path)
+        except Exception as exc:
+            logger.warning(
+                "Failed to load ADR regressor %s: %s. Live ADR forecasts disabled.",
+                adr_path,
+                exc,
+            )
+            adr_regressor = None
+            adr_metadata = {}
+
     return ModelArtifacts(
         model,
         preprocessor,
@@ -151,6 +175,8 @@ def load_artifacts(artifacts_dir: Path = ARTIFACTS_DIR) -> ModelArtifacts:
         thresholds,
         metadata,
         is_pipeline=hasattr(model, "named_steps"),
+        adr_regressor=adr_regressor,
+        adr_metadata=adr_metadata,
     )
 
 
@@ -199,6 +225,48 @@ def predict_proba(records: Any, artifacts: ModelArtifacts) -> tuple[list[float],
     if artifacts.calibrator is not None:
         probs = np.clip(artifacts.calibrator.predict(probs), 0.0, 1.0)
     return probs.tolist(), df
+
+
+# The ADR regressor was trained with a handful of post-booking columns; at
+# booking time those are unknown (the booking was just made: not cancelled yet,
+# no modifications, no waiting list). Passing these defaults lets the regressor
+# produce a live forecast — at the cost of slightly degraded accuracy vs the
+# training-time test RMSE. Documented in CLAUDE.md.
+_ADR_BOOKING_TIME_DEFAULTS: dict[str, Any] = {
+    "is_canceled": 0,
+    "booking_changes": 0,
+    "days_in_waiting_list": 0,
+}
+
+
+def predict_adr(record: dict[str, Any], artifacts: ModelArtifacts) -> float | None:
+    """Predict ADR for one booking using the trained ADR regressor.
+
+    Returns None when the ADR regressor isn't loaded or the prediction fails —
+    never raises, so a degraded ADR path can't break /predict.
+    """
+    if artifacts.adr_regressor is None or not artifacts.adr_metadata:
+        return None
+    try:
+        features = artifacts.adr_metadata.get("features") or []
+        if not features:
+            return None
+        row: dict[str, Any] = {**record}
+        for key, default in _ADR_BOOKING_TIME_DEFAULTS.items():
+            row.setdefault(key, default)
+        # assigned_room_type defaults to the reserved type (most common case
+        # at booking time — upgrades / downgrades happen on arrival).
+        if "assigned_room_type" not in row or row["assigned_room_type"] is None:
+            row["assigned_room_type"] = row.get("reserved_room_type")
+        X = pd.DataFrame([{feat: row.get(feat) for feat in features}])
+        pred = float(artifacts.adr_regressor.predict(X)[0])
+        if not np.isfinite(pred):
+            return None
+        # Clip to the same valid range used elsewhere for ADR sanity.
+        return round(max(0.0, pred), 2)
+    except Exception as exc:
+        logger.debug("predict_adr_failed (non-fatal): %s", exc)
+        return None
 
 
 def _extract_tree_model_and_preprocessor(artifacts: ModelArtifacts) -> tuple[Any, Any]:
