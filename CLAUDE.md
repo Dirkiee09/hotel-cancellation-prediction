@@ -97,7 +97,11 @@ scripts/                      # CLI entry points (thin wrappers over src/)
   check.py                    # make check (subcommands: artifacts, metrics, sync, fairness, all)
   notebooks.py                # headless notebook execution (all 10 notebooks)
   adapt_dataset.py            # plug-and-play adapter for new hotel CSVs (e.g. PH dataset)
-  sample_requests.py          # defense demo: send 4 contrasting bookings to a running server
+
+demo/                         # Local prediction app launchers (defense / day-to-day use)
+  start_server.py             # make demo — FastAPI + Gradio UI at localhost:8000, opens browser
+  quick_train.py              # fast 10k-row smoke-train when artifacts are missing
+  sample_requests.py          # send 4 contrasting bookings to the running server
 
 docs/
   provenance.md               # maps local ph/cv/adr outputs to their producers on `master`

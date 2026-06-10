@@ -1,8 +1,8 @@
 """Send sample predictions to the running server and display results.
 
 Usage:
-    1. Start the server:  uvicorn src.app.main:app
-    2. In another terminal: python scripts/sample_requests.py
+    1. Start the server:  python demo/start_server.py
+    2. In another terminal: python demo/sample_requests.py
 
 Sends 4 contrasting booking scenarios and prints a comparison table.
 Useful as a live demo during the thesis defense.
@@ -168,7 +168,7 @@ def main() -> None:
             pass
     except (URLError, ConnectionError, OSError):
         print("ERROR: Server is not running.")
-        print("Start it first:  uvicorn src.app.main:app")
+        print("Start it first:  python demo/start_server.py")
         sys.exit(1)
 
     # Print model info
