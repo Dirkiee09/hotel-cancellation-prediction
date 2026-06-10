@@ -77,9 +77,11 @@ def main() -> None:
 
     # ── Reproducibility check (standalone, no training) ──────────────
     if args.repro:
-        from src.eval.repro import main as repro_main
+        # Call the check directly — repro.main() runs its own argparse over
+        # sys.argv, which still contains --repro and would be rejected.
+        from src.eval.repro import run_repro_check
 
-        repro_main()
+        run_repro_check(max_rows=args.max_rows)
         return
 
     # ── Training ─────────────────────────────────────────────────────
