@@ -5,7 +5,6 @@ Usage:
     2. In another terminal: python demo/sample_requests.py
 
 Sends 4 contrasting booking scenarios and prints a comparison table.
-Useful as a live demo during the thesis defense.
 """
 
 from __future__ import annotations

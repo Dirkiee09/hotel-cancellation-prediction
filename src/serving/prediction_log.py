@@ -164,12 +164,16 @@ _CREATE_INDEX_SQL = (
 )
 
 
-def init_db(db_path: Path = PREDICTION_LOG_DB) -> None:
+def init_db(db_path: Path | None = None) -> None:
     """Create the predictions table and indexes if they don't exist.
 
     Also migrates any pre-existing DB that's missing columns added in later
     versions (see _NULLABLE_ADDITIONS).
+
+    The default path is resolved at call time (not def time) so tests can
+    monkeypatch PREDICTION_LOG_DB and never touch the production store.
     """
+    db_path = db_path if db_path is not None else PREDICTION_LOG_DB
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path) as conn:
         conn.execute(_CREATE_TABLE_SQL)
@@ -195,15 +199,17 @@ def _coerce_for_sqlite(value: Any) -> Any:
 def log_prediction(
     request: dict[str, Any],
     response: dict[str, Any],
-    db_path: Path = PREDICTION_LOG_DB,
+    db_path: Path | None = None,
 ) -> int | None:
     """Append one (request, response) pair to the predictions table.
 
     Returns the new row's prediction_id, or None if logging failed.
     Failures are logged at WARNING level but never raised — this function
     is wired into a FastAPI BackgroundTask and must not crash the API.
+    Default path resolved at call time so tests can monkeypatch it.
     """
     try:
+        db_path = db_path if db_path is not None else PREDICTION_LOG_DB
         init_db(db_path)
         timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
 

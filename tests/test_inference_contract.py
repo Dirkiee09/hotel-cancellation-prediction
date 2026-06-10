@@ -365,3 +365,28 @@ def test_predict_endpoint_exposes_adr_fields(
     # Without an ADR regressor in this fixture, both fields are None.
     assert body["predicted_adr"] is None
     assert body["adr_residual"] is None
+
+
+def test_predict_does_not_write_production_log(
+    monkeypatch, trained_artifacts_dir, sample_record
+) -> None:
+    """/predict during tests must never touch the production prediction store.
+
+    Regression guard: the endpoint's background task wrote to the real
+    data/predictions/predictions.sqlite during test runs, polluting live
+    monitoring data with synthetic test bookings.
+    """
+    import src.config as config
+
+    prod_db = config.PROJECT_ROOT / "data" / "predictions" / "predictions.sqlite"
+    before = prod_db.stat().st_mtime_ns if prod_db.exists() else None
+
+    artifacts = load_artifacts(trained_artifacts_dir)
+    monkeypatch.setattr(inference_mod, "_CACHED_ARTIFACTS", artifacts)
+    client = TestClient(app_main.app)
+    payload = {k: v for k, v in sample_record.items() if k in BookingRequest.model_fields}
+    resp = client.post("/predict", json=payload)
+    assert resp.status_code == 200, resp.text
+
+    after = prod_db.stat().st_mtime_ns if prod_db.exists() else None
+    assert before == after, "test /predict call modified the production prediction log"

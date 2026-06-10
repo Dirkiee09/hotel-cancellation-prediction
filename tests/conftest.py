@@ -33,3 +33,24 @@ def trained_artifacts_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
         max_rows=5000,
     )
     return outputs.artifacts_dir
+
+
+@pytest.fixture(autouse=True)
+def _isolate_prediction_log(tmp_path, monkeypatch):
+    """Redirect every prediction-log write to a per-test temp dir.
+
+    Tests exercise /predict (and the Gradio handlers), whose persistence
+    hooks would otherwise append synthetic bookings to the production
+    data/predictions/ store. All default-path lookups resolve at call time,
+    so patching the module attributes is sufficient.
+    """
+    import src.app.main as main_mod
+    import src.config as config_mod
+    import src.serving.prediction_log as plog_mod
+
+    db = tmp_path / "predictions.sqlite"
+    csv = tmp_path / "predictions_live.csv"
+    monkeypatch.setattr(main_mod, "PREDICTION_LOG_DB", db, raising=False)
+    monkeypatch.setattr(plog_mod, "PREDICTION_LOG_DB", db, raising=False)
+    monkeypatch.setattr(config_mod, "PREDICTION_LOG_DB", db, raising=False)
+    monkeypatch.setattr(config_mod, "PREDICTION_LOG_CSV", csv, raising=False)
