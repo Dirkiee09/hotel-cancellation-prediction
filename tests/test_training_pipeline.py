@@ -92,3 +92,112 @@ def test_rolling_selection_fallback_for_tiny_dataset() -> None:
     assert "fallback_reason" in result
     assert result["candidates"] == []
     assert result["folds"] == []
+
+
+def test_gbt_challengers_have_matched_capacity() -> None:
+    """XGBoost and LightGBM must compete under identical capacity budgets.
+
+    Regression guard: the rolling-origin champion selection previously compared
+    LightGBM at 300 trees / depth 7 against XGBoost at 100 trees / depth 5,
+    which confounded the selection result with hyperparameter allocation.
+    """
+    from src.models.train import get_default_lgbm_params, get_default_xgb_params
+
+    xgb_params = get_default_xgb_params()
+    lgbm_params = get_default_lgbm_params()
+    for key in ("n_estimators", "max_depth", "learning_rate", "subsample", "colsample_bytree"):
+        assert xgb_params[key] == lgbm_params[key], f"capacity mismatch on {key}"
+
+
+def _imbalanced_toy_data() -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.RandomState(0)
+    n = 400
+    y = (rng.rand(n) < 0.15).astype(int)
+    x = y * 1.5 + rng.randn(n)
+    return x.reshape(-1, 1), y
+
+
+def test_train_lgbm_applies_scale_pos_weight() -> None:
+    """train_lgbm must forward scale_pos_weight so class weighting is symmetric."""
+    if not is_lightgbm_available():
+        return
+    from src.models.train import train_lgbm
+
+    X, y = _imbalanced_toy_data()
+    model = train_lgbm(X, y, scale_pos_weight=3.5, params={"n_estimators": 10, "max_depth": 2})
+    assert model.get_params()["scale_pos_weight"] == 3.5
+
+
+def test_train_gb_applies_scale_pos_weight_via_sample_weight() -> None:
+    """Weighting positives must raise GB's average predicted probability."""
+    from src.models.train import train_gb
+
+    X, y = _imbalanced_toy_data()
+    small = {"n_estimators": 20, "max_depth": 2}
+    unweighted = train_gb(X, y, params=small)
+    weighted = train_gb(X, y, scale_pos_weight=8.0, params=small)
+    assert weighted.predict_proba(X)[:, 1].mean() > unweighted.predict_proba(X)[:, 1].mean()
+
+
+def test_hypothesis_summary_is_not_circular(tmp_path) -> None:
+    """H4 must be judged on the test set; H2 against a real baseline model.
+
+    Regression guard: H4 was previously declared "supported" using validation-set
+    savings at a threshold optimised on that same validation set, and H2 by
+    checking which GBT family won a GBT-only comparison.
+    """
+    outputs = run_training_pipeline(
+        artifacts_dir=tmp_path / "artifacts",
+        reports_dir=tmp_path / "reports",
+        max_rows=3500,
+    )
+    hyp = json.loads((outputs.reports_dir / "hypothesis_summary.json").read_text(encoding="utf-8"))
+
+    h4 = hyp["H4"]
+    assert h4["evaluation_dataset"] == "test"
+    assert "savings_vs_threshold_050" in h4
+    assert "savings_vs_intervene_all" in h4
+
+    h2 = hyp["H2"]
+    assert h2["evaluation_dataset"] == "test"
+    assert h2["baseline_model"] == "logistic_regression"
+    assert "champion_pr_auc" in h2
+    assert "baseline_pr_auc" in h2
+    assert "p_value" in h2
+
+    # The test-set cost report must also be persisted in metrics.json
+    metrics = json.loads((outputs.reports_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert metrics["cost_thresholding"]["dataset"] == "validation"
+    assert metrics["cost_thresholding_test"]["dataset"] == "test"
+
+
+def _noisy_split() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    rng = np.random.RandomState(7)
+    X = rng.randn(600, 4)
+    y = (rng.rand(600) < 0.4).astype(int)  # pure noise: val metric stalls fast
+    return X[:400], y[:400], X[400:], y[400:]
+
+
+def test_train_xgb_early_stopping_actually_stops() -> None:
+    """Passing an eval_set must engage early stopping, not silently fit all trees.
+
+    Regression guard: eval_set was previously forwarded without
+    early_stopping_rounds, so the "early stopping" path was a no-op.
+    """
+    from src.models.train import train_xgb
+
+    X_tr, y_tr, X_val, y_val = _noisy_split()
+    model = train_xgb(X_tr, y_tr, X_val=X_val, y_val=y_val, params={"n_estimators": 500})
+    assert model.best_iteration < 499
+
+
+def test_train_lgbm_early_stopping_actually_stops() -> None:
+    """LightGBM eval_set path must register an early-stopping callback."""
+    if not is_lightgbm_available():
+        return
+    from src.models.train import train_lgbm
+
+    X_tr, y_tr, X_val, y_val = _noisy_split()
+    model = train_lgbm(X_tr, y_tr, X_val=X_val, y_val=y_val, params={"n_estimators": 500})
+    assert model.best_iteration_ is not None
+    assert model.best_iteration_ < 500

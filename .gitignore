@@ -44,6 +44,11 @@ reports/figures/*
 !reports/figures/.gitkeep
 data/*.csv
 !data/.gitkeep
+# Live-demo prediction stores (sqlite/CSV written at serving time, never tracked)
+data/predictions/
+*.sqlite
+# Thesis manuscripts do not belong in the repo root
+/*.pdf
 
 # Secrets
 .env

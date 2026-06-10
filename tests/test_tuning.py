@@ -77,3 +77,22 @@ def test_tune_model_gradient_boosting(small_selection_df) -> None:
     )
     assert result.best_params is not None
     assert len(result.all_trials) == 2
+
+
+def test_tune_model_lightgbm(small_selection_df) -> None:
+    """The champion family must be tunable with the same Optuna machinery.
+
+    Regression guard: tuning previously covered only XGBoost and GradientBoosting,
+    leaving the deployed champion's hyperparameters outside the documented search.
+    """
+    pytest.importorskip("lightgbm")
+    result = tune_model(
+        small_selection_df,
+        BOOKING_TIME_FEATURES,
+        "lightgbm",
+        n_trials=2,
+        timeout=120,
+    )
+    assert result.best_params is not None
+    assert len(result.all_trials) == 2
+    assert result.study_summary["model_family"] == "lightgbm"

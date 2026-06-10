@@ -112,8 +112,8 @@ def _load_categorical_choices() -> dict[str, list[str]]:
             for col in cols:
                 vals = sorted({str(v).strip() for v in df[col].dropna() if str(v).strip()})
                 result[col] = vals
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Could not read dropdown choices from %s: %s", DATA_PATH, exc)
     for col in cols:
         if col not in result or not result[col]:
             result[col] = _fallbacks.get(col, [])
@@ -139,8 +139,8 @@ def _load_hero_metrics() -> str:
             pr = max_f1.get("pr_auc")
             if roc is not None and pr is not None:
                 return f"ROC-AUC {float(roc):.3f} \u00b7 PR-AUC {float(pr):.3f}"
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Could not load hero metrics from %s: %s", metrics_path, exc)
     return "ROC-AUC \u2014 \u00b7 PR-AUC \u2014"
 
 

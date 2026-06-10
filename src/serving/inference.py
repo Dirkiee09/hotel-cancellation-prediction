@@ -63,6 +63,9 @@ class ModelArtifacts:
         self.thresholds = thresholds
         self.metadata = metadata
         self.is_pipeline = is_pipeline
+        # Lazily built by _get_tree_explainer(); TreeExplainer construction parses
+        # every tree in the model, so it must not happen per request.
+        self.shap_explainer: Any | None = None
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -198,6 +201,38 @@ def predict_proba(records: Any, artifacts: ModelArtifacts) -> tuple[list[float],
     return probs.tolist(), df
 
 
+def _extract_tree_model_and_preprocessor(artifacts: ModelArtifacts) -> tuple[Any, Any]:
+    """Split the artifact into (tree model, preprocessor-or-None)."""
+    model = artifacts.model
+    if hasattr(model, "named_steps"):
+        # Pipeline: preprocessor → model
+        step_names = list(model.named_steps.keys())
+        return model.named_steps[step_names[-1]], model.named_steps.get(step_names[0])
+    return model, artifacts.preprocessor
+
+
+def _get_tree_explainer(artifacts: ModelArtifacts) -> Any | None:
+    """Return a cached shap.TreeExplainer for the artifact's model (None if unavailable).
+
+    Built once per ModelArtifacts instance: TreeExplainer construction walks the
+    full tree ensemble, which is far too expensive to repeat on every request.
+    """
+    if artifacts.shap_explainer is not None:
+        return artifacts.shap_explainer
+    try:
+        import shap
+    except ImportError:
+        logger.debug("shap not installed; skipping prediction explanation")
+        return None
+    tree_model, _ = _extract_tree_model_and_preprocessor(artifacts)
+    try:
+        artifacts.shap_explainer = shap.TreeExplainer(tree_model)
+    except Exception as exc:
+        logger.debug("TreeExplainer construction failed (non-fatal): %s", exc)
+        return None
+    return artifacts.shap_explainer
+
+
 def explain_prediction(
     feature_df: pd.DataFrame,
     artifacts: ModelArtifacts,
@@ -208,32 +243,17 @@ def explain_prediction(
     Falls back gracefully to an empty list if SHAP is unavailable or the model
     type is unsupported.  This keeps the /predict endpoint fast and never fails.
     """
-    try:
-        import shap  # noqa: F811
-    except ImportError:
-        logger.debug("shap not installed; skipping prediction explanation")
+    explainer = _get_tree_explainer(artifacts)
+    if explainer is None:
         return []
 
     try:
-        # Extract the underlying tree model from the sklearn Pipeline
-        model = artifacts.model
-        if hasattr(model, "named_steps"):
-            # Pipeline: preprocessor → model
-            step_names = list(model.named_steps.keys())
-            tree_model = model.named_steps[step_names[-1]]
-            preprocessor = model.named_steps.get(step_names[0])
-            if preprocessor is not None:
-                X = preprocessor.transform(feature_df)
-            else:
-                X = feature_df.values
+        _, preprocessor = _extract_tree_model_and_preprocessor(artifacts)
+        if preprocessor is not None:
+            X = preprocessor.transform(feature_df)
         else:
-            tree_model = model
-            if artifacts.preprocessor is not None:
-                X = artifacts.preprocessor.transform(feature_df)
-            else:
-                X = feature_df.values
+            X = feature_df.values
 
-        explainer = shap.TreeExplainer(tree_model)
         shap_values = explainer.shap_values(X)
 
         # For binary classification, shap_values may be a list [class_0, class_1]
@@ -286,8 +306,8 @@ def _get_encoded_feature_names(artifacts: ModelArtifacts) -> list[str]:
     if preprocessor is not None and hasattr(preprocessor, "get_feature_names_out"):
         try:
             return list(preprocessor.get_feature_names_out())
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("get_feature_names_out failed; SHAP aggregation degrades: %s", exc)
     return []
 
 
@@ -303,11 +323,17 @@ def _aggregate_encoded_contributions(
         # Fallback: can't map — return empty
         return agg
 
+    # Longest names first so a feature that is a prefix of another (e.g. "adr"
+    # vs "adr_per_person") can never absorb the longer feature's contributions.
+    ordered_features = sorted(raw_features, key=len, reverse=True)
     for enc_name, val in zip(encoded_names, contributions):
-        # Encoded names look like "cat__feature_value" or "num__feature"
+        # Encoded names look like "cat__feature_value" or "num__feature";
+        # strip the transformer prefix, then require an exact name match or a
+        # "feature_" one-hot prefix — bare substring matching misattributes.
+        base = enc_name.split("__", 1)[-1]
         matched = False
-        for raw in raw_features:
-            if raw in enc_name:
+        for raw in ordered_features:
+            if base == raw or base.startswith(raw + "_"):
                 agg[raw] += float(val)
                 matched = True
                 break

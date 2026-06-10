@@ -19,7 +19,7 @@ from src.config import (
     TARGET_COL,
 )
 from src.features.build import build_preprocessor
-from src.models.train import train_gb, train_xgb
+from src.models.train import is_lightgbm_available, train_gb, train_lgbm, train_xgb
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,21 @@ def _suggest_xgb_params(trial: Any) -> dict[str, Any]:
     }
 
 
+def _suggest_lgbm_params(trial: Any) -> dict[str, Any]:
+    # Search space mirrors _suggest_xgb_params where the knobs are comparable,
+    # so the families are tuned under an equivalent budget.
+    return {
+        "n_estimators": trial.suggest_int("n_estimators", 50, 500),
+        "max_depth": trial.suggest_int("max_depth", 2, 8),
+        "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+        "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+        "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
+        "min_child_samples": trial.suggest_int("min_child_samples", 5, 50),
+        "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
+        "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
+    }
+
+
 def _suggest_gb_params(trial: Any) -> dict[str, Any]:
     return {
         "n_estimators": trial.suggest_int("n_estimators", 50, 500),
@@ -66,6 +81,10 @@ def _rolling_origin_objective(
     """Objective: mean PR-AUC across rolling-origin windows."""
     if model_family == "xgboost":
         params = _suggest_xgb_params(trial)
+    elif model_family == "lightgbm":
+        if not is_lightgbm_available():
+            raise ImportError("lightgbm is not installed; cannot tune the lightgbm family")
+        params = _suggest_lgbm_params(trial)
     elif model_family == "gradient_boosting":
         params = _suggest_gb_params(trial)
     else:
@@ -97,6 +116,8 @@ def _rolling_origin_objective(
 
         if model_family == "xgboost":
             model = train_xgb(X_tr_t, y_tr, params=params)
+        elif model_family == "lightgbm":
+            model = train_lgbm(X_tr_t, y_tr, params=params)
         else:
             model = train_gb(X_tr_t, y_tr, params=params)
 

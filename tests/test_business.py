@@ -64,3 +64,46 @@ class TestSafeThresholdMetrics:
         result = safe_threshold_metrics([0, 0, 0, 0], [0.1, 0.2, 0.3, 0.4], threshold=0.5)
         assert result["roc_auc"] is None
         assert result["pr_auc"] is None
+
+
+def test_cost_policy_reports_intervene_all_baseline() -> None:
+    """The summary must include the trivial flag-everyone policy as a baseline.
+
+    Comparing only against "no model" overstates model value: under an
+    asymmetric cost model the cheapest trivial policy is intervening on every
+    booking, and savings must be reported against it.
+    """
+    import numpy as np
+    import pytest
+
+    from src.utils.business import compute_cost_threshold_policy
+
+    y = np.array([0, 0, 0, 1, 1])
+    p = np.array([0.1, 0.2, 0.3, 0.8, 0.9])
+    fn_cost = np.full(5, 100.0)
+    summary, _sweep = compute_cost_threshold_policy(y, p, fn_cost, fp_cost=15.0, step=0.01)
+
+    # threshold 0.0 flags everyone: 3 FPs x 15.0, zero FN cost
+    assert summary["intervene_all_cost"] == pytest.approx(45.0)
+    assert summary["savings_vs_intervene_all"] == pytest.approx(
+        summary["intervene_all_cost"] - summary["total_cost"]
+    )
+
+
+def test_evaluate_cost_at_threshold_single_point() -> None:
+    """Cost evaluation at a fixed threshold (no re-optimisation) for test-set reporting."""
+    import numpy as np
+    import pytest
+
+    from src.utils.business import evaluate_cost_at_threshold
+
+    y = np.array([0, 0, 1, 1])
+    p = np.array([0.2, 0.6, 0.4, 0.9])
+    fn_cost = np.array([50.0, 50.0, 80.0, 80.0])
+    result = evaluate_cost_at_threshold(y, p, fn_cost, fp_cost=15.0, threshold=0.5)
+
+    # pred = [0,1,0,1] -> 1 FP (15.0), 1 FN (80.0)
+    assert result["fp_count"] == 1
+    assert result["fn_count"] == 1
+    assert result["total_cost"] == pytest.approx(95.0)
+    assert result["threshold"] == pytest.approx(0.5)
