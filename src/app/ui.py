@@ -33,7 +33,9 @@ from src.utils.thresholds import resolve_thresholds
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LOGGED_PATH = PROJECT_ROOT / ".gradio" / "flagged" / "predictions.csv"
+# Every Predict/Flag click appends one row here (gitignored runtime data).
+# Visible location on purpose — operators need to find their scored bookings.
+LOGGED_PATH = PROJECT_ROOT / "data" / "predictions" / "predictions.csv"
 DATA_PATH = PROJECT_ROOT / "data" / "hotel_bookings.csv"
 
 _GLOBAL_DRIVER_LINES: list[str] | None = None
@@ -245,16 +247,15 @@ def _validate_required(values: Dict[str, Any]) -> tuple[int, int, list[str], lis
                 missing.append(REQUIRED_FIELD_LABELS[field])
                 continue
             try:
+                # Past dates are allowed deliberately: the API accepts them, and
+                # scoring historical bookings (e.g. dataset rows during a demo or
+                # back-testing) is a legitimate use. Only the format is enforced.
                 if isinstance(raw, datetime):
-                    arr_date = raw.date()
+                    raw.date()
                 elif hasattr(raw, "date"):
-                    arr_date = raw
+                    pass
                 else:
-                    arr_date = datetime.fromisoformat(str(raw)).date()
-                today = datetime.now(timezone.utc).date()
-                if arr_date < today:
-                    errors.append("Arrival date must be today or in the future.")
-                    continue
+                    datetime.fromisoformat(str(raw)).date()
             except (TypeError, ValueError):
                 errors.append("Invalid arrival date format.")
                 continue
@@ -1817,6 +1818,12 @@ def build_ui() -> gr.Blocks:
                     )
                     flag_btn = gr.Button("Flag", interactive=bool(initial_ready))
                     reset_btn = gr.Button("Reset")
+                gr.HTML(
+                    '<div style="font-size:0.75rem;color:#8fa3c8;margin-top:6px;">'
+                    "Every scored booking is saved to "
+                    f"<code>{LOGGED_PATH.relative_to(PROJECT_ROOT).as_posix()}</code> "
+                    "(Flag marks a row for follow-up review).</div>"
+                )
 
             with gr.Column(scale=6, elem_id="result-col", elem_classes=["result-panel"]):
                 gr.HTML("""
