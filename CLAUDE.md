@@ -28,7 +28,7 @@ serving (FastAPI + Gradio) → evaluation → thesis reporting.
 | `mypy` | ✅ clean | 0 errors (48 source files checked) |
 | `src/` imports | ✅ 15/15 modules | all importable |
 | `scripts/` | ✅ 4/4 scripts | train, benchmark, check, notebooks |
-| `notebooks/` | ✅ 10/10 notebooks | 01_eda through 10_sensitivity_analysis, all with cached outputs |
+| `notebooks/` | ✅ 11/11 notebooks | 01_eda through 11_transferability_ph, all with cached outputs |
 
 ---
 
@@ -95,7 +95,7 @@ scripts/                      # CLI entry points (thin wrappers over src/)
   train.py                    # make train | --verify | --verify-only | --thesis | --repro
   benchmark.py                # make benchmark (16 CSV tables)
   check.py                    # make check (subcommands: artifacts, metrics, sync, fairness, all)
-  notebooks.py                # headless notebook execution (all 10 notebooks)
+  notebooks.py                # headless notebook execution (all 11 notebooks)
   adapt_dataset.py            # plug-and-play adapter for new hotel CSVs (e.g. PH dataset)
 
 demo/                         # Local prediction app launchers (defense / day-to-day use)
@@ -122,7 +122,7 @@ tests/                        # pytest suite (114 tests, ≥80% coverage require
   test_tuning.py
   test_validate_data.py
 
-notebooks/                    # 10 Jupyter notebooks (load artifacts, no retraining)
+notebooks/                    # 11 Jupyter notebooks (load artifacts, no retraining)
   01_eda.ipynb                # Exploratory data analysis (26 cells)
   02_modeling.ipynb           # Model selection & rolling-origin evaluation (21 cells)
   03_deep_analysis.ipynb      # Calibration, SHAP, CV, ablation, baselines (51 cells)
@@ -133,9 +133,14 @@ notebooks/                    # 10 Jupyter notebooks (load artifacts, no retrain
   08_model_monitoring.ipynb   # Production monitoring template (21 cells)
   09_model_comparison.ipynb   # Cross-model comparison & stability analysis (31 cells)
   10_sensitivity_analysis.ipynb # Cost sensitivity, data hunger, threshold trade-offs (15 cells)
+  11_transferability_ph.ipynb # PT→PH transferability: 7-algo × 2-market CV table, pilot caveats (15 cells)
 
 artifacts/                    # Trained model artifacts (git-ignored)
 reports/                      # Metrics, benchmark tables, thesis reports (git-ignored)
+  benchmarks/                 # 16 CSV benchmark tables
+  thesis/                     # Thesis analysis JSONs + figures
+  cv/                         # COMMITTED: stratified 10-fold results, PT + PH (producers on master)
+  ph/                         # COMMITTED: PH pilot aggregated results (producers on master; raw PMS data private)
   benchmarks/                 # 16 CSV benchmark tables
   thesis/                     # Thesis analysis JSONs + figures
   figures/thesis/             # Publication figures (PNG + PDF)

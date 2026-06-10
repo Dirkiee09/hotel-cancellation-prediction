@@ -1,0 +1,86 @@
+{
+  "caveats": [
+    "n_test = 20 rows; bootstrap 95% CIs on PR-AUC span roughly \u00b115 percentage points at this sample size",
+    "Feature set includes deposit_type and total_of_special_requests (two top-10 Portugal SHAP features) but still excludes market_segment, country, agent, customer_type, and previous_cancellations \u2014 the real PMS export does not capture them",
+    "No rolling-origin CV (insufficient data for the project's standard 3 folds); metrics use a single chronological 80/10/10 split",
+    "Constant-variance columns (Meals = 100% 'Breakfast (Complimentary)', Guest_Type = 100% 'Walk-In') were dropped during clean_raw_ph",
+    "Treat all reported metrics as directional, not as gates"
+  ],
+  "cleaning_issues": {
+    "rows_dropped_unknown_status": 0,
+    "rows_dropped_unparseable_arrival_date": 0
+  },
+  "confusion_max_f1": [
+    [
+      10,
+      1
+    ],
+    [
+      9,
+      0
+    ]
+  ],
+  "dataset_diagnostics": {
+    "clusters_with_consistent_labels_pct": 0.0,
+    "duplicate_rate": 0.0,
+    "interpretation": "LOW DUPLICATION \u2014 feature vectors are mostly unique; standard interpretation applies.",
+    "n_clusters_with_consistent_labels": 0,
+    "n_duplicate_rows": 0,
+    "n_multi_row_clusters": 0,
+    "n_rows_total": 193,
+    "n_unique_feature_vectors": 193
+  },
+  "ece_test": 0.3781892683143718,
+  "feature_columns": [
+    "lead_time",
+    "stays_in_weekend_nights",
+    "stays_in_week_nights",
+    "adults",
+    "children",
+    "babies",
+    "adr",
+    "reserved_room_type",
+    "deposit_type",
+    "total_of_special_requests",
+    "month_sin",
+    "month_cos",
+    "total_stay",
+    "total_guests",
+    "adr_per_person",
+    "is_weekend_heavy",
+    "revenue_at_risk",
+    "is_late_window"
+  ],
+  "high_precision": {
+    "balanced_accuracy": 0.45454545454545453,
+    "f1": 0.0,
+    "pr_auc": 0.541943241943242,
+    "precision": 0.0,
+    "recall": 0.0,
+    "roc_auc": 0.6111111111111112,
+    "threshold": 0.19
+  },
+  "max_f1": {
+    "balanced_accuracy": 0.45454545454545453,
+    "f1": 0.0,
+    "pr_auc": 0.541943241943242,
+    "precision": 0.0,
+    "recall": 0.0,
+    "roc_auc": 0.6111111111111112,
+    "threshold": 0.19
+  },
+  "n_test": 20,
+  "n_train": 154,
+  "n_val": 19,
+  "positive_rate_test": 0.45,
+  "positive_rate_train": 0.11038961038961038,
+  "pr_auc_test": 0.541943241943242,
+  "roc_auc_test": 0.6111111111111112,
+  "selected_at": "2026-05-20T10:31:29.616476+00:00",
+  "selected_model_family": "lightgbm",
+  "train_test_overlap": {
+    "n_test": 20,
+    "n_test_rows_with_train_duplicate": 0,
+    "test_duplicate_rate": 0.0
+  }
+}
