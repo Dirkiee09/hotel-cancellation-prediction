@@ -4,7 +4,7 @@ else
     PYTHON := .venv/bin/python
 endif
 
-.PHONY: install-dev lint format typecheck test security train eval benchmark thesis check demo full-pipeline export-predictions export-adr clean help
+.PHONY: install-dev lint format typecheck test security train eval benchmark thesis check demo essential-figures full-pipeline export-predictions export-adr clean help
 
 help: ## Show this help message
 	@$(PYTHON) -c "import re, sys; lines = open('Makefile').readlines(); targets = [(m.group(1), m.group(2)) for l in lines if (m := re.match(r'^([a-zA-Z_-]+):.*?## (.*)$$', l))]; [print(f'  \033[36m{t[0]:<24}\033[0m {t[1]}') for t in sorted(targets)]"
@@ -44,6 +44,9 @@ check: ## Run all quality gates (artifacts, metrics, sync, fairness)
 
 demo: ## Launch the local prediction app (FastAPI + Gradio UI, opens browser)
 	$(PYTHON) demo/start_server.py
+
+essential-figures: ## Curate the publication figure set into reports/figures/essential/
+	$(PYTHON) scripts/make_essential_figures.py
 
 full-pipeline: train eval benchmark check ## Full refresh: train → eval → benchmark → check
 	@echo "full-pipeline complete — all checks passed."

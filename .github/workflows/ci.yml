@@ -79,10 +79,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: quality
-    # NOTE: remote default branch was renamed to "Main" (capital M) during the
-    # GitHub default-branch rename; gate on that exact ref. Using "main"
-    # lowercase silently skipped this job for every push.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/Main'
+    # NOTE: the old hotel-cancellation-thesis repo used "Main" (capital M)
+    # after a default-branch rename. This repo's default branch is "main";
+    # gating on the old ref silently skipped this job for every push, so the
+    # condition covers both spellings to survive either remote.
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/Main')
     steps:
       - name: Checkout
         uses: actions/checkout@v5
