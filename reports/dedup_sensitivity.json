@@ -1,0 +1,31 @@
+{
+  "baseline_with_duplicates": {
+    "f1": 0.7356,
+    "pr_auc": 0.759,
+    "precision": 0.6246,
+    "recall": 0.8946,
+    "roc_auc": 0.8634,
+    "selected_model_family": "lightgbm"
+  },
+  "deduplicated": {
+    "f1": 0.7068,
+    "pr_auc": 0.7031,
+    "precision": 0.6041,
+    "recall": 0.8517,
+    "roc_auc": 0.8477,
+    "selected_model_family": "lightgbm"
+  },
+  "delta_dedup_minus_baseline": {
+    "f1": -0.0288,
+    "pr_auc": -0.0559,
+    "precision": -0.0205,
+    "recall": -0.0429,
+    "roc_auc": -0.0157
+  },
+  "duplicate_share": 0.268,
+  "generated_at_utc": "2026-06-11T00:41:19+00:00",
+  "interpretation": "Metrics at the max_f1 policy on each run's own chronological test split. Duplicates never cross the train/test boundary (verified separately), so deltas here reflect re-weighting of repeated bookings, not leakage. Small deltas support reporting the with-duplicates results as primary; the remaining caveat is that bootstrap CIs assume independent rows and are therefore somewhat narrow under within-split duplication.",
+  "rows_after_dedup": 87396,
+  "rows_raw": 119390,
+  "rows_removed": 31994
+}
