@@ -50,9 +50,11 @@ COPIED: list[tuple[str, str, str]] = [
         "Cancellation is large (37%) and time-varying -> chronological evaluation is mandatory",
     ),
     (
-        "E02_feature_separation_by_outcome",
+        "E02_feature_distributions",
         "fig_04_feature_distributions",
-        "Booking-time features separate cancellers (lead time ~130 vs ~45 days) -> prediction is feasible",
+        "Key booking-time features: skewed lead time (median 69d), unimodal ADR, short stays "
+        "— the modelling context (NOTE: not split by outcome; for separation evidence cite "
+        "the lead-time medians table instead)",
     ),
     (
         "E03_model_selection_rolling_origin",
