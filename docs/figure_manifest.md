@@ -5,6 +5,12 @@ Every figure below defends exactly one thesis claim. Files live in
 its notebook via `make notebooks`. Everything NOT in this manifest is
 supporting material: use in appendices or omit.
 
+> **Publication set**: `make essential-figures` curates this core set (with
+> four audit-improved regenerations: E04 honest champion labelling, E07
+> raw-vs-calibrated reliability, E12 €-formatted cost ladder, E13 legend fix)
+> into `reports/figures/essential/` with narrative-ordered names. Use that
+> folder for the paper and the defense deck.
+
 ## The problem (Chapter 1 / Results intro)
 
 | Figure | Claim defended | Producer |
