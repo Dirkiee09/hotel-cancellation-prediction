@@ -21,13 +21,15 @@ and you'll have 30 rows spanning every interesting axis.
 
 from __future__ import annotations
 
+import argparse
+import random
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
-# Allow `python scripts/seed_demo_predictions.py` from the repo root
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Allow `python scripts/demo/seed_demo_predictions.py` from the repo root
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.app.schemas import BookingRequest  # noqa: E402
 from src.config import (  # noqa: E402
@@ -35,7 +37,6 @@ from src.config import (  # noqa: E402
     RISK_TIER_MEDIUM_THRESHOLD,
 )
 from src.serving.inference import (  # noqa: E402
-    explain_prediction,
     get_cached_artifacts,
     predict_proba,
 )
@@ -374,21 +375,64 @@ SCENARIOS: list[dict[str, Any]] = [
 ]
 
 
-def main() -> int:
+# Country pool used to fan the 30 curated scenarios out to larger demo sets
+# while keeping every booking realistic and schema-valid.
+_COUNTRY_POOL = [
+    "PRT",
+    "ESP",
+    "FRA",
+    "GBR",
+    "DEU",
+    "ITA",
+    "USA",
+    "BRA",
+    "IRL",
+    "NLD",
+    "BEL",
+    "CHE",
+    "POL",
+    "SWE",
+    "AUT",
+]
+
+
+def _extra_scenarios(n: int, seed: int = 42) -> list[dict[str, Any]]:
+    """Fan the curated scenarios out into `n` perturbed (but realistic) bookings."""
+    rng = random.Random(seed)
+    out: list[dict[str, Any]] = []
+    for _ in range(n):
+        rec = dict(rng.choice(SCENARIOS))
+        rec["lead_time"] = max(0, int(rec.get("lead_time", 60)) + rng.randint(-25, 45))
+        rec["adr"] = round(max(0.0, float(rec.get("adr", 100.0)) * rng.uniform(0.8, 1.35)), 2)
+        rec["country"] = rng.choice(_COUNTRY_POOL)
+        rec["total_of_special_requests"] = rng.randint(0, 3)
+        rec["stays_in_week_nights"] = rng.randint(1, 5)
+        rec["stays_in_weekend_nights"] = rng.randint(0, 2)
+        rec["adults"] = rng.choice([1, 2, 2, 2, 3])
+        out.append(rec)
+    return out
+
+
+def main(count: int = len(SCENARIOS)) -> int:
     artifacts = get_cached_artifacts()
     thresholds, _, _, _ = resolve_thresholds(artifacts.thresholds or {})
     thr_f1 = thresholds["max_f1"]
     thr_hp = thresholds["high_precision"]
     thr_cost = thresholds["cost_sensitive"]
 
-    print(f"Seeding {len(SCENARIOS)} demo predictions...")
-    for i, overrides in enumerate(SCENARIOS, 1):
+    scenarios = list(SCENARIOS)
+    if count > len(scenarios):
+        scenarios += _extra_scenarios(count - len(scenarios))
+    else:
+        scenarios = scenarios[:count]
+
+    print(f"Seeding {len(scenarios)} demo predictions...")
+    for i, overrides in enumerate(scenarios, 1):
         rec = _scenario(overrides)
         booking = BookingRequest.model_validate(rec)
         record = booking.model_dump(exclude={"arrival_date"})
-        probs, feature_df = predict_proba(record, artifacts)
+        probs, _ = predict_proba(record, artifacts)
         prob = float(probs[0])
-        top = explain_prediction(feature_df, artifacts, top_n=5)
 
         if prob >= RISK_TIER_HIGH_THRESHOLD:
             risk_tier = "high"
@@ -409,7 +453,9 @@ def main() -> int:
             "cost_threshold_source": "seed",
             "cost_threshold_fallback_used": False,
             "alerts": [],
-            "top_features": top,
+            # Kept empty (matches the live Gradio UI). Per-row SHAP JSON would embed
+            # commas that break Power BI's CSV parser; the dashboard doesn't use it.
+            "top_features": [],
         }
         log_prediction(booking.model_dump(mode="json"), response)
         seg = rec["market_segment"]
@@ -425,4 +471,14 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    parser = argparse.ArgumentParser(
+        description="Seed demo predictions into the live prediction log for the Power BI dashboard."
+    )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=len(SCENARIOS),
+        help="number of demo predictions to seed (default: the 30 curated scenarios)",
+    )
+    args = parser.parse_args()
+    sys.exit(main(args.count))

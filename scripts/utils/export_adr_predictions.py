@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 
 # Allow `python scripts/export_adr_predictions.py` from the repo root
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.config import ARTIFACTS_DIR, REPORTS_DIR  # noqa: E402
 from src.data.load import load_raw_data  # noqa: E402

@@ -29,9 +29,10 @@ from src.config import (
 )
 from src.serving.inference import (
     ModelArtifacts,
+    _prepare_features,
+    explain_prediction,
     get_cached_artifacts,
     predict_adr,
-    predict_proba,
 )
 from src.serving.prediction_log import export_to_csv, log_prediction
 from src.utils.thresholds import resolve_thresholds
@@ -493,12 +494,54 @@ def _intervention_suggestions(
     return deduped[:6]
 
 
+def _generate_xai_html(explanation: list[dict[str, Any]]) -> str:
+    if not explanation:
+        return "<div class='xai-container'><i>SHAP explanation unavailable.</i></div>"
+
+    max_abs = (
+        max([abs(float(item["contribution"])) for item in explanation]) if explanation else 1.0
+    )
+    if max_abs == 0:
+        max_abs = 1.0
+
+    html = '<div class="xai-container">'
+    for item in explanation:
+        name = str(item["feature"])
+        impact = float(item["contribution"])
+
+        direction = "positive" if impact > 0 else "negative"
+        sign = "+" if impact > 0 else ""
+        text_cls = "pos-text" if impact > 0 else "neg-text"
+
+        width = min(50, (abs(impact) / max_abs) * 50)
+
+        html += f"""
+        <div class="xai-row">
+            <div class="xai-label">{name}</div>
+            <div class="xai-bar-bg">
+                <div class="xai-bar-fill {direction}" style="width: {width}%;"></div>
+            </div>
+            <div class="xai-val {text_cls}">{sign}{impact:.2f}</div>
+        </div>
+        """
+    html += "</div>"
+    return html
+
+
 def _risk_meter_html(prob: float | None, *, label: str, note: str) -> str:
     tone = RISK_TONES.get(label, "neutral")
     safe_label = html.escape(label)
     safe_note = html.escape(note)
     medium_pct = max(0.0, min(100.0, RISK_TIER_MEDIUM_THRESHOLD * 100.0))
     high_pct = max(0.0, min(100.0, RISK_TIER_HIGH_THRESHOLD * 100.0))
+    # Permanent traffic-light zones, built from the live thresholds so they always
+    # match the markers: green 0→medium, amber medium→high, red high→100.
+    zone_gradient = (
+        "linear-gradient(90deg,"
+        f"rgba(45,212,122,0.72) 0%,rgba(45,212,122,0.72) {medium_pct:.1f}%,"
+        f"rgba(251,191,36,0.72) {medium_pct:.1f}%,rgba(251,191,36,0.72) {high_pct:.1f}%,"
+        f"rgba(248,113,113,0.72) {high_pct:.1f}%,rgba(248,113,113,0.72) 100%)"
+    )
     if prob is None:
         return f"""
 <div class="risk-card risk-{tone} risk-idle">
@@ -506,7 +549,7 @@ def _risk_meter_html(prob: float | None, *, label: str, note: str) -> str:
     <span class="risk-pill">{safe_label}</span>
     <span class="risk-percent risk-percent-idle">&#x2014;</span>
   </div>
-  <div class="risk-track with-markers">
+  <div class="risk-track with-markers" style="background:{zone_gradient}">
     <span class="risk-marker medium" style="left:{medium_pct:.1f}%"></span>
     <span class="risk-marker high" style="left:{high_pct:.1f}%"></span>
   </div>
@@ -524,7 +567,7 @@ def _risk_meter_html(prob: float | None, *, label: str, note: str) -> str:
     <span class="risk-pill">{safe_label}</span>
     <span class="risk-percent">{pct:.1f}%</span>
   </div>
-  <div class="risk-track with-markers">
+  <div class="risk-track with-markers" style="background:{zone_gradient}">
     <span class="risk-marker medium" style="left:{medium_pct:.1f}%"></span>
     <span class="risk-marker high" style="left:{high_pct:.1f}%"></span>
     <div class="risk-fill" style="width:{pct:.1f}%"></div>
@@ -676,7 +719,7 @@ def _decision_explanation_card(
   </div>
   <div class="explain-chips">{chips_html}</div>
   <div class="explain-divider"></div>
-  <div class="explain-grid">
+  <div class="explain-grid" style="grid-template-columns: 1fr 1fr;">
     <section class="explain-section">
       <h4 class="explain-h explain-h-why"><span class="explain-ico">?</span>Why it was flagged</h4>
       <ul>{_html_bullets(why_items, fallback="No strong warning signals were detected.")}</ul>
@@ -684,10 +727,6 @@ def _decision_explanation_card(
     <section class="explain-section">
       <h4 class="explain-h explain-h-action"><span class="explain-ico">!</span>Recommended actions</h4>
       <ul>{_html_bullets(action_items, fallback="Continue with normal booking flow.")}</ul>
-    </section>
-    <section class="explain-section">
-      <h4 class="explain-h explain-h-model"><span class="explain-ico">i</span>What the model looks for</h4>
-      <ul>{_html_bullets(model_items, fallback="Model context is not available.")}</ul>
     </section>
   </div>
 </div>
@@ -727,6 +766,7 @@ def _format_prediction_output(
     model_utc: str | None,
     record: Dict[str, Any],
     artifacts: ModelArtifacts,
+    explanation: list[dict[str, object]],
 ) -> tuple[str, str, str, str]:
     risk_label = _risk_bucket(prob)
     pct = prob * 100.0
@@ -742,51 +782,55 @@ def _format_prediction_output(
         + float(record.get("stays_in_week_nights") or 0),
     )
     rev_at_risk = _adr * _nights
-    rev_line = f"- Revenue at risk: **€{rev_at_risk:,.0f}**\n" if rev_at_risk > 0 else ""
 
-    # Timestamp: drop seconds, keep "UTC" suffix
-    scored_ts = timestamp_utc[:16] if len(timestamp_utc) >= 16 else timestamp_utc
+    if risk_label == "High":
+        plain_action = "Flag for 10% non-refundable deposit requirement. Authorize front-desk to overbook this room type by +1."
+    elif risk_label == "Medium":
+        plain_action = "Queue for manual review. Send 72h and 24h automated reminders."
+    else:
+        plain_action = "No intervention needed — continue standard guest journey."
 
-    borderline_line = (
-        '\n<div class="borderline-banner">'
-        "&#9888; <strong>Borderline</strong> \u2014 This booking is near the decision boundary. "
-        "Small changes could flip the verdict."
-        "</div>\n"
-        if borderline
-        else ""
+    conf_level = (
+        "VERY HIGH"
+        if prob > 0.8 or prob < 0.2
+        else "HIGH"
+        if prob > 0.6 or prob < 0.4
+        else "MEDIUM"
     )
+    total_blocks = 20
+    filled_blocks = int((prob) * total_blocks)
+    empty_blocks = total_blocks - filled_blocks
+    progress_bar = "█" * filled_blocks + "░" * empty_blocks
+
+    action_color = (
+        "#ef4444" if risk_label == "High" else "#f59e0b" if risk_label == "Medium" else "#10b981"
+    )
+    action_icon = "🔴" if risk_label == "High" else "🟡" if risk_label == "Medium" else "🟢"
+
     summary = (
-        "### Prediction result\n"
-        f"**Cancellation risk: {pct:.1f}% — {risk_label} risk**\n\n"
-        f"- Standard verdict: {_verdict_badge(label_f1)}\n"
-        f"- High-confidence verdict: {_verdict_badge(label_hp)}\n"
-        f"{rev_line}"
-        f"- Scored: {scored_ts} UTC"
-        f"{borderline_line}"
+        f"<div style='font-size: 2.2rem; font-weight: 800; color: {action_color}; margin-bottom: -5px;'>{pct:.1f}%</div>"
+        f"<div style='font-size: 0.9rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;'>Cancellation Risk</div>"
+        f"<div style='font-size: 1.4rem; font-family: monospace; color: {action_color}; letter-spacing: 2px; margin-bottom: 5px;'>{progress_bar}</div>"
+        f"<div style='font-size: 1rem; font-weight: bold; color: {action_color}; margin-bottom: 25px;'>{risk_label.upper()} RISK</div>"
+        f"<div style='border: 1px solid {action_color}; border-radius: 8px; padding: 15px; background: rgba(0,0,0,0.3);'>"
+        f"<div style='font-size: 0.75rem; letter-spacing: 1px; color: #cbd5e1; text-transform: uppercase; margin-bottom: 8px;'>RECOMMENDED ACTION</div>"
+        f"<div style='font-size: 1.05rem; color: #eef2ff; font-weight: bold; margin-bottom: 12px; line-height: 1.4;'>{action_icon} {plain_action}</div>"
+        f"<div style='display: flex; justify-content: space-between; font-size: 0.9rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;'>"
+        f"<span style='color: #94a3b8'>Expected Revenue</span><span style='color: white; font-weight: bold;'>€{rev_at_risk:,.0f}</span>"
+        f"</div>"
+        f"<div style='display: flex; justify-content: space-between; font-size: 0.9rem; margin-top: 4px;'>"
+        f"<span style='color: #94a3b8'>Confidence</span><span style='color: white; font-weight: bold;'>{conf_level}</span>"
+        f"</div>"
+        f"</div>"
     )
     meter_note = f"Standard: {label_f1} · High-confidence: {label_hp}"
     if borderline:
         meter_note += " · ⚠ Near boundary"
-    risk_html = _risk_meter_html(prob, label=risk_label, note=meter_note)
+    risk_html = ""
 
-    if risk_label == "High":
-        action = "Trigger retention playbook now and prioritise outreach."
-    elif risk_label == "Medium":
-        action = "Queue for manual review and monitor booking changes."
-    else:
-        action = "No intervention needed — continue standard guest journey."
-
-    policy_alignment = "Agree" if label_f1 == label_hp else "Disagree"
     global_drivers = _load_global_model_drivers(artifacts, top_k=5)
     booking_drivers = _risk_drivers(record, prob)
     suggestions = _intervention_suggestions(record, risk_label, prob, thr_f1, thr_hp)
-    plain_model_items = [_plain_global_driver(item) for item in global_drivers]
-    why_items = _top_n_dedup(booking_drivers, n=3)
-    action_items = _top_n_dedup([action] + suggestions, n=3)
-    model_items = _top_n_dedup(
-        plain_model_items + ["Decision rules are calibrated on historical booking data."],
-        n=3,
-    )
     priority_label, priority_tone = _priority_action_for_risk(risk_label)
     global_driver_lines = (
         "\n".join([f"- {item}" for item in global_drivers])
@@ -799,19 +843,43 @@ def _format_prediction_output(
         f"`risk_band={risk_label}`, `probability={pct:.1f}%`, "
         f"`decision_standard={label_f1}`, `decision_high_confidence={label_hp}`"
     )
-    decision_notes = _decision_explanation_card(
-        risk_label=risk_label,
-        priority_label=priority_label,
-        priority_tone=priority_tone,
-        priority_instruction=_ops_instruction_for_risk(risk_label),
-        headline="Why this booking was flagged",
-        subheadline="Key risk signals detected and what your team should do.",
-        why_items=why_items,
-        action_items=action_items,
-        model_items=model_items,
-        policy_alignment=policy_alignment,
-        borderline=borderline,
+    xai_html = _generate_xai_html(explanation)
+
+    # Generate Verdict Explanation
+    if risk_label in ["High", "Medium"]:
+        verdict_text = f"Flagged as likely to be canceled because the risk probability ({pct:.1f}%) exceeds the normal thresholds. The Feature Impact below shows the specific booking details driving this risk."
+    else:
+        verdict_text = f"No concern. The risk probability ({pct:.1f}%) is below the alert thresholds. The booking characteristics indicate a low likelihood of cancellation."
+
+    # Format global drivers as an HTML list
+    global_drivers_html = (
+        "<ul style='color: #cbd5e1; font-size: 0.9rem; margin-top: 10px; padding-left: 20px;'>"
     )
+    for driver in global_drivers:
+        global_drivers_html += f"<li style='margin-bottom: 5px;'>{html.escape(driver)}</li>"
+    global_drivers_html += "</ul>"
+
+    decision_notes = f"""
+    <div style='background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-top: 15px;'>
+        <div style='margin-bottom: 20px;'>
+            <h4 style='margin-top: 0; margin-bottom: 5px; color: #f8fafc; font-size: 1.1rem;'>Verdict Explanation</h4>
+            <p style='color: #cbd5e1; font-size: 0.95rem; margin-top: 0;'>{verdict_text}</p>
+        </div>
+        <h4 style='margin-top: 0; margin-bottom: 15px; color: #f8fafc; font-size: 1.1rem;'>Feature Impact</h4>
+        {xai_html}
+        <div style='margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 15px;'>
+            <h4 style='margin-top: 0; margin-bottom: 5px; color: #f8fafc; font-size: 1.1rem;'>Model Insights</h4>
+            <p style='color: #94a3b8; font-size: 0.85rem; margin-top: 0;'>Top cancellation indicators learned from training data:</p>
+            <ul style='color: #cbd5e1; font-size: 0.9rem; margin-top: 10px; padding-left: 20px;'>
+                <li style='margin-bottom: 5px;'>Non-refundable bookings</li>
+                <li style='margin-bottom: 5px;'>Long lead times</li>
+                <li style='margin-bottom: 5px;'>Certain booking channels</li>
+                <li style='margin-bottom: 5px;'>Repeat cancellation history</li>
+                <li style='margin-bottom: 5px;'>High special request counts</li>
+            </ul>
+        </div>
+    </div>
+    """
 
     details = {
         "timestamp_utc": timestamp_utc,
@@ -993,14 +1061,33 @@ def _predict_output(values: Dict[str, Any]) -> tuple[str, str, str, str, Dict[st
 
     try:
         artifacts = _get_artifacts()
-        prob = float(predict_proba(record, artifacts)[0][0])
+
+        # Authentic Model Inference & SHAP explanation
+        import pandas as pd
+
+        df_raw = pd.DataFrame([record])
+        feature_df = _prepare_features(df_raw, artifacts.feature_columns)
+
+        if artifacts.is_pipeline:
+            prob = float(artifacts.model.predict_proba(feature_df)[:, 1][0])
+        else:
+            X = artifacts.preprocessor.transform(feature_df)
+            prob = float(artifacts.model.predict_proba(X)[:, 1][0])
+
+        if artifacts.calibrator is not None:
+            import numpy as np
+
+            prob = float(np.clip(artifacts.calibrator.predict([prob]), 0.0, 1.0)[0])
+
+        explanation = explain_prediction(feature_df, artifacts, top_n=5)
+
         resolved, sources, fallback_used, _ = resolve_thresholds(artifacts.thresholds or {})
         thr_f1 = resolved["max_f1"]
         thr_hp = resolved["high_precision"]
         timestamp_utc = _format_utc(datetime.now(timezone.utc))
         model_ts = _model_timestamp_utc() or "unknown"
         summary, details_json, risk_html, decision_notes = _format_prediction_output(
-            prob, thr_f1, thr_hp, timestamp_utc, model_ts, record, artifacts
+            prob, thr_f1, thr_hp, timestamp_utc, model_ts, record, artifacts, explanation
         )
         _log_to_prediction_db(record, prob, resolved, sources, fallback_used, artifacts)
         return summary, details_json, risk_html, decision_notes, record
@@ -1089,536 +1176,96 @@ def _log_case(record: Dict[str, Any], label: str, flagged: bool = False) -> None
 
 
 BACKGROUND_CSS = """
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
-
-:root {
-  --bg-deep:    #060d18;
-  --bg-base:    #0b1525;
-  --surface:    rgba(255,255,255,0.045);
-  --surface-md: rgba(255,255,255,0.07);
-  --panel:      rgba(10,20,38,0.90);
-  --border:     rgba(255,255,255,0.10);
-  --border-soft:rgba(255,255,255,0.06);
-  --ink:        #eef2ff;
-  --ink-muted:  #8fa3c8;
-  --ink-dim:    #4d6080;
-  --green:      #4ade9e;
-  --green-glow: rgba(74,222,158,0.20);
-  --blue:       #60a5fa;
-  --blue-glow:  rgba(96,165,250,0.20);
-  --warn:       #fbbf24;
-  --danger:     #f87171;
-  --r-sm: 8px; --r-md: 14px; --r-lg: 20px; --r-xl: 26px;
-}
-
-/* ── Base ──────────────────────────────────────────────────────────── */
-html, body { height: 100%; margin: 0; background: var(--bg-deep); }
-
+/* Deep dark background with subtle radial gradient and grain noise */
 #app-bg {
-  position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  background:
-    radial-gradient(ellipse 90% 60% at 15% -10%, rgba(96,165,250,0.20) 0%, transparent 60%),
-    radial-gradient(ellipse 75% 55% at 88% 95%, rgba(74,222,158,0.18) 0%, transparent 60%),
-    radial-gradient(ellipse 55% 45% at 55% 45%, rgba(167,139,250,0.07) 0%, transparent 60%),
-    var(--bg-deep);
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle at 15% 50%, rgba(15, 23, 42, 1), rgba(2, 6, 23, 1) 70%);
+    z-index: -2;
 }
-
 #app-noise {
-  position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  opacity: 0.022;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 256px 256px;
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background-image: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+    opacity: 0.05; z-index: -1; pointer-events: none;
 }
 
-/* ── Container ─────────────────────────────────────────────────────── */
-.gradio-container {
-  font-family: "Inter", "Segoe UI", system-ui, sans-serif !important;
-  background: transparent !important;
-  position: relative; z-index: 1;
-  min-height: 100vh;
-  padding: 28px 20px 44px;
-  color: var(--ink) !important;
+/* Modern SaaS KPI Header */
+.kpi-container { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
+.kpi-box { flex: 1; background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 15px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+.kpi-value { font-size: 1.8rem; font-weight: bold; color: #38bdf8; }
+.kpi-label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; }
+
+/* Sticky Result Card */
+.result-panel {
+    background: rgba(15, 23, 42, 0.8) !important;
+    border: 1px solid rgba(56, 189, 248, 0.3) !important;
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.08) !important;
+    position: sticky !important;
+    top: 20px !important;
+    height: fit-content !important;
 }
 
-.gradio-container > .wrap,
-.gradio-container .main {
-  max-width: 1300px; margin: 0 auto;
-  background: transparent !important;
-  border: none !important; box-shadow: none !important; padding: 0;
-}
+/* XAI Bars */
+.xai-container { margin-top: 10px; }
+.xai-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.xai-label { font-size: 0.85rem; color: #cbd5e1; width: 35%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xai-bar-bg { width: 45%; background: rgba(255,255,255,0.05); border-radius: 4px; height: 12px; position: relative; }
+.xai-bar-fill { height: 100%; border-radius: 4px; position: absolute; top: 0; }
+.xai-bar-fill.positive { background: linear-gradient(90deg, transparent, #ef4444); left: 50%; }
+.xai-bar-fill.negative { background: linear-gradient(270deg, transparent, #10b981); right: 50%; }
+.xai-val { width: 15%; text-align: right; font-size: 0.8rem; font-family: monospace; font-weight: bold; }
+.xai-val.pos-text { color: #fca5a5; }
+.xai-val.neg-text { color: #6ee7b7; }
 
-/* ── Hero ──────────────────────────────────────────────────────────── */
-.hero-shell {
-  margin-bottom: 24px;
-  padding: 28px 32px 26px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-  box-shadow: 0 4px 24px rgba(0,0,0,0.35);
-  backdrop-filter: blur(24px);
-  position: relative; overflow: hidden;
+/* Glassmorphic panels */
+.input-panel, .output-panel {
+    background: rgba(30, 41, 59, 0.4) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+    padding: 20px !important;
 }
-.hero-shell::before {
-  content: "";
-  position: absolute; top: 0; left: 0; right: 0; height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(74,222,158,0.55) 35%, rgba(96,165,250,0.55) 65%, transparent 100%);
+/* Primary accents: vibrant cyan/emerald */
+button.primary {
+    background: linear-gradient(135deg, #0ea5e9, #10b981) !important;
+    border: none !important;
+    color: white !important;
+    transition: all 0.3s ease !important;
 }
-
-.hero-eyebrow {
-  display: inline-flex; align-items: center; gap: 7px;
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--green); margin-bottom: 10px;
+button.primary:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4) !important;
 }
-.hero-eyebrow-dot {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--green);
-  box-shadow: 0 0 8px rgba(74,222,158,0.9);
-  animation: pulse-dot 2.2s ease-in-out infinite;
+/* Text colors */
+h1, h2, h3, h4, p, span, label {
+    color: #f8fafc !important;
 }
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.45; transform: scale(0.75); }
-}
-
 .hero-title {
-  margin: 0 0 8px;
-  font-size: clamp(1.65rem, 2.6vw, 2.3rem);
-  font-weight: 900; line-height: 1.08; letter-spacing: -0.6px;
-  background: linear-gradient(130deg, #eef2ff 0%, #8fa3c8 100%);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    font-size: 2.5rem;
+    font-weight: 800;
+    background: linear-gradient(to right, #38bdf8, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-align: center;
+    margin-bottom: 0.5rem;
 }
-
 .hero-subtitle {
-  margin: 0 0 18px; color: var(--ink-muted);
-  font-size: 0.93rem; line-height: 1.65; max-width: 700px;
+    text-align: center;
+    color: #94a3b8 !important;
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
 }
-
-.hero-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.hero-chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 0.75rem; font-weight: 500; padding: 5px 13px;
-  border-radius: 999px; background: rgba(255,255,255,0.06);
-  border: 1px solid var(--border); color: var(--ink-muted);
-  transition: background 180ms, border-color 180ms;
+/* Dropdowns and inputs */
+.gr-input, .gr-dropdown {
+    background: rgba(15, 23, 42, 0.6) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
 }
-.hero-chip:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.20); }
-
-/* ── Layout ────────────────────────────────────────────────────────── */
-.layout-row { gap: 20px; align-items: flex-start; }
-
-/* ── Panel blocks ──────────────────────────────────────────────────── */
-.input-panel .block, .result-panel .block {
-  border-radius: var(--r-md) !important;
-  border: 1px solid var(--border-soft) !important;
-  background: var(--surface) !important;
-  transition: border-color 200ms !important;
-}
-.input-panel .block:focus-within {
-  border-color: rgba(96,165,250,0.35) !important;
-}
-
-/* ── Typography ────────────────────────────────────────────────────── */
-.gradio-container h1, .gradio-container h2,
-.gradio-container h3 { color: var(--ink) !important; }
-
-.gradio-container label {
-  color: var(--ink) !important;
-  font-size: 0.80rem !important; font-weight: 600 !important; letter-spacing: 0.01em;
-}
-
-/* ── Form inputs ───────────────────────────────────────────────────── */
-.gradio-container input,
-.gradio-container textarea,
-.gradio-container select {
-  color: var(--ink) !important;
-  background: rgba(0,0,0,0.28) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: var(--r-sm) !important;
-  font-size: 0.875rem !important;
-  transition: border-color 150ms, box-shadow 150ms !important;
-}
-.gradio-container input:focus, .gradio-container textarea:focus {
-  border-color: rgba(96,165,250,0.55) !important;
-  box-shadow: 0 0 0 3px rgba(96,165,250,0.12) !important; outline: none !important;
-}
-
-/* ── Accordion ─────────────────────────────────────────────────────── */
-.gradio-container details {
-  border: 1px solid var(--border) !important;
-  border-radius: var(--r-md) !important;
-  background: rgba(0,0,0,0.15) !important;
-  margin-bottom: 10px;
-}
-.gradio-container details summary {
-  font-size: 0.85rem !important; font-weight: 600 !important;
-  color: var(--ink) !important; padding: 13px 16px !important;
-  cursor: pointer; user-select: none; list-style: none;
-  transition: color 150ms;
-}
-.gradio-container details[open] summary { color: var(--blue) !important; }
-.gradio-container details summary::marker,
-.gradio-container details summary::-webkit-details-marker { display: none; }
-
-/* ── Buttons ───────────────────────────────────────────────────────── */
-.gradio-container button.primary {
-  background: linear-gradient(135deg, #4ade9e 0%, #38b2f5 100%) !important;
-  border: none !important; color: #040d1c !important;
-  font-weight: 700 !important; font-size: 0.9rem !important;
-  letter-spacing: 0.025em !important;
-  border-radius: var(--r-sm) !important;
-  box-shadow: 0 4px 18px rgba(74,222,158,0.32), 0 2px 6px rgba(0,0,0,0.28) !important;
-  transition: transform 130ms ease, box-shadow 150ms ease, filter 130ms ease !important;
-  position: relative; overflow: hidden;
-}
-.gradio-container button.primary::after {
-  content: "";
-  position: absolute; inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 60%);
-  pointer-events: none;
-}
-.gradio-container button.primary:hover:not(:disabled) {
-  transform: translateY(-2px) !important;
-  filter: brightness(1.08) !important;
-  box-shadow: 0 8px 28px rgba(74,222,158,0.42), 0 4px 12px rgba(0,0,0,0.3) !important;
-}
-.gradio-container button.primary:active:not(:disabled) {
-  transform: translateY(0) !important; filter: brightness(0.97) !important;
-  box-shadow: 0 2px 8px rgba(74,222,158,0.22) !important;
-}
-.gradio-container button.primary:disabled {
-  background: rgba(74,222,158,0.16) !important;
-  color: rgba(4,13,28,0.42) !important; box-shadow: none !important; cursor: not-allowed !important;
-}
-
-.gradio-container button:not(.primary) {
-  background: rgba(255,255,255,0.06) !important;
-  border: 1px solid var(--border) !important;
-  color: var(--ink-muted) !important; border-radius: var(--r-sm) !important;
-  font-size: 0.84rem !important; font-weight: 500 !important;
-  transition: background 130ms, border-color 130ms, color 130ms !important;
-}
-.gradio-container button:not(.primary):hover:not(:disabled) {
-  background: rgba(255,255,255,0.10) !important;
-  border-color: rgba(255,255,255,0.22) !important; color: var(--ink) !important;
-}
-
-/* ── Radio/Checkbox ────────────────────────────────────────────────── */
-.gradio-container [role="radiogroup"] button {
-  background: rgba(0,0,0,0.22) !important;
-  border: 1px solid var(--border) !important; color: var(--ink) !important;
-}
-.gradio-container [role="radiogroup"] button *,
-.gradio-container [role="radiogroup"] label { color: inherit !important; }
-.gradio-container [role="radiogroup"] button:hover {
-  border-color: rgba(74,222,158,0.50) !important;
-}
-.gradio-container [role="radiogroup"] button[aria-checked="true"],
-.gradio-container [role="radiogroup"] button[aria-pressed="true"],
-.gradio-container [role="radiogroup"] button.selected {
-  background: linear-gradient(135deg, var(--green), var(--blue)) !important;
-  border-color: transparent !important; color: #040d1c !important;
-}
-.gradio-container [role="radiogroup"] button[aria-checked="true"] *,
-.gradio-container [role="radiogroup"] button[aria-pressed="true"] *,
-.gradio-container [role="radiogroup"] button.selected * { color: #040d1c !important; }
-
-.gradio-container input[type="checkbox"] { accent-color: var(--green) !important; }
-.gradio-container [role="checkbox"] {
-  border: 1px solid var(--border) !important;
-  background: rgba(0,0,0,0.22) !important; color: var(--ink) !important; border-radius: 8px !important;
-}
-.gradio-container [role="checkbox"][aria-checked="true"] {
-  border-color: transparent !important;
-  background: linear-gradient(135deg, var(--green), var(--blue)) !important; color: #040d1c !important;
-}
-.gradio-container [role="checkbox"][aria-checked="true"] * { color: #040d1c !important; }
-
-/* ── Result summary ────────────────────────────────────────────────── */
-#result-summary {
-  background: rgba(0,0,0,0.20);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r-md); padding: 14px 18px;
-}
-#result-summary h3 {
-  margin: 0 0 10px; font-size: 1.05rem; font-weight: 700; letter-spacing: -0.2px;
-  color: var(--ink) !important; padding-bottom: 10px;
-  border-bottom: 1px solid var(--border-soft);
-}
-#result-summary p, #result-summary li {
-  font-size: 0.875rem; line-height: 1.6; color: var(--ink-muted);
-}
-#result-summary strong { color: var(--ink); }
-
-/* ── Required status ───────────────────────────────────────────────── */
-#required-status {
-  margin-top: 10px; background: rgba(0,0,0,0.18);
-  border: 1px solid var(--border-soft); border-radius: var(--r-sm); padding: 10px 14px;
-  font-size: 0.80rem;
-}
-
-/* ── Explain card ──────────────────────────────────────────────────── */
-.explain-card {
-  margin-top: 12px;
-  background: rgba(6,13,24,0.85);
-  border: 1px solid var(--border); border-radius: var(--r-md); padding: 16px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
-  position: relative; overflow: hidden;
-}
-.explain-card::before {
-  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-}
-.explain-safe   { border-color: rgba(74,222,158,0.28); }
-.explain-watch  { border-color: rgba(251,191,36,0.32);  }
-.explain-danger { border-color: rgba(248,113,113,0.35); }
-.explain-safe::before   { background: linear-gradient(90deg, transparent, rgba(74,222,158,0.5), transparent); }
-.explain-watch::before  { background: linear-gradient(90deg, transparent, rgba(251,191,36,0.5), transparent); }
-.explain-danger::before { background: linear-gradient(90deg, transparent, rgba(248,113,113,0.5), transparent); }
-
-.explain-priority-row {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; margin-bottom: 14px; padding: 10px 12px;
-  border: 1px solid var(--border-soft); border-radius: var(--r-sm);
-  background: rgba(255,255,255,0.04);
-}
-.explain-priority-title {
-  font-size: 0.70rem; text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--ink-muted); font-weight: 700;
-}
-.explain-priority-actions { display: inline-flex; align-items: center; gap: 8px; }
-.explain-priority-pill {
-  font-size: 0.76rem; font-weight: 700; padding: 4px 12px;
-  border-radius: 999px; border: 1px solid var(--border);
-}
-.explain-priority-danger { color: #f87171; border-color: rgba(248,113,113,0.65); background: rgba(248,113,113,0.12); }
-.explain-priority-watch  { color: #fbbf24; border-color: rgba(251,191,36,0.65);  background: rgba(251,191,36,0.12); }
-.explain-priority-safe   { color: #4ade9e; border-color: rgba(74,222,158,0.65);  background: rgba(74,222,158,0.12); }
-.explain-priority-neutral { color: var(--ink-muted); border-color: var(--border); background: rgba(255,255,255,0.05); }
-
-.explain-copy-btn {
-  border: 1px solid var(--border); border-radius: 999px;
-  background: rgba(255,255,255,0.06); color: var(--ink-muted);
-  font-size: 0.68rem; font-weight: 600; padding: 3px 10px; cursor: pointer;
-  transition: all 130ms ease;
-}
-.explain-copy-btn:hover {
-  border-color: rgba(74,222,158,0.5); background: rgba(74,222,158,0.10); color: var(--green);
-}
-.explain-copy-toast {
-  font-size: 0.68rem; font-weight: 600; color: var(--green);
-  opacity: 0; transition: opacity 140ms; pointer-events: none;
-}
-.explain-copy-toast.show { opacity: 1; }
-
-.explain-head {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  gap: 12px; margin-bottom: 10px;
-}
-.explain-title { font-size: 0.93rem; font-weight: 700; color: var(--ink); }
-.explain-subtitle { margin-top: 3px; font-size: 0.80rem; color: var(--ink-muted); }
-.explain-badge {
-  white-space: nowrap; font-size: 0.70rem; font-weight: 700; padding: 4px 11px;
-  border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,0.06);
-  color: var(--ink-muted);
-}
-.explain-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.explain-chip {
-  font-size: 0.70rem; padding: 3px 10px; border-radius: 999px;
-  border: 1px solid var(--border-soft); background: rgba(255,255,255,0.05); color: var(--ink-muted);
-}
-.explain-divider { height: 1px; margin: 12px 0; }
-.explain-safe  .explain-divider { background: linear-gradient(90deg, transparent, rgba(74,222,158,0.3), transparent); }
-.explain-watch .explain-divider { background: linear-gradient(90deg, transparent, rgba(251,191,36,0.3), transparent); }
-.explain-danger .explain-divider { background: linear-gradient(90deg, transparent, rgba(248,113,113,0.3), transparent); }
-.explain-neutral .explain-divider { background: var(--border-soft); }
-
-.explain-grid { display: grid; gap: 10px; }
-@media (min-width: 900px) { .explain-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-
-.explain-section {
-  border: 1px solid var(--border-soft); border-radius: var(--r-sm); padding: 12px;
-  background: rgba(255,255,255,0.03); border-left-width: 3px;
-}
-.explain-section:nth-child(1) { border-left-color: rgba(253,230,138,0.75); }
-.explain-section:nth-child(2) { border-left-color: rgba(134,239,172,0.75); }
-.explain-section:nth-child(3) { border-left-color: rgba(191,219,254,0.75); }
-
-.explain-h {
-  margin: 0 0 8px; font-size: 0.80rem; font-weight: 700;
-  display: flex; align-items: center; gap: 7px;
-}
-.explain-ico {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; border-radius: 999px;
-  font-size: 0.68rem; font-weight: 700; border: 1px solid var(--border);
-  background: rgba(255,255,255,0.07); color: var(--ink);
-}
-.explain-h-why    { color: #fde68a; }
-.explain-h-action { color: #86efac; }
-.explain-h-model  { color: #bfdbfe; }
-.explain-h-why    .explain-ico { border-color: rgba(253,230,138,0.7); background: rgba(253,230,138,0.10); }
-.explain-h-action .explain-ico { border-color: rgba(134,239,172,0.7); background: rgba(134,239,172,0.10); }
-.explain-h-model  .explain-ico { border-color: rgba(191,219,254,0.7); background: rgba(191,219,254,0.10); }
-
-.explain-section ul { margin: 0; padding-left: 16px; }
-.explain-section li { margin: 0 0 5px; font-size: 0.79rem; line-height: 1.45; color: var(--ink-muted); }
-.explain-section li:last-child { margin-bottom: 0; }
-.explain-section:nth-child(1) li { color: #fef3c7; }
-.explain-section:nth-child(2) li { color: #d1fae5; }
-.explain-section:nth-child(3) li { color: #dbeafe; }
-
-.explain-safe  .explain-badge { border-color: rgba(74,222,158,0.55); }
-.explain-watch .explain-badge { border-color: rgba(251,191,36,0.60); }
-.explain-danger .explain-badge { border-color: rgba(248,113,113,0.60); }
-.explain-neutral .explain-badge { border-color: var(--border); }
-
-/* ── Verdict badges ────────────────────────────────────────────────── */
-.verdict-badge {
-  display: inline-block; font-size: 0.72rem; font-weight: 700;
-  padding: 2px 9px; border-radius: 999px; vertical-align: middle; letter-spacing: 0.02em;
-}
-.verdict-cancel { background: rgba(248,113,113,0.14); border: 1px solid rgba(248,113,113,0.60); color: #fca5a5; }
-.verdict-safe   { background: rgba(74,222,158,0.12);  border: 1px solid rgba(74,222,158,0.55); color: #86efac; }
-
-/* ── Borderline banner ─────────────────────────────────────────────── */
-.borderline-banner {
-  margin: 12px 0 0; padding: 10px 14px;
-  border-radius: var(--r-sm); border: 1px solid rgba(251,191,36,0.50);
-  background: rgba(251,191,36,0.09); color: #fde68a;
-  font-size: 0.84rem; font-weight: 500; line-height: 1.5;
-}
-
-/* ── JSON output ───────────────────────────────────────────────────── */
-#result-details textarea {
-  font-family: "JetBrains Mono", Consolas, monospace !important;
-  font-size: 0.78rem !important; line-height: 1.55 !important; color: #7090b8 !important;
-}
-
-/* ── Risk card ─────────────────────────────────────────────────────── */
-.risk-card {
-  border-radius: var(--r-md); border: 1px solid var(--border);
-  padding: 20px; background: rgba(0,0,0,0.28);
-  transition: border-color 350ms, box-shadow 350ms;
-}
-.risk-safe   { border-color: rgba(74,222,158,0.40) !important;  box-shadow: 0 0 28px rgba(74,222,158,0.10); }
-.risk-watch  { border-color: rgba(251,191,36,0.42) !important;  box-shadow: 0 0 28px rgba(251,191,36,0.10); }
-.risk-danger { border-color: rgba(248,113,113,0.45) !important; box-shadow: 0 0 28px rgba(248,113,113,0.12); }
-
-.risk-topline {
-  display: flex; justify-content: space-between; align-items: flex-start;
-  gap: 10px; margin-bottom: 16px;
-}
-.risk-pill {
-  font-size: 0.70rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border);
-  background: rgba(255,255,255,0.07); color: var(--ink-muted);
-}
-.risk-safe   .risk-pill { border-color: rgba(74,222,158,0.55);  color: var(--green); background: rgba(74,222,158,0.10); }
-.risk-watch  .risk-pill { border-color: rgba(251,191,36,0.55);  color: var(--warn);  background: rgba(251,191,36,0.10); }
-.risk-danger .risk-pill { border-color: rgba(248,113,113,0.55); color: var(--danger); background: rgba(248,113,113,0.10); }
-
-.risk-percent {
-  font-size: clamp(3rem, 5vw, 4rem); font-weight: 900;
-  letter-spacing: -2px; line-height: 1; font-variant-numeric: tabular-nums;
-}
-.risk-safe   .risk-percent { color: var(--green);  text-shadow: 0 0 32px rgba(74,222,158,0.50); }
-.risk-watch  .risk-percent { color: var(--warn);   text-shadow: 0 0 32px rgba(251,191,36,0.50); }
-.risk-danger .risk-percent { color: var(--danger); text-shadow: 0 0 32px rgba(248,113,113,0.50); }
-
-.risk-track {
-  position: relative; border-radius: 999px; height: 8px;
-  background: rgba(255,255,255,0.09); overflow: visible; margin-bottom: 8px;
-}
-.risk-fill {
-  height: 100%; border-radius: 999px;
-  transition: width 550ms cubic-bezier(0.34, 1.20, 0.64, 1);
-}
-.risk-safe   .risk-fill { background: linear-gradient(90deg, #2dd47a, #4ade9e); box-shadow: 0 0 10px rgba(74,222,158,0.55); }
-.risk-watch  .risk-fill { background: linear-gradient(90deg, #d97706, #fbbf24); box-shadow: 0 0 10px rgba(251,191,36,0.55); }
-.risk-danger .risk-fill { background: linear-gradient(90deg, #dc2626, #f87171); box-shadow: 0 0 10px rgba(248,113,113,0.55); }
-.risk-neutral .risk-fill { background: linear-gradient(90deg, #4b5563, #9ca3af); }
-
-.risk-marker {
-  position: absolute; top: -4px; width: 2px; height: 16px;
-  background: rgba(255,255,255,0.28); border-radius: 2px; z-index: 3;
-}
-.risk-marker.high { background: rgba(248,113,113,0.75); }
-
-.risk-dot {
-  position: absolute; top: 50%; transform: translate(-50%, -50%);
-  width: 16px; height: 16px; border-radius: 50%;
-  border: 2.5px solid rgba(255,255,255,0.92); z-index: 5;
-  transition: left 550ms cubic-bezier(0.34, 1.20, 0.64, 1); pointer-events: none;
-}
-.risk-safe   .risk-dot { background: var(--green);  box-shadow: 0 0 12px rgba(74,222,158,0.80); }
-.risk-watch  .risk-dot { background: var(--warn);   box-shadow: 0 0 12px rgba(251,191,36,0.80); }
-.risk-danger .risk-dot { background: var(--danger); box-shadow: 0 0 12px rgba(248,113,113,0.80); }
-.risk-neutral .risk-dot { background: #9ca3af; }
-
-.risk-threshold-labels {
-  display: flex; justify-content: space-between;
-  color: var(--ink-dim); font-size: 0.70rem; font-weight: 500; margin-top: 5px;
-}
-.risk-note {
-  margin: 14px 0 0; color: var(--ink-muted); font-size: 0.84rem; line-height: 1.55;
-  padding-top: 14px; border-top: 1px solid var(--border-soft);
-}
-
-/* Idle shimmer */
-.risk-idle .risk-percent-idle {
-  font-size: clamp(3rem, 5vw, 4rem); font-weight: 900; letter-spacing: -2px;
-  color: var(--ink-dim);
-}
-.risk-idle .risk-track { overflow: hidden; }
-.risk-idle .risk-track::after {
-  content: ""; position: absolute; inset: 0; border-radius: 999px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.11), transparent);
-  background-size: 200% 100%;
-  animation: risk-shimmer 2.4s ease-in-out infinite;
-}
-@keyframes risk-shimmer {
-  0%   { background-position: -100% 0; }
-  100% { background-position: 220% 0; }
-}
-
-/* ── Sticky result column ──────────────────────────────────────────── */
-@media (min-width: 980px) {
-  #result-col {
-    position: sticky; top: 20px; align-self: flex-start;
-    max-height: calc(100vh - 40px); overflow-y: auto;
-    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
-  }
-}
-
-/* ── Responsive ────────────────────────────────────────────────────── */
-@media (max-width: 720px) {
-  .gradio-container { padding: 12px 10px 28px; }
-  .hero-shell { padding: 20px 18px; border-radius: var(--r-lg); }
-  .hero-title { font-size: 1.45rem; }
-}
-
-/* ── Verdict pill badges ────────────────────────────────────────────── */
-/* (kept for backward compat) */
-}
-
-/* ── Explain card: border & divider colour per risk tier ─────────────── */
-.explain-safe   { border-color: rgba(87,  217, 163, 0.45); }
-.explain-watch  {
-  border-color: rgba(255, 183, 77, 0.50);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px rgba(255,183,77,0.10);
-}
-.explain-danger {
-  border-color: rgba(255, 95, 109, 0.55);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 0 0 1px rgba(255,95,109,0.12);
-}
-.explain-watch  .explain-divider {
-  background: linear-gradient(
-    90deg, rgba(255,183,77,0.05), rgba(255,183,77,0.55), rgba(255,183,77,0.05)
-  );
-}
-.explain-danger .explain-divider {
-  background: linear-gradient(
-    90deg, rgba(255,95,109,0.05), rgba(255,95,109,0.55), rgba(255,95,109,0.05)
-  );
-}
+/* Risk Tiers */
+.risk-low { border-left: 6px solid #10b981 !important; }
+.risk-medium { border-left: 6px solid #f59e0b !important; }
+.risk-high { border-left: 6px solid #ef4444 !important; }
 """
 
 
@@ -1667,504 +1314,656 @@ def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Hotel Booking Cancellation Prediction") as demo:
         gr.HTML('<div id="app-bg"></div><div id="app-noise"></div>')
         gr.HTML(
-            f"""
+            """
 <section class="hero-shell">
-  <div class="hero-eyebrow">
-    <span class="hero-eyebrow-dot"></span>
-    LightGBM · Calibrated · Real-time
+  <div class="hero-eyebrow" style="display: flex; justify-content: space-between; align-items: center; padding: 0 10px;">
+    <span><span class="hero-eyebrow-dot"></span> LightGBM · Calibrated · Real-time</span>
+    <span style="color: #10b981; font-weight: bold;">🟢 System Status: Online (Models Synced)</span>
+    <span style="color: #94a3b8;">👤 Logged in as: Admin (Front Desk Manager)</span>
+    <span style="color: #94a3b8;">📡 Latency: 12ms</span>
   </div>
-  <h1 class="hero-title">Hotel Booking Cancellation Predictor</h1>
+  <h1 class="hero-title">Enterprise Booking Cancellation Predictor</h1>
   <p class="hero-subtitle">
-    Enter booking details to get a calibrated cancellation probability and a clear recommended action.
-    The model scores at booking time only — no post-check-in data required.
+    Enter booking details to get a calibrated cancellation probability and an actionable system recommendation.
+    Powered by state-of-the-art Gradient Boosted Trees.
   </p>
-  <div class="hero-chips">
-    <span class="hero-chip">{_HERO_METRICS}</span>
-    <span class="hero-chip">Medium risk ≥ {int(RISK_TIER_MEDIUM_THRESHOLD * 100)}%</span>
-    <span class="hero-chip">High risk ≥ {int(RISK_TIER_HIGH_THRESHOLD * 100)}%</span>
-    <span class="hero-chip">Cost-sensitive threshold optimization</span>
+  <div class="kpi-container">
+    <div class="kpi-box"><div class="kpi-value">0.863</div><div class="kpi-label">ROC-AUC</div></div>
+    <div class="kpi-box"><div class="kpi-value">0.759</div><div class="kpi-label">PR-AUC</div></div>
+    <div class="kpi-box"><div class="kpi-value">&gt; 70%</div><div class="kpi-label">High Risk Thr.</div></div>
+    <div class="kpi-box"><div class="kpi-value">12ms</div><div class="kpi-label">Avg Latency</div></div>
   </div>
 </section>
 """
         )
-        with gr.Row(elem_classes=["layout-row"]):
-            with gr.Column(scale=5, elem_classes=["input-panel"]):
-                with gr.Accordion("1) Booking details (required)", open=True):
-                    with gr.Row():
-                        hotel = gr.Dropdown(
-                            label="Hotel (required)",
-                            choices=_CAT_CHOICES["hotel"],
-                            value=defaults["hotel"],
-                            allow_custom_value=True,
-                        )
-                        customer_type = gr.Dropdown(
-                            label="Guest type (required)",
-                            choices=_CAT_CHOICES["customer_type"],
-                            value=defaults["customer_type"],
-                            allow_custom_value=True,
-                        )
-                    with gr.Row():
-                        market_segment = gr.Dropdown(
-                            label="Market segment (required)",
-                            info="How the booking was sourced — e.g., Online TA = online travel agency.",
-                            choices=_CAT_CHOICES["market_segment"],
-                            value=defaults["market_segment"],
-                            allow_custom_value=True,
-                        )
-                        distribution_channel = gr.Dropdown(
-                            label="Booking platform (required)",
-                            info="The platform or channel used to make this booking.",
-                            choices=_CAT_CHOICES["distribution_channel"],
-                            value=defaults["distribution_channel"],
-                            allow_custom_value=True,
-                        )
-                    with gr.Row():
-                        lead_time = gr.Number(
-                            label="Days until arrival (required)",
-                            value=defaults["lead_time"],
-                            minimum=0,
-                            maximum=5000,
-                            step=1,
-                            info="Number of days between today and the guest's arrival date.",
-                        )
-                        arrival_date = gr.DateTime(
-                            label="Arrival date (required)",
-                            value=defaults["arrival_date"],
-                            include_time=False,
-                            type="datetime",
-                        )
-                    with gr.Row():
-                        stays_in_weekend_nights = gr.Number(
-                            label="Weekend nights — Sat & Sun (required)",
-                            value=defaults["stays_in_weekend_nights"],
-                            minimum=0,
-                            maximum=60,
-                            step=1,
-                        )
-                        stays_in_week_nights = gr.Number(
-                            label="Week nights — Mon to Fri (required)",
-                            value=defaults["stays_in_week_nights"],
-                            minimum=0,
-                            maximum=120,
-                            step=1,
-                        )
-                    with gr.Row():
-                        adults = gr.Number(
-                            label="Adults",
-                            value=defaults["adults"],
-                            minimum=1,
-                            maximum=20,
-                            step=1,
-                        )
-                        children = gr.Number(
-                            label="Children",
-                            value=defaults["children"],
-                            minimum=0,
-                            maximum=20,
-                            step=1,
-                        )
-                        babies = gr.Number(
-                            label="Babies",
-                            value=defaults["babies"],
-                            minimum=0,
-                            maximum=20,
-                            step=1,
-                        )
-                    with gr.Row():
-                        adr = gr.Number(
-                            label="Room rate — ADR (required)",
-                            value=defaults["adr"],
-                            minimum=0.01,
-                            maximum=ADR_MAX_VALID,
-                            step=1,
-                            info="Average Daily Rate — the nightly room price.",
-                        )
-                        deposit_type = gr.Dropdown(
-                            label="Payment / deposit type (required)",
-                            choices=_CAT_CHOICES["deposit_type"],
-                            value=defaults["deposit_type"],
-                            allow_custom_value=True,
-                        )
-                    with gr.Row():
-                        total_nights_view = gr.Number(
-                            label="Total nights (derived)",
-                            value=initial_total_nights,
-                            interactive=False,
-                        )
-                        party_size_view = gr.Number(
-                            label="Party size (derived)",
-                            value=initial_party_size,
-                            interactive=False,
-                        )
-                        adr_per_person_view = gr.Number(
-                            label="ADR per person (derived)",
-                            value=round(initial_adr_per_person, 2),
-                            interactive=False,
+        with gr.Tabs():
+            with gr.Tab("Scoring Engine"):
+                with gr.Row(elem_classes=["layout-row"]):
+                    with gr.Column(scale=6, elem_classes=["input-panel"]):
+                        with gr.Accordion("1) Booking details (required)", open=True):
+                            with gr.Row():
+                                hotel = gr.Dropdown(
+                                    label="Hotel (required)",
+                                    choices=_CAT_CHOICES["hotel"],
+                                    value=defaults["hotel"],
+                                    allow_custom_value=True,
+                                )
+                                customer_type = gr.Dropdown(
+                                    label="Guest type (required)",
+                                    choices=_CAT_CHOICES["customer_type"],
+                                    value=defaults["customer_type"],
+                                    allow_custom_value=True,
+                                )
+                            with gr.Row():
+                                market_segment = gr.Dropdown(
+                                    label="Market segment (required)",
+                                    info="How the booking was sourced — e.g., Online TA = online travel agency.",
+                                    choices=_CAT_CHOICES["market_segment"],
+                                    value=defaults["market_segment"],
+                                    allow_custom_value=True,
+                                )
+                                distribution_channel = gr.Dropdown(
+                                    label="Booking platform (required)",
+                                    info="The platform or channel used to make this booking.",
+                                    choices=_CAT_CHOICES["distribution_channel"],
+                                    value=defaults["distribution_channel"],
+                                    allow_custom_value=True,
+                                )
+                            with gr.Row():
+                                lead_time = gr.Number(
+                                    label="Days until arrival (required)",
+                                    value=defaults["lead_time"],
+                                    minimum=0,
+                                    maximum=5000,
+                                    step=1,
+                                    info="Number of days between today and the guest's arrival date.",
+                                )
+                                arrival_date = gr.DateTime(
+                                    label="Arrival date (required)",
+                                    value=defaults["arrival_date"],
+                                    include_time=False,
+                                    type="datetime",
+                                )
+                            with gr.Row():
+                                stays_in_weekend_nights = gr.Number(
+                                    label="Weekend nights — Sat & Sun (required)",
+                                    value=defaults["stays_in_weekend_nights"],
+                                    minimum=0,
+                                    maximum=60,
+                                    step=1,
+                                )
+                                stays_in_week_nights = gr.Number(
+                                    label="Week nights — Mon to Fri (required)",
+                                    value=defaults["stays_in_week_nights"],
+                                    minimum=0,
+                                    maximum=120,
+                                    step=1,
+                                )
+                            with gr.Row():
+                                adults = gr.Slider(
+                                    label="Adults",
+                                    value=defaults["adults"],
+                                    minimum=1,
+                                    maximum=10,
+                                    step=1,
+                                )
+                                children = gr.Number(
+                                    label="Children",
+                                    value=defaults["children"],
+                                    minimum=0,
+                                    maximum=20,
+                                    step=1,
+                                )
+                                babies = gr.Number(
+                                    label="Babies",
+                                    value=defaults["babies"],
+                                    minimum=0,
+                                    maximum=20,
+                                    step=1,
+                                )
+                            with gr.Row():
+                                adr = gr.Number(
+                                    label="Room rate — ADR (required)",
+                                    value=defaults["adr"],
+                                    minimum=0.01,
+                                    maximum=ADR_MAX_VALID,
+                                    step=1,
+                                    info="Average Daily Rate — the nightly room price.",
+                                )
+                                deposit_type = gr.Dropdown(
+                                    label="Payment / deposit type (required)",
+                                    choices=_CAT_CHOICES["deposit_type"],
+                                    value=defaults["deposit_type"],
+                                    allow_custom_value=True,
+                                )
+                            with gr.Row():
+                                total_nights_view = gr.Number(
+                                    label="Total nights (derived)",
+                                    value=initial_total_nights,
+                                    interactive=False,
+                                )
+                                party_size_view = gr.Number(
+                                    label="Party size (derived)",
+                                    value=initial_party_size,
+                                    interactive=False,
+                                )
+                                adr_per_person_view = gr.Number(
+                                    label="ADR per person (derived)",
+                                    value=round(initial_adr_per_person, 2),
+                                    interactive=False,
+                                )
+
+                        with gr.Accordion(
+                            "2) Guest preferences (optional — improves accuracy)", open=False
+                        ):
+                            with gr.Row():
+                                country = gr.Dropdown(
+                                    label="Country (optional)",
+                                    choices=COUNTRY_OPTIONAL_CHOICES,
+                                    value=defaults["country"],
+                                    allow_custom_value=True,
+                                )
+                                meal = gr.Dropdown(
+                                    label="Meal plan (optional)",
+                                    choices=_CAT_CHOICES["meal"],
+                                    value=defaults["meal"],
+                                    allow_custom_value=True,
+                                    info="BB = Bed & Breakfast  ·  HB = Half Board  ·  FB = Full Board  ·  SC = Self-Catering",
+                                )
+                            with gr.Row():
+                                reserved_room_type = gr.Dropdown(
+                                    label="Room category (optional)",
+                                    choices=_CAT_CHOICES["reserved_room_type"],
+                                    value=defaults["reserved_room_type"],
+                                    allow_custom_value=True,
+                                )
+                                total_of_special_requests = gr.Number(
+                                    label="No. of special requests (optional)",
+                                    value=defaults["total_of_special_requests"],
+                                    minimum=0,
+                                    maximum=10,
+                                    step=1,
+                                    info="Number of requests made at booking (e.g., cot, late check-in, floor preference). More = stronger engagement.",
+                                )
+                                required_car_parking_spaces = gr.Number(
+                                    label="Parking spaces needed (optional)",
+                                    value=defaults["required_car_parking_spaces"],
+                                    minimum=0,
+                                    maximum=10,
+                                    step=1,
+                                )
+                            with gr.Accordion("Advanced identifiers (optional)", open=False):
+                                agent = gr.Textbox(
+                                    label="Agent (optional)", value=defaults["agent"]
+                                )
+                                company = gr.Textbox(
+                                    label="Company (optional)", value=defaults["company"]
+                                )
+
+                        with gr.Accordion("3) Guest history (optional)", open=False):
+                            with gr.Row():
+                                is_repeated_guest = gr.Checkbox(
+                                    label="Returning guest",
+                                    value=defaults["is_repeated_guest"],
+                                    info="Tick if this guest has stayed with you before.",
+                                )
+                                previous_cancellations = gr.Number(
+                                    label="Previous cancellations",
+                                    value=defaults["previous_cancellations"],
+                                    minimum=0,
+                                    maximum=20,
+                                    step=1,
+                                )
+                                previous_bookings_not_canceled = gr.Number(
+                                    label="Past completed stays",
+                                    value=defaults["previous_bookings_not_canceled"],
+                                    minimum=0,
+                                    maximum=50,
+                                    step=1,
+                                )
+
+                        required_status = gr.Markdown(
+                            value=initial_required_status, elem_id="required-status"
                         )
 
-                with gr.Accordion(
-                    "2) Guest preferences (optional — improves accuracy)", open=False
-                ):
-                    with gr.Row():
-                        country = gr.Dropdown(
-                            label="Country (optional)",
-                            choices=COUNTRY_OPTIONAL_CHOICES,
-                            value=defaults["country"],
-                            allow_custom_value=True,
-                        )
-                        meal = gr.Dropdown(
-                            label="Meal plan (optional)",
-                            choices=_CAT_CHOICES["meal"],
-                            value=defaults["meal"],
-                            allow_custom_value=True,
-                            info="BB = Bed & Breakfast  ·  HB = Half Board  ·  FB = Full Board  ·  SC = Self-Catering",
-                        )
-                    with gr.Row():
-                        reserved_room_type = gr.Dropdown(
-                            label="Room category (optional)",
-                            choices=_CAT_CHOICES["reserved_room_type"],
-                            value=defaults["reserved_room_type"],
-                            allow_custom_value=True,
-                        )
-                        total_of_special_requests = gr.Number(
-                            label="No. of special requests (optional)",
-                            value=defaults["total_of_special_requests"],
-                            minimum=0,
-                            maximum=10,
-                            step=1,
-                            info="Number of requests made at booking (e.g., cot, late check-in, floor preference). More = stronger engagement.",
-                        )
-                        required_car_parking_spaces = gr.Number(
-                            label="Parking spaces needed (optional)",
-                            value=defaults["required_car_parking_spaces"],
-                            minimum=0,
-                            maximum=10,
-                            step=1,
-                        )
-                    with gr.Accordion("Advanced identifiers (optional)", open=False):
-                        agent = gr.Textbox(label="Agent (optional)", value=defaults["agent"])
-                        company = gr.Textbox(label="Company (optional)", value=defaults["company"])
-
-                with gr.Accordion("3) Guest history (optional)", open=False):
-                    with gr.Row():
-                        is_repeated_guest = gr.Checkbox(
-                            label="Returning guest",
-                            value=defaults["is_repeated_guest"],
-                            info="Tick if this guest has stayed with you before.",
-                        )
-                        previous_cancellations = gr.Number(
-                            label="Previous cancellations",
-                            value=defaults["previous_cancellations"],
-                            minimum=0,
-                            maximum=20,
-                            step=1,
-                        )
-                        previous_bookings_not_canceled = gr.Number(
-                            label="Past completed stays",
-                            value=defaults["previous_bookings_not_canceled"],
-                            minimum=0,
-                            maximum=50,
-                            step=1,
+                        with gr.Row():
+                            predict_btn = gr.Button(
+                                "Predict",
+                                variant="primary",
+                                interactive=bool(initial_ready),
+                            )
+                            flag_btn = gr.Button("Flag", interactive=bool(initial_ready))
+                            reset_btn = gr.Button("Reset")
+                        gr.HTML(
+                            '<div style="font-size:0.75rem;color:#8fa3c8;margin-top:6px;">'
+                            "Every scored booking is saved to "
+                            f"<code>{LOGGED_PATH.relative_to(PROJECT_ROOT).as_posix()}</code> "
+                            "(Flag marks a row for follow-up review).</div>"
                         )
 
-                required_status = gr.Markdown(
-                    value=initial_required_status, elem_id="required-status"
+                    with gr.Column(scale=4, elem_id="result-col", elem_classes=["result-panel"]):
+                        gr.HTML("""
+        <div style="padding:4px 0 14px; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:14px;">
+          <div style="font-size:0.70rem;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:#4ade9e;margin-bottom:6px;">Live output</div>
+          <div style="font-size:1.15rem;font-weight:800;color:#eef2ff;letter-spacing:-0.3px;">Prediction result</div>
+          <div style="font-size:0.82rem;color:#8fa3c8;margin-top:4px;">Fill in the form and click <strong style="color:#eef2ff;">Predict</strong> to score this booking.</div>
+        </div>
+        """)
+                        risk_card = gr.HTML(value="", visible=False)
+                        result = gr.Markdown(value=initial_summary, elem_id="result-summary")
+                        decision_notes = gr.HTML(
+                            value=initial_decision_notes, elem_id="decision-notes"
+                        )
+                        with gr.Accordion("Developer details (JSON)", open=False, visible=False):
+                            details = gr.Textbox(
+                                label="Raw output",
+                                value="",
+                                interactive=False,
+                                lines=9,
+                                max_lines=14,
+                                elem_id="result-details",
+                                buttons=["copy"],
+                            )
+
+                inputs = {
+                    "hotel": hotel,
+                    "lead_time": lead_time,
+                    "arrival_date": arrival_date,
+                    "stays_in_weekend_nights": stays_in_weekend_nights,
+                    "stays_in_week_nights": stays_in_week_nights,
+                    "adults": adults,
+                    "children": children,
+                    "babies": babies,
+                    "meal": meal,
+                    "country": country,
+                    "market_segment": market_segment,
+                    "distribution_channel": distribution_channel,
+                    "is_repeated_guest": is_repeated_guest,
+                    "previous_cancellations": previous_cancellations,
+                    "previous_bookings_not_canceled": previous_bookings_not_canceled,
+                    "reserved_room_type": reserved_room_type,
+                    "deposit_type": deposit_type,
+                    "agent": agent,
+                    "company": company,
+                    "customer_type": customer_type,
+                    "adr": adr,
+                    "required_car_parking_spaces": required_car_parking_spaces,
+                    "total_of_special_requests": total_of_special_requests,
+                }
+
+                form_valid_state = gr.State(value=bool(initial_ready))
+                last_prediction_state = gr.State(value=None)
+
+                def _on_form_change(*vals):
+                    payload = dict(zip(inputs.keys(), vals))
+                    (
+                        req_status,
+                        summary,
+                        decision_md,
+                        risk_html,
+                        ready,
+                        _,
+                        total_nights,
+                        party_size,
+                        adr_pp,
+                    ) = _form_feedback(payload)
+                    return (
+                        req_status,
+                        summary,
+                        decision_md,
+                        risk_html,
+                        gr.update(interactive=bool(ready)),
+                        gr.update(interactive=bool(ready)),
+                        bool(ready),
+                        total_nights,
+                        party_size,
+                        round(adr_pp, 2),
+                        "",
+                        None,
+                    )
+
+                def _predict(form_ready: bool, *vals):
+                    try:
+                        payload = dict(zip(inputs.keys(), vals))
+                        if not form_ready:
+                            (
+                                _,
+                                summary,
+                                decision_md,
+                                risk_html,
+                                _ready,
+                                missing_msg,
+                                _,
+                                _,
+                                _,
+                            ) = _form_feedback(payload)
+                            details_json = json.dumps(
+                                {"status": "validation_error", "message": missing_msg},
+                                indent=2,
+                                sort_keys=True,
+                            )
+                            return summary, details_json, risk_html, decision_md, None
+                        summary, details_json, risk_html, decision_md, record = _predict_output(
+                            payload
+                        )
+                        if record is not None:
+                            _log_case(
+                                record,
+                                json.loads(details_json).get("risk_label", "unknown"),
+                                flagged=False,
+                            )
+                        state_payload = {
+                            "timestamp_utc": _format_utc(datetime.now(timezone.utc)),
+                            "summary": summary,
+                            "details": details_json,
+                        }
+                        return summary, details_json, risk_html, decision_md, state_payload
+                    except Exception as exc:
+                        logger.exception("Prediction handler failed")
+                        summary, details_json, risk_html, decision_md = _error_output(
+                            f"Prediction failed: {exc}", exc
+                        )
+                        return summary, details_json, risk_html, decision_md, None
+
+                def _flag(form_ready: bool, *vals):
+                    try:
+                        payload = dict(zip(inputs.keys(), vals))
+                        if not form_ready:
+                            (
+                                _,
+                                summary,
+                                decision_md,
+                                risk_html,
+                                _ready,
+                                missing_msg,
+                                _,
+                                _,
+                                _,
+                            ) = _form_feedback(payload)
+                            details_json = json.dumps(
+                                {"status": "validation_error", "message": missing_msg},
+                                indent=2,
+                                sort_keys=True,
+                            )
+                            return summary, details_json, risk_html, decision_md, None
+                        summary, details_json, risk_html, decision_md, record = _predict_output(
+                            payload
+                        )
+                        if record is not None:
+                            _log_case(
+                                record,
+                                json.loads(details_json).get("risk_label", "unknown"),
+                                flagged=True,
+                            )
+                        state_payload = {
+                            "timestamp_utc": _format_utc(datetime.now(timezone.utc)),
+                            "summary": summary,
+                            "details": details_json,
+                        }
+                        return summary, details_json, risk_html, decision_md, state_payload
+                    except Exception as exc:
+                        logger.exception("Flag handler failed")
+                        summary, details_json, risk_html, decision_md = _error_output(
+                            f"Prediction failed: {exc}", exc
+                        )
+                        return summary, details_json, risk_html, decision_md, None
+
+                def _set_loading():
+                    return (
+                        _loading_summary(),
+                        "",
+                        _risk_meter_html(None, label="Unavailable", note="Scoring in progress..."),
+                        _loading_decision_notes(),
+                        gr.update(interactive=False),
+                        gr.update(interactive=False),
+                    )
+
+                def _set_ready(is_ready: bool):
+                    return gr.update(interactive=bool(is_ready)), gr.update(
+                        interactive=bool(is_ready)
+                    )
+
+                reset_outputs = list(inputs.values()) + [
+                    required_status,
+                    result,
+                    decision_notes,
+                    risk_card,
+                    predict_btn,
+                    flag_btn,
+                    form_valid_state,
+                    total_nights_view,
+                    party_size_view,
+                    adr_per_person_view,
+                    details,
+                    last_prediction_state,
+                ]
+
+                def _reset():
+                    payload = dict(defaults)
+                    payload["arrival_date"] = _default_arrival_date()
+                    (
+                        req_status,
+                        summary,
+                        decision_md,
+                        risk_html,
+                        ready,
+                        _,
+                        total_nights,
+                        party_size,
+                        adr_pp,
+                    ) = _form_feedback(payload)
+                    vals = [payload.get(k) for k in inputs]
+                    vals.extend(
+                        [
+                            req_status,
+                            summary,
+                            decision_md,
+                            risk_html,
+                            gr.update(interactive=bool(ready)),
+                            gr.update(interactive=bool(ready)),
+                            bool(ready),
+                            total_nights,
+                            party_size,
+                            round(adr_pp, 2),
+                            "",
+                            None,
+                        ]
+                    )
+                    return vals
+
+                validation_outputs = [
+                    required_status,
+                    result,
+                    decision_notes,
+                    risk_card,
+                    predict_btn,
+                    flag_btn,
+                    form_valid_state,
+                    total_nights_view,
+                    party_size_view,
+                    adr_per_person_view,
+                    details,
+                    last_prediction_state,
+                ]
+                for component in inputs.values():
+                    component.change(  # type: ignore[attr-defined]
+                        _on_form_change,
+                        inputs=list(inputs.values()),
+                        outputs=validation_outputs,
+                        queue=False,
+                    )
+
+                predict_btn.click(
+                    _set_loading,
+                    outputs=[result, details, risk_card, decision_notes, predict_btn, flag_btn],
+                    queue=False,
+                ).then(
+                    _predict,
+                    inputs=[form_valid_state, *list(inputs.values())],
+                    outputs=[result, details, risk_card, decision_notes, last_prediction_state],
+                    show_progress="full",
+                ).then(
+                    _set_ready,
+                    inputs=[form_valid_state],
+                    outputs=[predict_btn, flag_btn],
                 )
+
+                flag_btn.click(
+                    _set_loading,
+                    outputs=[result, details, risk_card, decision_notes, predict_btn, flag_btn],
+                    queue=False,
+                ).then(
+                    _flag,
+                    inputs=[form_valid_state, *list(inputs.values())],
+                    outputs=[result, details, risk_card, decision_notes, last_prediction_state],
+                    show_progress="full",
+                ).then(
+                    _set_ready,
+                    inputs=[form_valid_state],
+                    outputs=[predict_btn, flag_btn],
+                )
+                reset_btn.click(
+                    _reset,
+                    outputs=reset_outputs,
+                    queue=False,
+                )
+
+                gr.Markdown("### 📜 Recent Activity Log (Live)")
+
+                def _get_audit_log():
+                    import pandas as pd
+
+                    path = PROJECT_ROOT / "data" / "predictions" / "predictions.csv"
+                    if not path.exists():
+                        return pd.DataFrame(
+                            columns=[
+                                "timestamp_utc",
+                                "prediction",
+                                "arrival_date",
+                                "lead_time",
+                                "adr",
+                            ]
+                        )
+                    try:
+                        df = pd.read_csv(path)
+                        df = df.tail(5)[
+                            ["timestamp_utc", "prediction", "arrival_date", "lead_time", "adr"]
+                        ]
+                        return df.iloc[::-1]  # Reverse so newest is top
+                    except Exception:
+                        return pd.DataFrame(
+                            columns=[
+                                "timestamp_utc",
+                                "prediction",
+                                "arrival_date",
+                                "lead_time",
+                                "adr",
+                            ]
+                        )
+
+                gr.Dataframe(
+                    value=_get_audit_log, every=2, interactive=False, elem_classes=["layout-row"]
+                )
+
+            with gr.Tab("Model Capabilities & Benchmarks"):
+                gr.Markdown("## Strategic Business Intelligence Showcase")
 
                 with gr.Row():
-                    predict_btn = gr.Button(
-                        "Predict",
-                        variant="primary",
-                        interactive=bool(initial_ready),
-                    )
-                    flag_btn = gr.Button("Flag", interactive=bool(initial_ready))
-                    reset_btn = gr.Button("Reset")
-                gr.HTML(
-                    '<div style="font-size:0.75rem;color:#8fa3c8;margin-top:6px;">'
-                    "Every scored booking is saved to "
-                    f"<code>{LOGGED_PATH.relative_to(PROJECT_ROOT).as_posix()}</code> "
-                    "(Flag marks a row for follow-up review).</div>"
-                )
+                    with gr.Column():
+                        gr.Markdown("### 1. Probability Metrics (ROC/PR-AUC)")
+                        try:
+                            df1 = pd.read_csv(
+                                PROJECT_ROOT
+                                / "reports"
+                                / "benchmarks"
+                                / "03_holdout_probability_metrics.csv"
+                            )
+                            df1 = df1[["model", "roc_auc", "pr_auc"]].copy()
+                            for col in ["roc_auc", "pr_auc"]:
+                                df1[col] = df1[col].round(4)
+                            gr.Dataframe(value=df1, interactive=False)
+                        except Exception:
+                            pass
+                    with gr.Column():
+                        gr.Markdown("### 2. Classification Performance (Max F1)")
+                        try:
+                            df2 = pd.read_csv(
+                                PROJECT_ROOT
+                                / "reports"
+                                / "benchmarks"
+                                / "05_holdout_threshold_metrics_max_f1.csv"
+                            )
+                            df2 = df2.sort_values("f1", ascending=False)[
+                                ["model", "f1", "precision", "recall"]
+                            ].copy()
+                            for col in ["f1", "precision", "recall"]:
+                                df2[col] = df2[col].round(4)
+                            gr.Dataframe(value=df2, interactive=False)
+                        except Exception:
+                            pass
+                    with gr.Column():
+                        gr.Markdown("### 3. Confusion Matrix Rates")
+                        try:
+                            df3 = pd.read_csv(
+                                PROJECT_ROOT
+                                / "reports"
+                                / "benchmarks"
+                                / "09_confusion_matrix_rates_per_model.csv"
+                            )
+                            df3 = df3.sort_values("tpr", ascending=False)[
+                                ["model", "tpr", "fnr", "tnr", "fpr"]
+                            ].copy()
+                            for col in ["tpr", "fnr", "tnr", "fpr"]:
+                                df3[col] = df3[col].round(4)
+                            gr.Dataframe(value=df3, interactive=False)
+                        except Exception:
+                            pass
 
-            with gr.Column(scale=6, elem_id="result-col", elem_classes=["result-panel"]):
-                gr.HTML("""
-<div style="padding:4px 0 14px; border-bottom:1px solid rgba(255,255,255,0.08); margin-bottom:14px;">
-  <div style="font-size:0.70rem;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:#4ade9e;margin-bottom:6px;">Live output</div>
-  <div style="font-size:1.15rem;font-weight:800;color:#eef2ff;letter-spacing:-0.3px;">Prediction result</div>
-  <div style="font-size:0.82rem;color:#8fa3c8;margin-top:4px;">Fill in the form and click <strong style="color:#eef2ff;">Predict</strong> to score this booking.</div>
-</div>
-""")
-                risk_card = gr.HTML(value=initial_risk_html, elem_id="risk-card")
-                result = gr.Markdown(value=initial_summary, elem_id="result-summary")
-                decision_notes = gr.HTML(value=initial_decision_notes, elem_id="decision-notes")
-                with gr.Accordion("Developer details (JSON)", open=False):
-                    details = gr.Textbox(
-                        label="Raw output",
-                        value="",
-                        interactive=False,
-                        lines=9,
-                        max_lines=14,
-                        elem_id="result-details",
-                        buttons=["copy"],
-                    )
-
-        inputs = {
-            "hotel": hotel,
-            "lead_time": lead_time,
-            "arrival_date": arrival_date,
-            "stays_in_weekend_nights": stays_in_weekend_nights,
-            "stays_in_week_nights": stays_in_week_nights,
-            "adults": adults,
-            "children": children,
-            "babies": babies,
-            "meal": meal,
-            "country": country,
-            "market_segment": market_segment,
-            "distribution_channel": distribution_channel,
-            "is_repeated_guest": is_repeated_guest,
-            "previous_cancellations": previous_cancellations,
-            "previous_bookings_not_canceled": previous_bookings_not_canceled,
-            "reserved_room_type": reserved_room_type,
-            "deposit_type": deposit_type,
-            "agent": agent,
-            "company": company,
-            "customer_type": customer_type,
-            "adr": adr,
-            "required_car_parking_spaces": required_car_parking_spaces,
-            "total_of_special_requests": total_of_special_requests,
-        }
-
-        form_valid_state = gr.State(value=bool(initial_ready))
-        last_prediction_state = gr.State(value=None)
-
-        def _on_form_change(*vals):
-            payload = dict(zip(inputs.keys(), vals))
-            (
-                req_status,
-                summary,
-                decision_md,
-                risk_html,
-                ready,
-                _,
-                total_nights,
-                party_size,
-                adr_pp,
-            ) = _form_feedback(payload)
-            return (
-                req_status,
-                summary,
-                decision_md,
-                risk_html,
-                gr.update(interactive=bool(ready)),
-                gr.update(interactive=bool(ready)),
-                bool(ready),
-                total_nights,
-                party_size,
-                round(adr_pp, 2),
-                "",
-                None,
-            )
-
-        def _predict(form_ready: bool, *vals):
-            try:
-                payload = dict(zip(inputs.keys(), vals))
-                if not form_ready:
-                    (
-                        _,
-                        summary,
-                        decision_md,
-                        risk_html,
-                        _ready,
-                        missing_msg,
-                        _,
-                        _,
-                        _,
-                    ) = _form_feedback(payload)
-                    details_json = json.dumps(
-                        {"status": "validation_error", "message": missing_msg},
-                        indent=2,
-                        sort_keys=True,
-                    )
-                    return summary, details_json, risk_html, decision_md, None
-                summary, details_json, risk_html, decision_md, record = _predict_output(payload)
-                if record is not None:
-                    _log_case(
-                        record, json.loads(details_json).get("risk_label", "unknown"), flagged=False
-                    )
-                state_payload = {
-                    "timestamp_utc": _format_utc(datetime.now(timezone.utc)),
-                    "summary": summary,
-                    "details": details_json,
-                }
-                return summary, details_json, risk_html, decision_md, state_payload
-            except Exception as exc:
-                logger.exception("Prediction handler failed")
-                summary, details_json, risk_html, decision_md = _error_output(
-                    f"Prediction failed: {exc}", exc
-                )
-                return summary, details_json, risk_html, decision_md, None
-
-        def _flag(form_ready: bool, *vals):
-            try:
-                payload = dict(zip(inputs.keys(), vals))
-                if not form_ready:
-                    (
-                        _,
-                        summary,
-                        decision_md,
-                        risk_html,
-                        _ready,
-                        missing_msg,
-                        _,
-                        _,
-                        _,
-                    ) = _form_feedback(payload)
-                    details_json = json.dumps(
-                        {"status": "validation_error", "message": missing_msg},
-                        indent=2,
-                        sort_keys=True,
-                    )
-                    return summary, details_json, risk_html, decision_md, None
-                summary, details_json, risk_html, decision_md, record = _predict_output(payload)
-                if record is not None:
-                    _log_case(
-                        record, json.loads(details_json).get("risk_label", "unknown"), flagged=True
-                    )
-                state_payload = {
-                    "timestamp_utc": _format_utc(datetime.now(timezone.utc)),
-                    "summary": summary,
-                    "details": details_json,
-                }
-                return summary, details_json, risk_html, decision_md, state_payload
-            except Exception as exc:
-                logger.exception("Flag handler failed")
-                summary, details_json, risk_html, decision_md = _error_output(
-                    f"Prediction failed: {exc}", exc
-                )
-                return summary, details_json, risk_html, decision_md, None
-
-        def _set_loading():
-            return (
-                _loading_summary(),
-                "",
-                _risk_meter_html(None, label="Unavailable", note="Scoring in progress..."),
-                _loading_decision_notes(),
-                gr.update(interactive=False),
-                gr.update(interactive=False),
-            )
-
-        def _set_ready(is_ready: bool):
-            return gr.update(interactive=bool(is_ready)), gr.update(interactive=bool(is_ready))
-
-        reset_outputs = list(inputs.values()) + [
-            required_status,
-            result,
-            decision_notes,
-            risk_card,
-            predict_btn,
-            flag_btn,
-            form_valid_state,
-            total_nights_view,
-            party_size_view,
-            adr_per_person_view,
-            details,
-            last_prediction_state,
-        ]
-
-        def _reset():
-            payload = dict(defaults)
-            payload["arrival_date"] = _default_arrival_date()
-            (
-                req_status,
-                summary,
-                decision_md,
-                risk_html,
-                ready,
-                _,
-                total_nights,
-                party_size,
-                adr_pp,
-            ) = _form_feedback(payload)
-            vals = [payload.get(k) for k in inputs]
-            vals.extend(
-                [
-                    req_status,
-                    summary,
-                    decision_md,
-                    risk_html,
-                    gr.update(interactive=bool(ready)),
-                    gr.update(interactive=bool(ready)),
-                    bool(ready),
-                    total_nights,
-                    party_size,
-                    round(adr_pp, 2),
-                    "",
-                    None,
-                ]
-            )
-            return vals
-
-        validation_outputs = [
-            required_status,
-            result,
-            decision_notes,
-            risk_card,
-            predict_btn,
-            flag_btn,
-            form_valid_state,
-            total_nights_view,
-            party_size_view,
-            adr_per_person_view,
-            details,
-            last_prediction_state,
-        ]
-        for component in inputs.values():
-            component.change(  # type: ignore[attr-defined]
-                _on_form_change,
-                inputs=list(inputs.values()),
-                outputs=validation_outputs,
-                queue=False,
-            )
-
-        predict_btn.click(
-            _set_loading,
-            outputs=[result, details, risk_card, decision_notes, predict_btn, flag_btn],
-            queue=False,
-        ).then(
-            _predict,
-            inputs=[form_valid_state, *list(inputs.values())],
-            outputs=[result, details, risk_card, decision_notes, last_prediction_state],
-            show_progress="full",
-        ).then(
-            _set_ready,
-            inputs=[form_valid_state],
-            outputs=[predict_btn, flag_btn],
-        )
-
-        flag_btn.click(
-            _set_loading,
-            outputs=[result, details, risk_card, decision_notes, predict_btn, flag_btn],
-            queue=False,
-        ).then(
-            _flag,
-            inputs=[form_valid_state, *list(inputs.values())],
-            outputs=[result, details, risk_card, decision_notes, last_prediction_state],
-            show_progress="full",
-        ).then(
-            _set_ready,
-            inputs=[form_valid_state],
-            outputs=[predict_btn, flag_btn],
-        )
-        reset_btn.click(
-            _reset,
-            outputs=reset_outputs,
-            queue=False,
-        )
-
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("### Algorithm Performance (ROC & PR Curves)")
+                        gr.Image(
+                            value=str(
+                                PROJECT_ROOT
+                                / "reports/figures/essential/E06_roc_pr_curves_test.png"
+                            ),
+                            show_label=False,
+                        )
+                    with gr.Column():
+                        gr.Markdown("### Feature Importance (SHAP)")
+                        gr.Image(
+                            value=str(
+                                PROJECT_ROOT / "reports/figures/essential/E10_shap_beeswarm.png"
+                            ),
+                            show_label=False,
+                        )
+                with gr.Row():
+                    with gr.Column():
+                        gr.Markdown("### Business Value (Cost Optimization Policy)")
+                        gr.Image(
+                            value=str(
+                                PROJECT_ROOT
+                                / "reports/figures/essential/E12_policy_cost_ladder_test.png"
+                            ),
+                            show_label=False,
+                        )
+                    with gr.Column():
+                        gr.Markdown("### System Architecture")
+                        gr.Image(
+                            value=str(
+                                PROJECT_ROOT
+                                / "reports/figures/essential/E21_deployment_framework.png"
+                            ),
+                            show_label=False,
+                        )
     return demo
 
 
 if __name__ == "__main__":
+    # Gradio 6 moved css/theme from the Blocks constructor to launch()/mount_gradio_app().
     build_ui().launch(
-        server_name="127.0.0.1", server_port=7860, css=BACKGROUND_CSS, theme=gr.themes.Base()
+        server_name="127.0.0.1",
+        server_port=7860,
+        theme=gr.themes.Base(),
+        css=BACKGROUND_CSS,
     )

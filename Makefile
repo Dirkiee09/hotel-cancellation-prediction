@@ -25,37 +25,34 @@ test: ## Run pytest suite (coverage gate ≥80%)
 	$(PYTHON) -m pytest
 
 security: ## Scan source for security issues with bandit
-	$(PYTHON) -m bandit -q -r src scripts -s B101 -x tests
+	$(PYTHON) -m bandit -q -r src scripts -s B101 -x tests,scripts/archive
 
 train: ## Train model end-to-end (use DATA_PATH=... to override CSV)
-	$(PYTHON) scripts/train.py $(if $(DATA_PATH),--data-path $(DATA_PATH),) $(if $(MAX_ROWS),--max-rows $(MAX_ROWS),)
+	$(PYTHON) scripts/training/train.py $(if $(DATA_PATH),--data-path $(DATA_PATH),) $(if $(MAX_ROWS),--max-rows $(MAX_ROWS),)
 
 eval: ## Run post-training verification on existing artifacts
-	$(PYTHON) scripts/train.py --verify-only
+	$(PYTHON) scripts/training/train.py --verify-only
 
 benchmark: ## Generate 16 benchmark CSV tables in reports/benchmarks/
-	$(PYTHON) scripts/benchmark.py
+	$(PYTHON) scripts/training/benchmark.py
 
 thesis: ## Full thesis analysis including SHAP and Optuna
-	$(PYTHON) scripts/train.py --thesis
+	$(PYTHON) scripts/training/train.py --thesis
 
 check: ## Run all quality gates (artifacts, metrics, sync, fairness)
-	$(PYTHON) scripts/check.py all
+	$(PYTHON) scripts/utils/check.py all
 
 demo: ## Launch the local prediction app (FastAPI + Gradio UI, opens browser)
 	$(PYTHON) demo/start_server.py
-
-essential-figures: ## Curate the publication figure set into reports/figures/essential/
-	$(PYTHON) scripts/make_essential_figures.py
 
 full-pipeline: train eval benchmark check ## Full refresh: train → eval → benchmark → check
 	@echo "full-pipeline complete — all checks passed."
 
 export-predictions: ## Export predictions.sqlite → predictions_live.csv for Power BI
-	$(PYTHON) scripts/export_predictions.py
+	$(PYTHON) scripts/utils/export_predictions.py
 
 export-adr: ## Export ADR regressor test predictions + segment RMSE for Power BI
-	$(PYTHON) scripts/export_adr_predictions.py
+	$(PYTHON) scripts/utils/export_adr_predictions.py
 
 clean: ## Remove all caches and build artifacts
 	$(PYTHON) -c "import shutil, pathlib; [shutil.rmtree(d, ignore_errors=True) for d in ['.mypy_cache','.pytest_cache','.ruff_cache','htmlcov','build','dist'] + [str(p) for p in pathlib.Path('.').glob('*.egg-info')]]; pathlib.Path('.coverage').unlink(missing_ok=True)"

@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 # Allow `python scripts/export_predictions.py` from the repo root without `pip install -e .`
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.config import PREDICTION_LOG_CSV, PREDICTION_LOG_DB  # noqa: E402
 from src.serving.prediction_log import export_to_csv  # noqa: E402

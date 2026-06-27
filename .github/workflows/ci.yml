@@ -44,22 +44,22 @@ jobs:
         run: pytest
 
       - name: Train production pipeline
-        run: python scripts/train.py
+        run: python scripts/training/train.py
 
       - name: Artifact consistency check
-        run: python scripts/check.py artifacts
+        run: python scripts/utils/check.py artifacts
 
       - name: Model metric gates
-        run: python scripts/check.py metrics
+        run: python scripts/utils/check.py metrics
 
       - name: Artifact threshold sync check
-        run: python scripts/check.py sync
+        run: python scripts/utils/check.py sync
 
       - name: Algorithm fairness check (matched-capacity XGBoost vs LightGBM)
-        run: python scripts/check.py fairness
+        run: python scripts/utils/check.py fairness
 
       - name: Security scan (bandit)
-        run: bandit -q -r src scripts -s B101 -x tests
+        run: bandit -q -r src scripts -s B101 -x tests,scripts/archive
 
       - name: Dependency vulnerability scan (pip-audit)
         run: pip-audit -r requirements.txt --no-deps --disable-pip
@@ -100,13 +100,13 @@ jobs:
           pip check
 
       - name: Train pipeline + thesis analysis
-        run: python scripts/train.py --thesis
+        run: python scripts/training/train.py --thesis
 
       - name: Generate benchmark tables
-        run: python scripts/benchmark.py
+        run: python scripts/training/benchmark.py
 
       - name: Cross-artifact sync check
-        run: python scripts/check.py sync
+        run: python scripts/utils/check.py sync
 
       - name: Upload thesis reports
         uses: actions/upload-artifact@v5
