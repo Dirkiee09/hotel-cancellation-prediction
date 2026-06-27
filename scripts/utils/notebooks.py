@@ -6,7 +6,7 @@ import argparse
 import os
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
 NOTEBOOKS = sorted(NOTEBOOKS_DIR.glob("*.ipynb"))
 

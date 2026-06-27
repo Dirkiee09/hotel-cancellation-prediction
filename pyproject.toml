@@ -50,7 +50,9 @@ include = ["src*"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-exclude = [".venv", "notebooks"]
+# scripts/archive holds retired one-off scripts kept for provenance only; they are
+# excluded from linting/formatting since they are no longer part of the live pipeline.
+exclude = [".venv", "notebooks", "scripts/archive"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
@@ -88,10 +90,10 @@ files = [
   "src/eval/statistical.py",
   "src/eval/thesis.py",
   "src/eval/notebook_utils.py",
-  "scripts/train.py",
-  "scripts/benchmark.py",
-  "scripts/check.py",
-  "scripts/notebooks.py",
+  "scripts/training/train.py",
+  "scripts/training/benchmark.py",
+  "scripts/utils/check.py",
+  "scripts/utils/notebooks.py",
   "tests",
 ]
 exclude = "(?x)(^notebooks[\\\\/])"

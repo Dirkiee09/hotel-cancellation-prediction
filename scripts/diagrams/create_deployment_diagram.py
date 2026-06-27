@@ -26,7 +26,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
-OUT_DIR = Path(__file__).resolve().parents[1] / "reports" / "figures" / "thesis"
+OUT_DIR = Path(__file__).resolve().parents[2] / "reports" / "figures" / "thesis"
 
 # Project palette (matches the Power BI dashboard guide colors).
 PRIMARY = "#1F4E79"
@@ -379,7 +379,7 @@ def build_figure() -> None:
     ax.text(
         7.0,
         10.5,
-        "Figure 4.10 — Technical Serving Architecture",
+        "Figure 4.9 — Technical Serving Architecture",
         ha="center",
         fontsize=14,
         fontweight="bold",

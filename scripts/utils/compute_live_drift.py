@@ -30,7 +30,7 @@ from pathlib import Path
 import pandas as pd
 
 # Allow `python scripts/compute_live_drift.py` from the repo root
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.config import PREDICTION_LOG_CSV, PROJECT_ROOT, REPORTS_DIR  # noqa: E402
 from src.utils.drift import cat_psi, compute_psi, psi_zone  # noqa: E402

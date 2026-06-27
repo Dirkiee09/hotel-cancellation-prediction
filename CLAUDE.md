@@ -92,12 +92,19 @@ src/
     ui.py                     # Gradio UI (adults ≥ 1, datetime-aware)
     schemas.py                # Pydantic BookingRequest with field coercion/validation
 
-scripts/                      # CLI entry points (thin wrappers over src/)
-  train.py                    # make train | --verify | --verify-only | --thesis | --repro
-  benchmark.py                # make benchmark (16 CSV tables)
-  check.py                    # make check (subcommands: artifacts, metrics, sync, fairness, all)
-  notebooks.py                # headless notebook execution (all 11 notebooks)
-  adapt_dataset.py            # plug-and-play adapter for new hotel CSVs (e.g. PH dataset)
+scripts/                      # CLI entry points (thin wrappers over src/) — see scripts/README.md for the full index
+  README.md                   # AUTHORITATIVE index: which scripts are essential (★) and how to run them
+  training/                   # model training & analysis
+    train.py                  # make train | --verify | --verify-only | --thesis | --repro
+    benchmark.py              # make benchmark (16 CSV tables) — wrapper over src/eval/benchmark.py
+    stratified_cv.py          # reports/cv/ (Table 4.1); train_ph.py; dedup_sensitivity.py
+  utils/                      # quality + ops
+    check.py                  # make check (subcommands: artifacts, metrics, sync, fairness, all)
+    notebooks.py              # headless notebook execution
+    export_predictions.py, export_adr_predictions.py, compute_live_drift.py, adapt_dataset.py
+  diagrams/                   # thesis figure generators (Figs 1.2, 4.8, 4.9, SHAP)
+  demo/  presentation/        # demo readiness + defense-aid helpers
+  archive/                    # retired one-offs (excluded from lint/typecheck/CI) — provenance only
 
 demo/                         # Local prediction app launchers (defense / day-to-day use)
   start_server.py             # make demo — FastAPI + Gradio UI at localhost:8000, opens browser
