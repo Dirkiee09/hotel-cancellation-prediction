@@ -57,3 +57,8 @@ data/predictions/
 # Thesis source manuscripts (kept locally, not in version control)
 /*.pdf
 *.docx
+*.pptx
+/Final A Strategic Business Intelligence*.md
+
+# Local agent/IDE config
+.claude/launch.json

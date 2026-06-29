@@ -203,7 +203,9 @@ def predict(payload: BookingRequest, background_tasks: BackgroundTasks):
 
 def mount_gradio(app_: FastAPI) -> FastAPI:
     ui = build_ui()
-    return gr.mount_gradio_app(app_, ui, path="/ui", css=BACKGROUND_CSS)
+    # theme must be set here too (Gradio 6 applies it per launch/mount, not on Blocks);
+    # without it the mounted UI fell back to the default theme.
+    return gr.mount_gradio_app(app_, ui, path="/ui", theme=gr.themes.Base(), css=BACKGROUND_CSS)
 
 
 app = mount_gradio(app)

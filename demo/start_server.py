@@ -132,7 +132,7 @@ def main() -> int:
         print("Server ready.")
         if not args.no_browser:
             webbrowser.open(f"{url}/ui")
-        print("\nPress Ctrl+C to stop.")
+        print("\nPress Ctrl+C to stop.") 
         try:
             proc.wait()
         except KeyboardInterrupt:
