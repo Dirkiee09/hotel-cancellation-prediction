@@ -19,6 +19,7 @@ Run `make full-pipeline` before opening any notebook for the first time.
 | 08 | `08_model_monitoring.ipynb` | Drift detection baseline — score distribution, feature shift vs production | `reports/test_predictions_for_powerbi.csv` |
 | 09 | `09_model_comparison.ipynb` | Champion vs challengers — complexity ladder, significance tests, cost tradeoffs, why boosting wins | `reports/benchmarks/`, `reports/thesis/` |
 | 10 | `10_sensitivity_analysis.ipynb` | Cost sensitivity, dataset size impact, threshold policy comparison | `artifacts/`, `reports/` |
+| 12 | `12_stratified_kfold_cv.ipynb` | Standard algorithm comparison using Stratified 10-fold CV (shuffle + stratify) | `reports/benchmarks/` |
 
 ---
 

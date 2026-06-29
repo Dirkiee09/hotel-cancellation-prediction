@@ -10,9 +10,9 @@
       "significant": false
     },
     "xgboost": {
-      "delta_pr_auc_ci_high": 0.19000446428571424,
-      "delta_pr_auc_ci_low": -0.15377664920863446,
-      "delta_pr_auc_mean": 0.04067565964669214,
+      "delta_pr_auc_ci_high": 0.19649305555555552,
+      "delta_pr_auc_ci_low": -0.04806343742972999,
+      "delta_pr_auc_mean": 0.06922417471917823,
       "significant": false
     }
   },
@@ -32,11 +32,11 @@
       "roc_auc_test": 0.6111111111111112
     },
     "xgboost": {
-      "ece_test": 0.24404694065451624,
-      "pr_auc_ci_high": 0.7355109148922728,
-      "pr_auc_ci_low": 0.2998611111111111,
-      "pr_auc_test": 0.47469135802469137,
-      "roc_auc_test": 0.5505050505050505
+      "ece_test": 0.36155318850651386,
+      "pr_auc_ci_high": 0.6944444444444444,
+      "pr_auc_ci_low": 0.29196428571428573,
+      "pr_auc_test": 0.45386614684860294,
+      "roc_auc_test": 0.4646464646464647
     }
   }
 }
