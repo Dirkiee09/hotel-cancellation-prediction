@@ -76,7 +76,7 @@
   "positive_rate_train": 0.11038961038961038,
   "pr_auc_test": 0.541943241943242,
   "roc_auc_test": 0.6111111111111112,
-  "selected_at": "2026-05-20T10:31:29.616476+00:00",
+  "selected_at": "2026-06-20T12:29:46.220944+00:00",
   "selected_model_family": "lightgbm",
   "train_test_overlap": {
     "n_test": 20,

@@ -23,7 +23,7 @@
     "roc_auc": -0.0157
   },
   "duplicate_share": 0.268,
-  "generated_at_utc": "2026-06-11T00:41:19+00:00",
+  "generated_at_utc": "2026-06-26T11:46:36+00:00",
   "interpretation": "Metrics at the max_f1 policy on each run's own chronological test split. Duplicates never cross the train/test boundary (verified separately), so deltas here reflect re-weighting of repeated bookings, not leakage. Small deltas support reporting the with-duplicates results as primary; the remaining caveat is that bootstrap CIs assume independent rows and are therefore somewhat narrow under within-split duplication.",
   "rows_after_dedup": 87396,
   "rows_raw": 119390,
