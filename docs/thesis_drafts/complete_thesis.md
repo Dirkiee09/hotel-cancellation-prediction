@@ -63,6 +63,10 @@ Introduction
 
 ## Background of the Study
 
+![Monthly cancellation rates and absolute volume across city and resort properties](../../reports/figures/essential/E01_problem_monthly_cancellation_trend.png)
+
+
+
  Hotels lose expected revenue when guests cancel close to arrival, since those rooms are hard to resell and the loss is larger for longer stays and higher ADRs. Prior work shows cancellations follow consistent patterns by lead time, deposit or prepayment terms, booking channel or segment, pricing, and guest history, so predictive models can flag risky bookings early and support revenue protection (António et al., 2017; Chen et al., 2023) . Evidence from comparative studies also indicates that strong data preparation plus modern models perform well, and that lead time, deposit type, channel, and ADR repeatedly emerge as key predictors across datasets and methods (Herrera et al., 2024; Yang, 2024). Short-notice cancellations cause the biggest losses because rooms are unlikely to be rebooked when guests cancel only a few days before arrival. Research on this late window finds that forecasting becomes harder as check-in nears but still provides useful signals for targeted actions such as reminders, deposits or prepayments, flexible rebooking, and carefully calibrated overbooking. To align modeling with business value, the classifier should be validated with time-aware splits and its decision threshold chosen using expected cost rather than accuracy so high-risk bookings trigger interventions while low-risk bookings avoid unnecessary friction (C-Sánchez & Sánchez-Medina, 2024; Andriawan et al., 2020; Chen et al., 2023). Despite advancements in prediction, a lot of properties continue to rely on manual checks or general rules that fail to account for last-minute cancellations and fail to adjust actions to cost. In order to prevent losses, this study will create a supervised model to estimate cancellation risk with a focus on late-window scenarios. It will then be validated using time-aware splits to determine a decision threshold based on expected cost, ensuring that low-risk bookings prevent needless delay and high-risk bookings trigger targeted actions. An operations-ready playbook that lowers late cancellation losses, connects model outputs to decisions that save money, and provides a repeatable template that other properties can use is the contribution. A parallel sub-study on the real Punta Villa Resort PMS export (Philippines, 193 bookings, 2022-2025) tests whether this template transfers to a smaller property with a narrower PMS schema. The two studies are reported in parallel throughout the chapters that follow. 
 
 The relevance of this work extends beyond the Portuguese benchmark
@@ -369,6 +373,10 @@ Methodology
 
 ## Research Design
 
+![Conceptual Framework / Methodology Pipeline](../../reports/figures/essential/E02_methodology_pipeline.png)
+
+
+
  This study employs a quantitative, predictive research design to develop and assess machine-learning models. These models are designed to forecast hotel booking cancellations, providing valuable insights for implementing cost-sensitive revenue management strategies.
 
 This research design is applied in parallel to two datasets. The **Portugal main study** uses the full pipeline at scale (119,210 cleaned bookings, rolling-origin cross-validation across three chronological folds, paired bootstrap significance testing). The **Philippine sub-study** applies the same pipeline to the 193-row Punta Villa Resort PMS export, omitting only steps that the smaller sample cannot statistically support (the rolling-origin CV is replaced by a single chronological 80 / 10 / 10 split, and the cost-sensitive threshold policy is omitted because n_val ≈ 19 is too small to fit a reliable cost curve). All other pipeline stages — cleaning, feature engineering, isotonic calibration, threshold sweep, SHAP interpretation, and live serving — are identical between the two studies. The methodological framework is structured around the phases of Dynamic Capability Theory’s cycle of sense → seize → transform . (Teece, D. J. 2007) The sense stage covers disciplined data curation, exploratory analysis, and feature construction; seize covers model development, probability calibration, and cost-aware thresholding; transform covers operational rollout, monitoring, and continuous improvement. A research workflow diagram summarizes the end-to-end pipeline from preprocessing to final evaluation. The analysis uses the Hotel Booking Demand dataset. The dataset comprises 119,390 booking observations from a city hotel and a resort hotel, spanning from July 1, 2015, to August 31, 2017. Each record includes information about booking arrival dates, lengths of stay, number of adults, children, and babies, deposit type, assigned and reserved room types, number of parking spaces, total special requests, and reservation status. In this study, "sensing" is the initial recognition that high customer cancellation rates are a primary driver of revenue instability. Identifying this systemic inefficiency and the corresponding strategic opportunity to mitigate it through predictive analytics constitutes the foundational "sensing" act that motivates this research. The "Hotel Booking Demand" dataset serves as this source of intelligence, where independent variables describing booking conditions (e.g., lead_time, average_daily_rate, etc) provide the raw material to "sense" the complex drivers of customer behavior. Therefore, the data understanding and exploratory 
@@ -565,9 +573,7 @@ n = 11,922 test rows)**
 The full per-row counts (TP / FP / FN / TN) for every model are
 preserved in `docs/thesis_drafts/chapter_iv_tables/table_02_chronological_oot_test.md`.
 
-**[Insert Figure 4.1 — `reports/figures/thesis/fig_02_grouped_bar_model_selection.png`
-here, showing PR-AUC across the six algorithms as a grouped bar
-chart with the champion highlighted.]**
+![Figure 4.1. ROC and PR curves for the Portugal LightGBM champion](../../reports/figures/essential/E05_results_roc_pr_curves.png)
 
 **LightGBM wins, by a small but real margin.** The PR-AUC gap between
 LightGBM (0.760) and second-place Gradient Boosting (0.754) is just
@@ -704,9 +710,7 @@ business-intelligence brief.
 
 ### 4.4.1 ROC and Precision-Recall curves
 
-**[Insert Figure 4.2 — `reports/figures/thesis/fig_01_roc_pr_curves.png`
-here, showing ROC and PR curves of the LightGBM champion on the
-held-out test set.]**
+![Figure 4.2. Calibration reliability diagram and probability histogram](../../reports/figures/essential/E06_results_calibration_curve.png)
 
 In plain English, the ROC-AUC of 0.864 says this: if you pick one
 booking that ended up cancelling and one booking that did not, and
@@ -722,10 +726,7 @@ high-risk bookings it can afford to staff up for.
 
 ### 4.4.2 Confusion matrix at the operating threshold
 
-**[Insert Figure 4.3 —
-`reports/figures/thesis/fig_03_normalized_confusion_matrix_max_f1.png`
-here, showing the normalized confusion matrix at the validation-tuned
-`max_f1` threshold of 0.40.]**
+![Figure 4.3. SHAP feature importance bar](../../reports/figures/essential/E08_results_shap_bar_global.png)
 
 At the `max_f1` threshold of 0.40, the model's behaviour on the test
 set is:
@@ -751,10 +752,7 @@ flagging too much rather than missing too much.
 
 ### 4.4.3 Calibration — do the probabilities mean what they say?
 
-**[Insert Figure 4.4 —
-`reports/figures/thesis/fig_05_calibration_reliability_and_histogram.png`
-here, showing the calibration reliability diagram with predicted vs
-observed cancellation rates per probability bin.]**
+![Figure 4.4. SHAP beeswarm](../../reports/figures/essential/E09_results_shap_beeswarm.png)
 
 A model is *well-calibrated* if a "75 % probability" really means
 about 75 % of those bookings cancel in real life. This matters
@@ -797,10 +795,7 @@ directly into deposit policies without further recalibration.
 
 ### 4.5.1 Which features drive the predictions?
 
-**[Insert Figure 4.5 — `reports/thesis/shap_summary_plot.png` here,
-showing the SHAP beeswarm for the top 15 raw features. Blue points
-are low feature values; red points are high feature values; horizontal
-position is the contribution to the predicted cancellation probability.]**
+![Figure 4.5. SHAP beeswarm for the top 15 raw features](../../reports/figures/essential/E09_results_shap_beeswarm.png)
 
 SHAP (SHapley Additive exPlanations) measures, for each prediction
 the model makes, exactly how much each feature pushed the prediction
@@ -930,10 +925,7 @@ on the test set. Test RMSE is in euros, MAPE in percent.
 
 Full per-model breakdown is in `reports/regression_results.csv`.
 
-**[Insert Figure 4.6 —
-`reports/figures/thesis/fig_45_adr_pred_vs_actual.png` here, showing
-the predicted vs actual ADR scatter for the champion regressor,
-with the y = x reference line.]**
+![Figure 4.6. Predicted vs actual ADR scatter for the champion regressor](../../reports/figures/essential/E12_results_adr_regression_scatter.png)
 
 ### 4.6.2 Why the R² is moderate (and why that's OK)
 
@@ -1027,9 +1019,7 @@ partition predicted probabilities into three tiers:
 | High | P ≥ 0.70 | 3,108 | 26.07 % | 650.56 | 2,021,931 | 2,356 | 1,571,978 |
 | **Total** | — | **11,922** | **100.00 %** | **606.27** | **7,227,971** | **4,506** | **3,014,266** |
 
-**[Insert Figure 4.7 —
-`reports/figures/thesis/fig_23_risk_tier_business_overview.png` here,
-showing the risk-tier business overview with revenue exposure per tier.]**
+![Figure 4.7. Risk tier business overview with revenue exposure](../../reports/figures/essential/E13_business_risk_tier_distribution.png)
 
 Two findings from this table are worth highlighting for management.
 
@@ -1065,10 +1055,7 @@ thresholds, each tuned for a different decision context.
 | **`cost_sensitive`** | 0.04 | 8,957 | 75.13 % | 4,486 | 4,471 | 20 | 0.996 | 0.501 | **76,512** | **2,937,754** | **Recommended deployment default** |
 | No model (catch nothing) | — | 0 | 0.00 % | 0 | 0 | 4,506 | 0.000 | — | 3,014,266 | — | Baseline reference |
 
-**[Insert Figure 4.8 —
-`reports/figures/thesis/fig_11_cost_sensitive_threshold_sweep.png` here,
-showing total expected cost as a function of the decision threshold,
-with the cost-minimising point marked.]**
+![Figure 4.8. Cost-sensitive threshold sweep](../../reports/figures/essential/E14_business_threshold_cost_curve.png)
 
 Three operational insights fall out of the table.
 
@@ -1202,11 +1189,7 @@ Nunes (2017, Figure 6) — the same paper that introduced the Portugal
 benchmark dataset used throughout this thesis — to the present study's
 specific BI layer.
 
-**[Insert Figure 4.9 —
-`reports/figures/thesis/fig_conceptual_systems_positioning.png` here,
-showing the cancellation model and Power BI decision layer positioned
-inside the CRS, exchanging inventory/price and booking/cancellation
-messages with the PMS, channel manager, and distribution channels.]**
+![Figure 4.9. Conceptual systems positioning](../../reports/figures/essential/E19_deployment_systems_positioning.png)
 
 The Hotel PMS is the centre of gravity. It exchanges inventory-and-price
 signals (forward) and new-bookings-and-cancellations signals (backward)
@@ -1234,10 +1217,7 @@ the deployment is answered next.
 
 ### 4.8.2 Technical serving architecture
 
-**[Insert Figure 4.10 —
-`reports/figures/thesis/fig_deployment_framework.png` here, showing
-the live-serving pipeline from a single booking entry through to the
-Power BI dashboard and back via drift-triggered retraining.]**
+![Figure 4.10. Live-serving deployment framework](../../reports/figures/essential/E20_deployment_technical_architecture.png)
 
 Figure 4.10 maps the full request-to-dashboard data flow. The framework
 has four layers, each with a clear job:
