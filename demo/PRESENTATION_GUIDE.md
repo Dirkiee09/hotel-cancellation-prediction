@@ -1,0 +1,191 @@
+# Presentation Guide — ICBIM 2026, Bangkok
+
+For whoever is standing up. This covers the **talk**; `HANDOVER.md` covers the
+**live demo**. Read both.
+
+Paper BM4117, *A Strategic Business Intelligence Approach to Predicting Hotel
+Booking Cancellations*. Deck: 14 slides.
+
+---
+
+## 1. The one sentence
+
+If the audience remembers nothing else, it should be this:
+
+> A calibrated probability is not a decision. We priced four policies on the
+> same bookings, and choosing the threshold by cost rather than by accuracy cut
+> intervention spend by 31.2 percent.
+
+Every slide either sets that up or follows from it. If you are lost mid-talk,
+return to it.
+
+---
+
+## 2. Timing — 15 minutes
+
+Checkpoints matter more than per-slide seconds. If you hit these, you land.
+
+| By this point | You should be on | Elapsed |
+|---|---|---|
+| Opening done | 3 — Accuracy is not a decision | 2:30 |
+| Method done | 6 — The ladder | 6:00 |
+| Results done | 10 — Four policies | 9:30 |
+| **The money slide** | 10 — Four policies | **finish by 11:30** |
+| Closing | 14 — Contribution | 14:30 |
+
+**The cost slide is the destination.** If you are running late, do not rush it —
+cut from the middle instead.
+
+### If you are given 10 minutes
+
+Drop slides **3 (gap)**, **8 (calibration)** and **12 (transfer)**. Fold one line
+from each into its neighbour:
+
+- Gap → say "most studies stop at a score" during slide 2.
+- Calibration → "the probabilities are calibrated, error 0.018" on slide 7.
+- Transfer → mention the Philippine pilot in the limitations slide.
+
+Never cut slide 10 (cost) or slide 13 (limitations).
+
+---
+
+## 3. Splitting the talk
+
+**Solo presenter** — the default, and the safest. One voice, no handover risk.
+
+**Two presenters** — split at the method/results boundary:
+
+| Presenter | Slides | Owns |
+|---|---|---|
+| A | 1–5 | Problem, gap, framework, data design |
+| B | 6–14 | Results, cost, playbook, limitations, close |
+
+Whoever takes 6–14 must also run the demo and lead Q&A, because that is where
+every technical question lands. Decide this **before** you fly, and rehearse the
+handover sentence out loud — it is the most common place a two-person talk
+stumbles.
+
+Do not use more than two presenters. Five names on the cover slide is
+attribution, not a speaking roster.
+
+---
+
+## 4. Slide notes
+
+Every slide carries speaker notes in the deck itself. Open **Present** mode to
+see them. The notes are written to be spoken, not read aloud verbatim.
+
+Three slides deserve special care:
+
+**Slide 2 — €1,851,306.** Say the number, then stop for a beat. Do not explain
+it immediately; let it sit. Then: "That is not an invoice. It is what our cost
+model says sixty days of bookings would have cost these two hotels with no
+intervention at all."
+
+**Slide 6 — the ladder.** This is where you volunteer the weakness before anyone
+finds it: boosting adds only 0.023 of precision-recall area over logistic
+regression. Saying it first converts a vulnerability into credibility. See §6.
+
+**Slide 10 — four policies.** Walk the rows top to bottom and land on the
+threshold value: 0.03, not 0.50. The asymmetry of the costs sets it, not the
+balance of the classes.
+
+---
+
+## 5. The demo slot
+
+Two options. **Decide in advance; do not improvise on stage.**
+
+**Option A — don't demo.** End on slide 14 and offer it for Q&A. Zero risk. If
+the session is running late or the room is cold, take this.
+
+**Option B — demo after slide 11 (playbook).** The tier table is on screen, so
+showing the tiers working lands naturally. Budget 60 seconds: one high-risk
+booking, one low-risk booking, point at the risk meter, return to the deck.
+
+Either way: have the app **already running and already scored once** before you
+walk up. Never start a server in front of an audience. Full mechanics in
+`HANDOVER.md` §3.
+
+**Record a backup video** of the demo on the presenting laptop before you fly.
+If anything fails on stage, play it and keep talking.
+
+---
+
+## 6. Questions you will get
+
+`HANDOVER.md` §4 has the technical answers in full — the calibration bound, the
+two evaluation streams, the champion-selection question, and the
+`hypothesis_summary.json` artifact. **Read that section before you present.**
+
+Panel-level questions the deck itself invites:
+
+**"Is gradient boosting even worth it, if logistic regression is only 0.023 behind?"**
+A fair challenge, and the paper says the ladder flattens. The answer: the
+contribution is not the 0.023. It is that a calibrated probability lets you
+choose a threshold by cost, and that is worth 31.2 percent. A well-calibrated
+logistic regression could support the same framework — which strengthens the
+method rather than weakening it.
+
+**"Your cost constants are made up."**
+They are stated assumptions, not measurements, and slide 13 says so. The
+framework takes whichever figures a property's finance team supplies and
+re-derives the threshold automatically. Fifteen euros is an illustration; the
+procedure is the contribution.
+
+**"The data is from 2015 to 2017."**
+Agreed, and that is limitation one. It makes this a prototype, not a production
+system. The methodology — chronological evaluation, calibration, cost-weighted
+thresholding — is not time-bound; the parameters are.
+
+**"Why only two hotels?"**
+It is the standard public benchmark, which makes the work comparable to prior
+literature. The Philippine pilot is our answer to single-dataset criticism, and
+we are explicit that it supports reusability of the procedure, not transfer of
+the numbers.
+
+**"How would a hotel actually deploy this?"**
+Slide 11. Named owner, named action, known cost, and a measured load of 12.8
+percent of bookings in the high tier, so capacity can be sized before rollout.
+
+---
+
+## 7. Do not say these things
+
+| Don't say | Say instead |
+|---|---|
+| "Our model is 86% accurate" | "ROC area 0.848 on an out-of-time test set" — accuracy is the wrong metric at a 37% base rate |
+| "We beat all other models" | "The ladder is monotone but flattens; XGBoost edges us on PR area" |
+| "This saves hotels €26,000" | "31.2 percent against a blanket-intervention baseline, under our stated cost model" |
+| "It works in the Philippines too" | "The pipeline re-ran unmodified; at twenty test bookings the metrics are directional" |
+| "The model is 100% sure" | "Above our reporting ceiling of 99 percent — the calibrator's terminal bin" |
+
+Overclaiming is the only thing here that can genuinely damage you. The work is
+strong; let it be strong honestly.
+
+---
+
+## 8. Before you fly
+
+- [ ] Both presenters have read `HANDOVER.md` §4 end to end
+- [ ] Speaker notes reviewed in Present mode, out loud, twice
+- [ ] Full run-through timed — must land under 15:00 with the cost slide by 11:30
+- [ ] Demo rehearsed on the **actual presenting laptop**
+- [ ] Backup video recorded and saved locally
+- [ ] Deck exported to PDF and copied to a USB stick
+- [ ] Laptop set to never sleep; notifications silenced
+- [ ] Activity log cleared: delete `data/predictions/predictions.csv`
+- [ ] Projector checked — the demo UI is dark-themed, confirm it reads from the back
+
+---
+
+## 9. On the day
+
+Arrive early enough to connect your laptop during the previous speaker's Q&A.
+Load the deck and the demo before you are introduced.
+
+If the projector fails, present from the PDF on the USB stick. If that fails,
+talk through the three numbers on slide 14 — 0.848, 0.018, −31.2 percent — and
+take questions. The argument survives without slides.
+
+Finish on time. A panel forgives a thin answer; it does not forgive overrunning.

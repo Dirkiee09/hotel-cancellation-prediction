@@ -105,6 +105,38 @@ tie (p = 0.183). LightGBM was selected in advance by a rolling-origin criterion,
 has the higher recall our cost structure rewards, and trains in 2.7 s versus
 7.5 s. We do not claim it dominates.
 
+**"Why present LightGBM when XGBoost scored higher on your own table?"**
+This is the sharpest question you will get. The answer is a strength, not an
+excuse: the champion was fixed *before* the test set was touched, by the
+rolling-origin criterion — LightGBM 0.869 mean PR-AUC against XGBoost 0.868 and
+Gradient Boosting 0.867. Switching to XGBoost because it won on the held-out
+test is selecting on the test set, which is precisely the error the whole design
+exists to prevent. The paper says so plainly: across-fold standard deviation is
+about 0.032 for every candidate, so the ranking is stable in order but not in
+magnitude, and the paired bootstrap uses XGBoost — the higher scorer — as its
+reference rather than our own champion.
+
+**Read this before you open `reports/hypothesis_summary.json`.**
+That file is in the artifacts bundle and it records `H2: not_supported`. Do not
+be alarmed, and do not quote it out of context. It is a *different comparison*
+from the one in the paper:
+
+| | Compared | Δ PR-AUC | p |
+|---|---|---|---|
+| `hypothesis_summary.json` | LightGBM vs the `baselines.py` logistic regression (0.754) | 0.0045 | 0.177 — not significant |
+| The paper | XGBoost vs the `benchmark.py` logistic regression (0.740) | 0.023 | < 0.001 — significant |
+
+Both are true; they use differently-configured logistic baselines. The paper
+reports the benchmark comparison and never claims the champion beats logistic
+regression decisively — it says the ladder "flattens sharply", that a decision
+tree to logistic regression adds 0.226 of precision-recall area while logistic
+regression to the best boosted model adds only 0.023.
+
+If challenged on whether boosting is worth it at all, the honest answer is the
+paper's own: most of the booking-time signal is linear, the boosted gain is real
+but modest, and the business result comes from calibration plus cost-sensitive
+thresholding rather than from raw discrimination.
+
 **"Where does 31.2% come from?"**
 Cost-sensitive threshold versus contacting every guest. €15 per unnecessary
 contact against booking-specific lost revenue (ADR × nights, minus one resold
