@@ -1,7 +1,7 @@
 """Seed the prediction log with 30 varied scenarios for the Power BI demo.
 
 Useful when:
-   * You've just reset the DB (`python scripts/export_predictions.py --reset`)
+   * You've just reset the DB (`python scripts/utils/export_predictions.py --reset`)
    * You want a fresh, diverse dataset for the Power BI dashboard
 
 The 30 scenarios are designed to populate every cell of the
@@ -13,7 +13,7 @@ Calls log_prediction() directly (not the HTTP endpoint), so the server
 does NOT need to be running. The CSV is refreshed at the end.
 
 Usage:
-    python scripts/seed_demo_predictions.py
+    python scripts/demo/seed_demo_predictions.py
 
 After running, point Power BI at data/predictions/predictions_live.csv
 and you'll have 30 rows spanning every interesting axis.
@@ -398,7 +398,8 @@ _COUNTRY_POOL = [
 
 def _extra_scenarios(n: int, seed: int = 42) -> list[dict[str, Any]]:
     """Fan the curated scenarios out into `n` perturbed (but realistic) bookings."""
-    rng = random.Random(seed)
+    # Seeded PRNG for reproducible demo fixtures, not security material.
+    rng = random.Random(seed)  # nosec B311
     out: list[dict[str, Any]] = []
     for _ in range(n):
         rec = dict(rng.choice(SCENARIOS))

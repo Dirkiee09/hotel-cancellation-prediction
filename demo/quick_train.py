@@ -1,7 +1,7 @@
 """Quick smoke-train for demo prep (10k rows, ~30 seconds).
 
 Use this when you need artifacts fast and don't care about full accuracy.
-For the real model, run: python scripts/train.py
+For the real model, run: python scripts/training/train.py
 
 Usage:
     python demo/quick_train.py
@@ -27,10 +27,10 @@ def main() -> None:
             return
 
     print("Training on 10k rows (fast smoke-train)...")
-    print("For full accuracy, run: python scripts/train.py\n")
+    print("For full accuracy, run: python scripts/training/train.py\n")
 
     result = subprocess.run(  # noqa: S603
-        [sys.executable, "scripts/train.py", "--max-rows", "10000"],
+        [sys.executable, "scripts/training/train.py", "--max-rows", "10000"],
         cwd=str(ROOT),
     )
 

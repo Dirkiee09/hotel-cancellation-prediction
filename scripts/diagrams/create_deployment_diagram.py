@@ -291,7 +291,7 @@ def build_figure() -> None:
         3.0,
         1.4,
         "Retraining trigger\n(if ≥ 2 features cross PSI 0.25 →\n"
-        "scripts/train.py regenerates artifacts/*)",
+        "scripts/training/train.py regenerates artifacts/*)",
         fc="#FFF4DE",
         ec=ACCENT,
         fontsize=9,

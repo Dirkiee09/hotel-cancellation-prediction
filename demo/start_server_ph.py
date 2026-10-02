@@ -84,7 +84,7 @@ def main() -> int:
     if not model_path.exists():
         print("ERROR: No trained PH model found.")
         print(f"  Expected: {model_path}")
-        print("  Fix:      python scripts/train_ph.py")
+        print("  Fix:      python scripts/training/train_ph.py")
         return 1
 
     # 2. Port free?

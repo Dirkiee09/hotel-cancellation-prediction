@@ -1,45 +1,64 @@
-# Output Provenance — Where Local Artifacts Come From
+# Output provenance
 
-This branch (`Main_Project`) is a clean rewrite of the training/serving pipeline.
-Several output sets sitting in the local `artifacts/` and `reports/` directories
-were produced by code that lives on the **`master` branch** (= `origin/Main`),
-not on this branch. This file maps every such output to its producer so the
-results remain reproducible and defensible.
+Most of `artifacts/` and `reports/` is generated and git-ignored: `make train`
+rebuilds it from `data/hotel_bookings.csv`. A small number of result files are
+**committed on purpose**, because the code that produced them needs data this
+repository does not contain. This file records where those came from, so the
+results stay reproducible and defensible.
 
-> Recover any producer with:
-> `git checkout master -- <path>` (then review its imports — some need the
-> PH support layer listed below).
+## Committed results and their producers
 
-| Local output | Producer (on `master`) | Commit | Notes |
-|---|---|---|---|
-| `artifacts/ph/*` (PH model, calibrator, thresholds, ADR regressor) | `scripts/train_ph.py` | `8c03059` | Needs the PH support layer: `src/data/load_ph.py`, `PH_*` constants in `src/config.py`, `clean_raw_ph`/`validate_raw_ph` in `src/utils/validate_data.py`. **The PH PMS dataset is private and is NOT in the repository** — reproduction requires the original CSV. |
-| `reports/ph/*` (transferability, SHAP, baselines, learning curves) | `scripts/train_ph.py` | `8c03059` | Same requirements as above. **Aggregated result JSONs are committed on this branch** (2026-06-10) so Notebook 11 renders everywhere; row-level prediction CSVs stay local (private PMS rows). |
-| `reports/cv/*` (Portugal + Philippine stratified 10-fold, 7 algorithms) | `scripts/stratified_cv.py` | `351a75c` | Portugal half runs from this branch's data; PH half needs the private dataset. **Summary + fold-level metric files are committed on this branch** and rendered by `notebooks/11_transferability_ph.ipynb`. |
-| `data/predictions/` (deleted in cleanup, 2026-06-10) | `scripts/seed_demo_predictions.py`, `scripts/compute_live_drift.py`, `scripts/export_predictions.py` | `0cf4b4a` | Power BI / live-demo seeding. Regenerable at will; now gitignored. |
-| Chapter IV tables & paper figures | `docs/thesis_drafts/` on `master` | various | Includes the test-set threshold-policy table referenced by older `metrics.json` notes. |
+| Committed output | Producer | Reproducible here? |
+|---|---|---|
+| `reports/cv/portugal_stratified_10fold_*` | `scripts/training/stratified_cv.py` | Yes — runs from `data/hotel_bookings.csv` |
+| `reports/cv/philippine_stratified_10fold_*` | `scripts/training/stratified_cv.py` | No — needs the private PH export |
+| `reports/ph/*.json`, `reports/ph/ph_threshold_sweep.csv` | `scripts/training/train_ph.py` | No — needs the private PH export |
+| `reports/dedup_sensitivity.json` | `scripts/training/dedup_sensitivity.py` | Yes — runs from `data/hotel_bookings.csv` |
 
-## Unresolved: Portugal ADR artifacts
+The Philippine results are committed as **aggregated JSON only** so the PH notebooks
+render for anyone who clones the repository. Row-level prediction files are not
+committed, because they contain real reservation records.
 
-`artifacts/adr_regressor.pkl`, `adr_regressor_preprocessor.pkl`,
-`adr_regressor_y_scaler.pkl`, `adr_regressor_nn.keras`, and
-`adr_timeseries_*.pkl` have **no versioned producer on any branch** (verified
-2026-06-10: `git grep` across all refs finds only consumers). They were trained
-in an unversioned session. TensorFlow/Keras is not in `requirements.txt`.
+### The Philippine dataset is not in this repository
 
-Consequences and options:
+`data/Punta_Villa_Resort_PH_Dataset.csv` is a real property-management-system export
+and is deliberately untracked. Anything in the PH sub-study that depends on it cannot
+be regenerated from a clone alone. Reproducing it requires:
 
-1. **Before the defense**, either write `scripts/train_adr.py` reproducing them
-   (the PH equivalent inside `train_ph.py` on `master` is a good template), or
-2. present the ADR chapter results as exploratory with this limitation stated,
-   or
-3. drop the Keras NN comparison (the sklearn regressor is the one cited in
-   `reports/regression_results.csv`) so the missing TensorFlow dependency
-   disappears.
+- the original CSV placed at that path
+- `src/data/load_ph.py`, the `PH_*` constants in `src/config.py`, and
+  `clean_raw_ph` / `validate_raw_ph` in `src/utils/validate_data.py` (all present here)
 
-## Branch topology (for whoever reads this later)
+## Open gap: the ADR regressor has no producer script
 
-- `Main_Project` (this branch): clean pipeline rewrite — training, serving,
-  evaluation, 10 notebooks, CI. Unrelated git history to `master`.
-- `master` / `origin/Main`: full thesis lineage — everything above **plus** the
-  PH application stack (`src/app/ph_*`, `src/serving/inference_ph.py`), PH
-  notebook suite (`notebooks/ph/`), defense runbook, and `docs/thesis_drafts/`.
+These artifacts have **no versioned script that creates them**:
+
+```
+artifacts/adr_regressor.pkl
+artifacts/adr_regressor_preprocessor.pkl
+artifacts/adr_regressor_y_scaler.pkl
+artifacts/adr_regressor_nn.keras
+artifacts/adr_timeseries_data.pkl
+artifacts/adr_timeseries_metadata.pkl
+```
+
+Searching the repository finds only consumers, never a producer. They were trained in
+an unversioned session, and TensorFlow/Keras — needed to load the `.keras` model — is
+not in `requirements.txt`. The sklearn regressor loads and serves fine; it is the one
+cited in results.
+
+This matters because `make train` does not rebuild these files. Deleting them cannot
+be undone by retraining.
+
+Three ways to close it, in descending order of rigour:
+
+1. **Write the producer.** Add `scripts/training/train_adr.py` that fits and saves the
+   regressor from `data/hotel_bookings.csv`. The ADR section inside
+   `scripts/training/train_ph.py` is a working template. This also fixes the
+   booking-time feature problem described under "Live ADR forecast" in the README.
+2. **State the limitation.** Present the ADR results as exploratory and say plainly
+   that those artifacts predate version control.
+3. **Drop the neural-network comparison.** Keep only the sklearn regressor, which
+   removes the undeclared TensorFlow dependency entirely.
+
+Option 1 is the only one that makes the ADR results independently reproducible.

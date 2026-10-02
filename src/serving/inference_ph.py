@@ -87,7 +87,7 @@ def load_ph_artifacts(artifacts_dir: Path = PH_ARTIFACTS_DIR) -> PHModelArtifact
     if not model_path.exists():
         raise FileNotFoundError(
             f"PH model artifact not found: {model_path}. "
-            "Run `python scripts/train_ph.py` to generate the PH artifacts."
+            "Run `python scripts/training/train_ph.py` to generate the PH artifacts."
         )
     model_pipeline = joblib.load(model_path)
 

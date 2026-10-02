@@ -75,7 +75,7 @@ specific analysis. The summary:
 
 ```bash
 # 1. Re-train and produce all artifacts (artifacts/ph/ + reports/ph/)
-python scripts/train_ph.py
+python scripts/training/train_ph.py
 
 # 2. Headless-execute every notebook in this folder
 for nb in notebooks/ph/*.ipynb; do
@@ -106,5 +106,4 @@ contributions:
    PMS schema can produce — a useful bound for other small properties
    with similar PMS exports.
 
-See `CLAUDE.md` the "PH Sub-Study — Philippine Resort Dataset" section for the full
-project context.
+See the README "Philippine sub-study" section for the full project context.

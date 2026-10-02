@@ -121,7 +121,7 @@ def _hero_metrics_line() -> str:
     if data is None:
         return (
             "<p class='kpi-muted'>PH model metrics not available — "
-            "run <code>python scripts/train_ph.py</code>.</p>"
+            "run <code>python scripts/training/train_ph.py</code>.</p>"
         )
     try:
         roc = data["roc_auc_test"]
@@ -426,7 +426,7 @@ def predict_one(
         msg = (
             f"<div class='prob-block'><p class='prob-label'>Error</p>"
             f"<p style='color:var(--bad)'>PH artifacts unavailable: {exc}<br>"
-            "Run <code>python scripts/train_ph.py</code> first.</p></div>"
+            "Run <code>python scripts/training/train_ph.py</code> first.</p></div>"
         )
         return msg, "", ""
 
@@ -590,7 +590,7 @@ _SKELETON_DETAILS = (
 def _top_shap_features_markdown(n: int = 8) -> str:
     """Render the top-N SHAP features as a markdown bullet list."""
     if not PH_SHAP_IMPORTANCE_PATH.exists():
-        return "*(SHAP importance not available — retrain via `scripts/train_ph.py`.)*"
+        return "*(SHAP importance not available — retrain via `scripts/training/train_ph.py`.)*"
     try:
         df = pd.read_csv(PH_SHAP_IMPORTANCE_PATH).head(n)
         return "\n".join(
@@ -718,8 +718,8 @@ methodology. Notable cross-references:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Hero chips say "metrics not available" | Missing `reports/ph/ph_transferability.json` | Run `python scripts/train_ph.py` |
-| `PH artifacts unavailable` error in result panel | Missing `artifacts/ph/ph_model.pkl` | Run `python scripts/train_ph.py` |
+| Hero chips say "metrics not available" | Missing `reports/ph/ph_transferability.json` | Run `python scripts/training/train_ph.py` |
+| `PH artifacts unavailable` error in result panel | Missing `artifacts/ph/ph_model.pkl` | Run `python scripts/training/train_ph.py` |
 | Many predictions return ≈ 0 % | Calibrator zero-plateau on confident "stay" bookings | Expected — UI shows `<0.01 %` for these |
 | Server returns "Connection refused" | Port 8001 in use or uvicorn not started | `python demo/start_server_ph.py` |
 | `Validation error` on Predict | Required field missing / out of range | Check inputs (adults ≥ 1, ADR < 100 000) |

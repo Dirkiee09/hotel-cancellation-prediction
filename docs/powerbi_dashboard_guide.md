@@ -36,12 +36,12 @@ Get-ChildItem reports/test_predictions_for_powerbi.csv,
 ```
 
 If anything is missing:
-- Re-train: `python scripts/train.py`
-- Regenerate ADR exports: `python scripts/export_adr_predictions.py`
+- Re-train: `python scripts/training/train.py`
+- Regenerate ADR exports: `python scripts/utils/export_adr_predictions.py`
 - Make at least one live prediction so the live CSV exists: open the Gradio
   UI at `localhost:8000/ui`, submit one booking, then run
-  `python scripts/export_predictions.py`
-- Compute drift: `python scripts/compute_live_drift.py`
+  `python scripts/utils/export_predictions.py`
+- Compute drift: `python scripts/utils/compute_live_drift.py`
 
 ### 3. Export `reports/metrics.json` to CSV (one-shot)
 Power BI prefers tabular files. From the project root:
@@ -500,7 +500,7 @@ Flagged Cost Sensitive = CALCULATE([Total Bookings], Bookings_Baseline[predicted
 - Conditional format background: green → amber → red as RMSE grows
 
 > **★ Honest caveat to add as a footer text box.** "The ADR regressor was
-> trained on four post-booking features (see CLAUDE.md). At booking-time,
+> trained on four post-booking features (see README "Live ADR forecast"). At booking-time,
 > predicted ADR is slightly less accurate than the published test RMSE of
 > 44.31 €. Compare residual signs across hotels, not absolute magnitudes."
 
@@ -618,7 +618,7 @@ Three cards across the top:
 ### 11.4 Action call-out
 Text box at the bottom: *"Retrain when any feature crosses 0.25 PSI, OR when
 five or more features are in the 'watch' zone simultaneously. Run
-`python scripts/train.py` then `python scripts/compute_live_drift.py` to
+`python scripts/training/train.py` then `python scripts/utils/compute_live_drift.py` to
 refresh this page."*
 
 ---
@@ -677,10 +677,10 @@ TO REFRESH THE DASHBOARD WITH NEW PREDICTIONS
    - Or via /predict on FastAPI
 
 2. Export the live log to CSV:
-   python scripts/export_predictions.py
+   python scripts/utils/export_predictions.py
 
 3. (Optional) Re-run drift if a week+ has passed:
-   python scripts/compute_live_drift.py
+   python scripts/utils/compute_live_drift.py
 
 4. Open the .pbix in Power BI Desktop
 5. Home > Refresh > wait ~10 s

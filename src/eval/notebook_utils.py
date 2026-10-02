@@ -234,7 +234,9 @@ def _load_benchmark_tables(root: Path) -> dict[str, pd.DataFrame] | None:
 def benchmark_rankings_table(ctx: dict[str, Any], top_n: int | None = None) -> pd.DataFrame:
     tables = ctx.get("benchmark_tables")
     if not tables:
-        raise FileNotFoundError("Benchmark tables not found. Run: python scripts/benchmark.py")
+        raise FileNotFoundError(
+            "Benchmark tables not found. Run: python scripts/training/benchmark.py"
+        )
     df = tables["16_rankings"].copy()
     if top_n is not None:
         df = df.head(top_n)
@@ -244,7 +246,9 @@ def benchmark_rankings_table(ctx: dict[str, Any], top_n: int | None = None) -> p
 def benchmark_significance_table(ctx: dict[str, Any], top_n: int | None = None) -> pd.DataFrame:
     tables = ctx.get("benchmark_tables")
     if not tables:
-        raise FileNotFoundError("Benchmark tables not found. Run: python scripts/benchmark.py")
+        raise FileNotFoundError(
+            "Benchmark tables not found. Run: python scripts/training/benchmark.py"
+        )
     df = tables["14_paired_significance_vs_champion"].copy()
     if top_n is not None:
         rankings = tables.get("16_rankings")
@@ -257,7 +261,9 @@ def benchmark_significance_table(ctx: dict[str, Any], top_n: int | None = None) 
 def plot_benchmark_model_comparison(ctx: dict[str, Any], fig_dir: Path, fig_no: int = 6) -> None:
     tables = ctx.get("benchmark_tables")
     if not tables:
-        raise FileNotFoundError("Benchmark tables not found. Run: python scripts/benchmark.py")
+        raise FileNotFoundError(
+            "Benchmark tables not found. Run: python scripts/training/benchmark.py"
+        )
     df = tables["03_holdout_probability_metrics"].copy()
     df = df.sort_values("pr_auc", ascending=True).reset_index(drop=True)
 
@@ -286,7 +292,9 @@ def plot_benchmark_threshold_heatmap(
 ) -> None:
     tables = ctx.get("benchmark_tables")
     if not tables:
-        raise FileNotFoundError("Benchmark tables not found. Run: python scripts/benchmark.py")
+        raise FileNotFoundError(
+            "Benchmark tables not found. Run: python scripts/training/benchmark.py"
+        )
     df = tables["05_holdout_threshold_metrics_max_f1"].copy()
     if top_n is not None:
         rankings = tables.get("16_rankings")
@@ -311,7 +319,9 @@ def plot_benchmark_cost_vs_performance(
 ) -> pd.DataFrame:
     tables = ctx.get("benchmark_tables")
     if not tables:
-        raise FileNotFoundError("Benchmark tables not found. Run: python scripts/benchmark.py")
+        raise FileNotFoundError(
+            "Benchmark tables not found. Run: python scripts/training/benchmark.py"
+        )
     perf = tables["03_holdout_probability_metrics"].copy()
     cost = tables["15_training_inference_cost"].copy()
     merged = perf.merge(cost, on="model", how="inner")
@@ -3237,7 +3247,7 @@ def load_ph_context() -> dict[str, Any]:
     plot_baseline_comparison, plot_learning_dynamics, etc.) work without
     modification — the helpers consume a context dict, not Portugal paths.
 
-    Required artifacts (produced by ``python scripts/train_ph.py``):
+    Required artifacts (produced by ``python scripts/training/train_ph.py``):
         artifacts/ph/ph_model.pkl
         artifacts/ph/ph_calibrator.pkl
         artifacts/ph/ph_thresholds.json
@@ -3266,7 +3276,8 @@ def load_ph_context() -> dict[str, Any]:
     missing = [str(p) for p in required if not p.exists()]
     if missing:
         raise FileNotFoundError(
-            "Missing required PH files (run `python scripts/train_ph.py`):\n" + "\n".join(missing)
+            "Missing required PH files (run `python scripts/training/train_ph.py`):\n"
+            + "\n".join(missing)
         )
 
     metrics = load_json(ph_rep / "ph_transferability.json")

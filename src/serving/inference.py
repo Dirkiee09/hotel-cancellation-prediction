@@ -124,7 +124,7 @@ def load_artifacts(artifacts_dir: Path = ARTIFACTS_DIR) -> ModelArtifacts:
     if not pipeline_path.exists():
         raise FileNotFoundError(
             f"Pipeline artifact not found: {pipeline_path}. "
-            "Run `python scripts/train.py` to generate best_model.pkl."
+            "Run `python scripts/training/train.py` to generate best_model.pkl."
         )
 
     try:
@@ -132,7 +132,7 @@ def load_artifacts(artifacts_dir: Path = ARTIFACTS_DIR) -> ModelArtifacts:
     except Exception as exc:
         raise RuntimeError(
             f"Failed to load model artifact {pipeline_path}: {exc}. "
-            "The file may be corrupted. Re-run `python scripts/train.py`."
+            "The file may be corrupted. Re-run `python scripts/training/train.py`."
         ) from exc
 
     preprocessor = None
@@ -218,7 +218,7 @@ def predict_proba(records: Any, artifacts: ModelArtifacts) -> tuple[list[float],
         if artifacts.preprocessor is None:
             raise RuntimeError(
                 "Model artifact is not a sklearn Pipeline but no separate preprocessor "
-                "was found. Re-run `python scripts/train.py` to regenerate artifacts."
+                "was found. Re-run `python scripts/training/train.py` to regenerate artifacts."
             )
         X = artifacts.preprocessor.transform(df)
         probs = artifacts.model.predict_proba(X)[:, 1]
@@ -231,7 +231,7 @@ def predict_proba(records: Any, artifacts: ModelArtifacts) -> tuple[list[float],
 # booking time those are unknown (the booking was just made: not cancelled yet,
 # no modifications, no waiting list). Passing these defaults lets the regressor
 # produce a live forecast — at the cost of slightly degraded accuracy vs the
-# training-time test RMSE. Documented in CLAUDE.md.
+# training-time test RMSE. See README "Live ADR forecast".
 _ADR_BOOKING_TIME_DEFAULTS: dict[str, Any] = {
     "is_canceled": 0,
     "booking_changes": 0,
@@ -258,6 +258,16 @@ def predict_adr(record: dict[str, Any], artifacts: ModelArtifacts) -> float | No
         # at booking time — upgrades / downgrades happen on arrival).
         if "assigned_room_type" not in row or row["assigned_room_type"] is None:
             row["assigned_room_type"] = row.get("reserved_room_type")
+        # agent/company are numeric in the ADR regressor's preprocessor but strings
+        # on the booking contract (BookingRequest coerces both to str, and "no
+        # company" arrives as ""). An empty string reaches the median imputer as
+        # non-numeric and raised, so every live forecast silently returned None.
+        # Blank means "absent" here: hand the imputer None and let it impute.
+        for feat in artifacts.adr_metadata.get("numeric_features") or []:
+            value = row.get(feat)
+            if isinstance(value, str):
+                stripped = value.strip()
+                row[feat] = None if not stripped else stripped
         X = pd.DataFrame([{feat: row.get(feat) for feat in features}])
         pred = float(artifacts.adr_regressor.predict(X)[0])
         if not np.isfinite(pred):

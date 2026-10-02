@@ -9,7 +9,7 @@ Everything you need to demo the hotel booking cancellation predictor.
 pip install -e . -r requirements.txt
 
 # 2. Train the model (skip if artifacts/ already has files)
-python scripts/train.py
+python scripts/training/train.py
 
 # 3. Start server + open browser
 python demo/start_server.py
@@ -64,7 +64,7 @@ Swagger UI with:
 ### 4. Quality Gates
 
 ```bash
-python scripts/check.py all      # artifact integrity + metrics + sync + fairness
+python scripts/utils/check.py all      # artifact integrity + metrics + sync + fairness
 python -m pytest tests/ -q       # 91 tests, 89% coverage
 ```
 

@@ -28,7 +28,7 @@ Run `make full-pipeline` before opening any notebook for the first time.
 ```bash
 # 1. Generate all artifacts and reports
 make full-pipeline
-# Windows without make: python scripts/train.py && python scripts/train.py --verify-only
+# Windows without make: python scripts/training/train.py && python scripts/training/train.py --verify-only
 
 # 2. Open a notebook
 jupyter lab notebooks/01_eda.ipynb

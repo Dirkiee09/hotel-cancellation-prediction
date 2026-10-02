@@ -3,7 +3,7 @@
 Lifted from notebooks/08_model_monitoring.ipynb so the same logic can be
 imported by:
     * The notebook itself (back-compat)
-    * scripts/compute_live_drift.py (live drift export for Power BI)
+    * scripts/utils/compute_live_drift.py (live drift export for Power BI)
     * Any future drift tooling (CI alerts, scheduled drift jobs, etc.)
 
 PSI interpretation (industry standard):

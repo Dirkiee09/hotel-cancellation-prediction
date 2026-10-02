@@ -14,7 +14,7 @@ more closely.
   previous_cancellations — the real PMS export does not record these
 
 Usage:
-    python scripts/train_ph.py
+    python scripts/training/train_ph.py
 
 Outputs (all under artifacts/ph/ and reports/ph/, separate from main project):
     artifacts/ph/ph_model.pkl              — sklearn Pipeline (preprocessor + LightGBM)

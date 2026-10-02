@@ -6,12 +6,14 @@ import csv
 import html
 import json
 import logging
+import math
 import re
 import sys
 import threading
 import traceback
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict
 
@@ -24,6 +26,8 @@ from src.config import (
     ADR_MAX_VALID,
     ARTIFACTS_DIR,
     BOOKING_TIME_FEATURES,
+    PROBABILITY_DISPLAY_CEILING,
+    PROBABILITY_DISPLAY_FLOOR,
     RISK_TIER_HIGH_THRESHOLD,
     RISK_TIER_MEDIUM_THRESHOLD,
 )
@@ -136,24 +140,106 @@ COUNTRY_CHOICES = _CAT_CHOICES["country"]
 COUNTRY_OPTIONAL_CHOICES = [""] + COUNTRY_CHOICES
 
 
-def _load_hero_metrics() -> str:
-    """Load ROC-AUC / PR-AUC from reports/metrics.json for the hero banner."""
-    reports_dir = PROJECT_ROOT / "reports"
-    metrics_path = reports_dir / "metrics.json"
-    if metrics_path.exists():
-        try:
-            data = json.loads(metrics_path.read_text(encoding="utf-8"))
-            max_f1 = data.get("max_f1", {})
-            roc = max_f1.get("roc_auc")
-            pr = max_f1.get("pr_auc")
-            if roc is not None and pr is not None:
-                return f"ROC-AUC {float(roc):.3f} \u00b7 PR-AUC {float(pr):.3f}"
-        except Exception as exc:
-            logger.warning("Could not load hero metrics from %s: %s", metrics_path, exc)
-    return "ROC-AUC \u2014 \u00b7 PR-AUC \u2014"
+def _read_stream_metrics(path: Path) -> dict[str, float] | None:
+    """Read one evaluation stream's headline figures, or None if unavailable.
+
+    Returns ROC-AUC, PR-AUC and the cost-sensitive saving against contacting every
+    guest. All three come from the same file so the banner can never pair one
+    stream's discrimination with another stream's cost claim.
+    """
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        max_f1 = data.get("max_f1", {})
+        roc, pr = max_f1.get("roc_auc"), max_f1.get("pr_auc")
+        if roc is None or pr is None:
+            return None
+        out = {"roc_auc": float(roc), "pr_auc": float(pr)}
+        cost = data.get("cost_thresholding_test", {})
+        blanket, policy = cost.get("intervene_all_cost"), cost.get("total_cost")
+        if blanket and policy is not None and float(blanket) > 0:
+            out["cost_cut_pct"] = (float(blanket) - float(policy)) / float(blanket) * 100.0
+        return out
+    except Exception as exc:  # pragma: no cover - defensive, banner must never crash
+        logger.warning("Could not load stream metrics from %s: %s", path, exc)
+        return None
 
 
-_HERO_METRICS = _load_hero_metrics()
+def _load_banner_context() -> dict[str, str]:
+    """Collect real values for the banner.
+
+    The paper reports the de-duplicated stream as its primary estimate and the
+    per-record stream as a robustness view. The served model is fitted on the
+    per-record stream, so both are shown and labelled rather than silently
+    presenting one as "the" result.
+    """
+    reports = PROJECT_ROOT / "reports"
+    primary = _read_stream_metrics(reports / "dedup" / "metrics.json")
+    per_record = _read_stream_metrics(reports / "metrics.json")
+
+    def fmt(m: dict[str, float] | None) -> tuple[str, str]:
+        if m is None:
+            return "\u2014", "\u2014"
+        return f"{m['roc_auc']:.3f}", f"{m['pr_auc']:.3f}"
+
+    # reports/dedup/ is produced by a separate de-duplication run and is gitignored,
+    # so a fresh clone has only the per-record metrics. Fall back to those rather
+    # than showing em-dashes, and let the caption say which stream is on screen.
+    primary_is_dedup = primary is not None
+    if primary is None:
+        primary = per_record
+
+    p_roc, p_pr = fmt(primary)
+    r_roc, r_pr = fmt(per_record)
+
+    # Must come from the same stream as the AUCs beside it. The paper's 31.2% is the
+    # de-duplicated figure; the per-record run cuts 36.1%. Hardcoding either one
+    # mislabels the banner whenever the other stream is the one on screen.
+    cost_cut = "—"
+    if primary is not None and "cost_cut_pct" in primary:
+        cost_cut = f"{primary['cost_cut_pct']:.1f}%"
+
+    # model_metadata.json carries no training timestamp, so fall back to the
+    # artifact's mtime, which is written by the training run.
+    trained = "unknown"
+    try:
+        model_path = ARTIFACTS_DIR / "best_model.pkl"
+        if model_path.exists():
+            trained = datetime.fromtimestamp(model_path.stat().st_mtime, tz=timezone.utc).strftime(
+                "%d %b %Y"
+            )
+    except OSError as exc:  # pragma: no cover - defensive
+        logger.warning("Could not stat model artifact: %s", exc)
+
+    if primary_is_dedup:
+        caption = (
+            "Primary figures are the de-duplicated stream reported in the paper "
+            "(n&nbsp;=&nbsp;87,229). The model served here is fitted on the per-record "
+            f"stream (ROC-AUC {r_roc} · PR-AUC {r_pr}, n&nbsp;=&nbsp;119,209), which the "
+            "paper reports as its robustness view."
+        )
+    else:
+        caption = (
+            "Figures shown are the per-record stream from this machine's training run "
+            "(n&nbsp;=&nbsp;119,209), which the paper reports as its robustness view. "
+            "The paper's primary de-duplicated figures (ROC-AUC 0.848 · PR-AUC 0.703, "
+            "n&nbsp;=&nbsp;87,229) require <code>scripts/training/dedup_sensitivity.py</code>."
+        )
+
+    return {
+        "primary_roc": p_roc,
+        "primary_pr": p_pr,
+        "per_record_roc": r_roc,
+        "per_record_pr": r_pr,
+        "trained": trained,
+        "stream_label": "primary" if primary_is_dedup else "per-record",
+        "cost_cut": cost_cut,
+        "caption": caption,
+    }
+
+
+_BANNER = _load_banner_context()
 
 REQUIRED_FIELD_ORDER = [
     "hotel",
@@ -259,11 +345,17 @@ def _validate_required(values: Dict[str, Any]) -> tuple[int, int, list[str], lis
                 # back-testing) is a legitimate use. Only the format is enforced.
                 if isinstance(raw, datetime):
                     raw.date()
+                elif isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                    # gr.DateTime emits a Unix timestamp on change events even when
+                    # type="datetime". Rejecting it marked the form invalid, which
+                    # silently disabled scoring: Predict returned the validation
+                    # summary instead of a prediction.
+                    datetime.fromtimestamp(float(raw), tz=timezone.utc).date()
                 elif hasattr(raw, "date"):
                     pass
                 else:
                     datetime.fromisoformat(str(raw)).date()
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OSError, OverflowError):
                 errors.append("Invalid arrival date format.")
                 continue
             completed += 1
@@ -528,6 +620,61 @@ def _generate_xai_html(explanation: list[dict[str, Any]]) -> str:
     return html
 
 
+def _display_pct(prob: float) -> str:
+    """Render a calibrated probability for presentation.
+
+    Isotonic calibration is a step function whose end bins collapse to exactly 0.0
+    or 1.0 (~16% of held-out bookings). Reporting "0.0%" or "100.0%" would state a
+    certainty the model cannot support, so saturated scores are shown as bounded
+    text. The underlying probability is unchanged — only its rendering is.
+    """
+    if not math.isfinite(prob):
+        return "&#x2014;"
+    if prob >= PROBABILITY_DISPLAY_CEILING:
+        return f"&gt;{PROBABILITY_DISPLAY_CEILING * 100:.0f}%"
+    if prob <= PROBABILITY_DISPLAY_FLOOR:
+        return f"&lt;{PROBABILITY_DISPLAY_FLOOR * 100:.0f}%"
+    return f"{prob * 100.0:.1f}%"
+
+
+def _display_pct_plain(prob: float) -> str:
+    """Same as :func:`_display_pct` but without HTML entities, for plain-text slots."""
+    if not math.isfinite(prob):
+        return "unavailable"
+    if prob >= PROBABILITY_DISPLAY_CEILING:
+        return f">{PROBABILITY_DISPLAY_CEILING * 100:.0f}%"
+    if prob <= PROBABILITY_DISPLAY_FLOOR:
+        return f"<{PROBABILITY_DISPLAY_FLOOR * 100:.0f}%"
+    return f"{prob * 100.0:.1f}%"
+
+
+def _calibration_note(prob: float) -> str:
+    """One-line explanation shown only when the calibrator has saturated."""
+    if not math.isfinite(prob):
+        return ""
+    if PROBABILITY_DISPLAY_FLOOR < prob < PROBABILITY_DISPLAY_CEILING:
+        return ""
+    return (
+        "Isotonic calibration assigns this booking to a terminal bin in which every "
+        "validation booking shared the same outcome, so the fitted probability is at "
+        "the bound. It is reported as a bound rather than as certainty."
+    )
+
+
+def _benchmark_table_unavailable(table: str, exc: Exception) -> None:
+    """Render a visible reason when a benchmark table cannot be shown.
+
+    These tables live under reports/benchmarks/, which is git-ignored, so a fresh
+    clone has none of them. Swallowing the error left the Benchmarks tab showing
+    bare headings with nothing under them and no hint why.
+    """
+    logger.warning("benchmark_table_unavailable table=%s error=%s", table, exc)
+    gr.Markdown(
+        f"*Not available on this machine — `reports/benchmarks/{table}` is missing. "
+        "Run `python scripts/training/benchmark.py` to generate the 16 benchmark tables.*"
+    )
+
+
 def _risk_meter_html(prob: float | None, *, label: str, note: str) -> str:
     tone = RISK_TONES.get(label, "neutral")
     safe_label = html.escape(label)
@@ -565,7 +712,7 @@ def _risk_meter_html(prob: float | None, *, label: str, note: str) -> str:
 <div class="risk-card risk-{tone}">
   <div class="risk-topline">
     <span class="risk-pill">{safe_label}</span>
-    <span class="risk-percent">{pct:.1f}%</span>
+    <span class="risk-percent">{_display_pct(prob)}</span>
   </div>
   <div class="risk-track with-markers" style="background:{zone_gradient}">
     <span class="risk-marker medium" style="left:{medium_pct:.1f}%"></span>
@@ -808,7 +955,7 @@ def _format_prediction_output(
     action_icon = "🔴" if risk_label == "High" else "🟡" if risk_label == "Medium" else "🟢"
 
     summary = (
-        f"<div style='font-size: 2.2rem; font-weight: 800; color: {action_color}; margin-bottom: -5px;'>{pct:.1f}%</div>"
+        f"<div style='font-size: 2.2rem; font-weight: 800; color: {action_color}; margin-bottom: -5px;'>{_display_pct(prob)}</div>"
         f"<div style='font-size: 0.9rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;'>Cancellation Risk</div>"
         f"<div style='font-size: 1.4rem; font-family: monospace; color: {action_color}; letter-spacing: 2px; margin-bottom: 5px;'>{progress_bar}</div>"
         f"<div style='font-size: 1rem; font-weight: bold; color: {action_color}; margin-bottom: 25px;'>{risk_label.upper()} RISK</div>"
@@ -816,7 +963,7 @@ def _format_prediction_output(
         f"<div style='font-size: 0.75rem; letter-spacing: 1px; color: #cbd5e1; text-transform: uppercase; margin-bottom: 8px;'>RECOMMENDED ACTION</div>"
         f"<div style='font-size: 1.05rem; color: #eef2ff; font-weight: bold; margin-bottom: 12px; line-height: 1.4;'>{action_icon} {plain_action}</div>"
         f"<div style='display: flex; justify-content: space-between; font-size: 0.9rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px;'>"
-        f"<span style='color: #94a3b8'>Expected Revenue</span><span style='color: white; font-weight: bold;'>€{rev_at_risk:,.0f}</span>"
+        f"<span style='color: #94a3b8'>Revenue at risk (ADR × nights)</span><span style='color: white; font-weight: bold;'>€{rev_at_risk:,.0f}</span>"
         f"</div>"
         f"<div style='display: flex; justify-content: space-between; font-size: 0.9rem; margin-top: 4px;'>"
         f"<span style='color: #94a3b8'>Confidence</span><span style='color: white; font-weight: bold;'>{conf_level}</span>"
@@ -826,7 +973,17 @@ def _format_prediction_output(
     meter_note = f"Standard: {label_f1} · High-confidence: {label_hp}"
     if borderline:
         meter_note += " · ⚠ Near boundary"
-    risk_html = ""
+    calib_note = _calibration_note(prob)
+    if calib_note:
+        meter_note += " · calibrator at bound"
+    # Previously left empty, which blanked the risk meter on every prediction and
+    # left the panel showing its "Awaiting score" placeholder.
+    risk_html = _risk_meter_html(prob, label=risk_label, note=meter_note)
+    if calib_note:
+        risk_html += (
+            '<p class="risk-note" style="margin-top:6px;opacity:.85">'
+            f"{html.escape(calib_note)}</p>"
+        )
 
     global_drivers = _load_global_model_drivers(artifacts, top_k=5)
     booking_drivers = _risk_drivers(record, prob)
@@ -840,16 +997,16 @@ def _format_prediction_output(
     booking_driver_lines = "\n".join([f"- {item}" for item in booking_drivers])
     suggestion_lines = "\n".join([f"- {item}" for item in suggestions])
     export_hint = (
-        f"`risk_band={risk_label}`, `probability={pct:.1f}%`, "
+        f"`risk_band={risk_label}`, `probability={_display_pct_plain(prob)}`, "
         f"`decision_standard={label_f1}`, `decision_high_confidence={label_hp}`"
     )
     xai_html = _generate_xai_html(explanation)
 
     # Generate Verdict Explanation
     if risk_label in ["High", "Medium"]:
-        verdict_text = f"Flagged as likely to be canceled because the risk probability ({pct:.1f}%) exceeds the normal thresholds. The Feature Impact below shows the specific booking details driving this risk."
+        verdict_text = f"Flagged as likely to be canceled because the risk probability ({_display_pct_plain(prob)}) exceeds the normal thresholds. The Feature Impact below shows the specific booking details driving this risk."
     else:
-        verdict_text = f"No concern. The risk probability ({pct:.1f}%) is below the alert thresholds. The booking characteristics indicate a low likelihood of cancellation."
+        verdict_text = f"No concern. The risk probability ({_display_pct_plain(prob)}) is below the alert thresholds. The booking characteristics indicate a low likelihood of cancellation."
 
     # Format global drivers as an HTML list
     global_drivers_html = (
@@ -1109,9 +1266,8 @@ def _log_to_prediction_db(
 ) -> None:
     """Mirror the REST path's persistence contract for Gradio predictions.
 
-    CLAUDE.md promises every scored booking (HTTP or Gradio) lands in the
-    SQLite prediction log with live ADR fields, and that the Power BI CSV is
-    auto-refreshed. Non-raising: a logging failure must never break Predict.
+    Every scored booking (HTTP or Gradio) must land in the SQLite prediction
+    log with live ADR fields, and the Power BI CSV must be auto-refreshed. Non-raising: a logging failure must never break Predict.
     """
     try:
         predicted = predict_adr(record, artifacts)
@@ -1314,25 +1470,26 @@ def build_ui() -> gr.Blocks:
     with gr.Blocks(title="Hotel Booking Cancellation Prediction") as demo:
         gr.HTML('<div id="app-bg"></div><div id="app-noise"></div>')
         gr.HTML(
-            """
+            f"""
 <section class="hero-shell">
   <div class="hero-eyebrow" style="display: flex; justify-content: space-between; align-items: center; padding: 0 10px;">
-    <span><span class="hero-eyebrow-dot"></span> LightGBM · Calibrated · Real-time</span>
-    <span style="color: #10b981; font-weight: bold;">🟢 System Status: Online (Models Synced)</span>
-    <span style="color: #94a3b8;">👤 Logged in as: Admin (Front Desk Manager)</span>
-    <span style="color: #94a3b8;">📡 Latency: 12ms</span>
+    <span><span class="hero-eyebrow-dot"></span> LightGBM · isotonic-calibrated · cost-sensitive thresholds</span>
+    <span style="color: #94a3b8;">Model trained {_BANNER["trained"]} · chronological out-of-time test</span>
   </div>
-  <h1 class="hero-title">Enterprise Booking Cancellation Predictor</h1>
+  <h1 class="hero-title">Hotel Booking Cancellation — Decision Support</h1>
   <p class="hero-subtitle">
-    Enter booking details to get a calibrated cancellation probability and an actionable system recommendation.
-    Powered by state-of-the-art Gradient Boosted Trees.
+    Enter a booking to get a calibrated cancellation probability, the drivers behind it,
+    and the cost-weighted action the policy recommends.
   </p>
   <div class="kpi-container">
-    <div class="kpi-box"><div class="kpi-value">0.863</div><div class="kpi-label">ROC-AUC</div></div>
-    <div class="kpi-box"><div class="kpi-value">0.759</div><div class="kpi-label">PR-AUC</div></div>
+    <div class="kpi-box"><div class="kpi-value">{_BANNER["primary_roc"]}</div><div class="kpi-label">ROC-AUC · {_BANNER["stream_label"]}</div></div>
+    <div class="kpi-box"><div class="kpi-value">{_BANNER["primary_pr"]}</div><div class="kpi-label">PR-AUC · {_BANNER["stream_label"]}</div></div>
     <div class="kpi-box"><div class="kpi-value">&gt; 70%</div><div class="kpi-label">High Risk Thr.</div></div>
-    <div class="kpi-box"><div class="kpi-value">12ms</div><div class="kpi-label">Avg Latency</div></div>
+    <div class="kpi-box"><div class="kpi-value">{_BANNER["cost_cut"]}</div><div class="kpi-label">Cost cut vs. blanket · {_BANNER["stream_label"]}</div></div>
   </div>
+  <p class="hero-subtitle" style="font-size:.82rem;opacity:.75;margin-top:6px">
+    {_BANNER["caption"]}
+  </p>
 </section>
 """
         )
@@ -1526,6 +1683,18 @@ def build_ui() -> gr.Blocks:
                             value=initial_required_status, elem_id="required-status"
                         )
 
+                        # One-click demo scenarios. Typing 20+ fields live on stage is the
+                        # most likely way to lose an audience, so each button loads a
+                        # complete, known booking that lands in a different risk tier.
+                        gr.HTML(
+                            '<div style="font-size:0.75rem;color:#8fa3c8;margin:10px 0 4px;">'
+                            "Demo scenarios — load a prepared booking, then press Predict.</div>"
+                        )
+                        with gr.Row():
+                            preset_high_btn = gr.Button("① Non-refundable, 120d lead", size="sm")
+                            preset_med_btn = gr.Button("② Online agent, 60d lead", size="sm")
+                            preset_low_btn = gr.Button("③ Direct repeat guest", size="sm")
+
                         with gr.Row():
                             predict_btn = gr.Button(
                                 "Predict",
@@ -1549,7 +1718,7 @@ def build_ui() -> gr.Blocks:
           <div style="font-size:0.82rem;color:#8fa3c8;margin-top:4px;">Fill in the form and click <strong style="color:#eef2ff;">Predict</strong> to score this booking.</div>
         </div>
         """)
-                        risk_card = gr.HTML(value="", visible=False)
+                        risk_card = gr.HTML(value=initial_risk_html, visible=True)
                         result = gr.Markdown(value=initial_summary, elem_id="result-summary")
                         decision_notes = gr.HTML(
                             value=initial_decision_notes, elem_id="decision-notes"
@@ -1590,6 +1759,100 @@ def build_ui() -> gr.Blocks:
                     "required_car_parking_spaces": required_car_parking_spaces,
                     "total_of_special_requests": total_of_special_requests,
                 }
+
+                # Scenario payloads. Chosen to walk the audience through the paper's
+                # central finding: deposit structure dominates the attribution, so the
+                # same property and rate land in different tiers as policy changes.
+                # keyed by Gradio component -> value, which is what .click(outputs=...) expects
+                _SCENARIOS: dict[str, dict[Any, Any]] = {
+                    "high": {
+                        hotel: "City Hotel",
+                        lead_time: 120,
+                        stays_in_weekend_nights: 2,
+                        stays_in_week_nights: 3,
+                        adults: 2,
+                        children: 0,
+                        babies: 0,
+                        meal: "BB",
+                        country: "PRT",
+                        market_segment: "Online TA",
+                        distribution_channel: "TA/TO",
+                        customer_type: "Transient",
+                        deposit_type: "Non Refund",
+                        reserved_room_type: "A",
+                        adr: 180.0,
+                        agent: "9",
+                        company: "",
+                        is_repeated_guest: False,
+                        previous_cancellations: 0,
+                        previous_bookings_not_canceled: 0,
+                        required_car_parking_spaces: 0,
+                        total_of_special_requests: 0,
+                    },
+                    "medium": {
+                        hotel: "City Hotel",
+                        lead_time: 60,
+                        stays_in_weekend_nights: 1,
+                        stays_in_week_nights: 2,
+                        adults: 2,
+                        children: 0,
+                        babies: 0,
+                        meal: "BB",
+                        country: "GBR",
+                        market_segment: "Online TA",
+                        distribution_channel: "TA/TO",
+                        customer_type: "Transient",
+                        deposit_type: "No Deposit",
+                        reserved_room_type: "A",
+                        adr: 140.0,
+                        agent: "9",
+                        company: "",
+                        is_repeated_guest: False,
+                        previous_cancellations: 0,
+                        previous_bookings_not_canceled: 0,
+                        required_car_parking_spaces: 0,
+                        total_of_special_requests: 1,
+                    },
+                    "low": {
+                        hotel: "Resort Hotel",
+                        lead_time: 14,
+                        stays_in_weekend_nights: 2,
+                        stays_in_week_nights: 2,
+                        adults: 2,
+                        children: 1,
+                        babies: 0,
+                        meal: "HB",
+                        country: "PRT",
+                        market_segment: "Direct",
+                        distribution_channel: "Direct",
+                        customer_type: "Transient",
+                        deposit_type: "No Deposit",
+                        reserved_room_type: "D",
+                        adr: 110.0,
+                        agent: "",
+                        company: "",
+                        is_repeated_guest: True,
+                        previous_cancellations: 0,
+                        previous_bookings_not_canceled: 3,
+                        required_car_parking_spaces: 1,
+                        total_of_special_requests: 2,
+                    },
+                }
+
+                def _load_scenario(name: str):
+                    return _SCENARIOS[name]
+
+                for _btn, _name in (
+                    (preset_high_btn, "high"),
+                    (preset_med_btn, "medium"),
+                    (preset_low_btn, "low"),
+                ):
+                    _btn.click(
+                        partial(_load_scenario, _name),
+                        inputs=None,
+                        outputs=list(inputs.values()),
+                        queue=False,
+                    )
 
                 form_valid_state = gr.State(value=bool(initial_ready))
                 last_prediction_state = gr.State(value=None)
@@ -1882,8 +2145,8 @@ def build_ui() -> gr.Blocks:
                             for col in ["roc_auc", "pr_auc"]:
                                 df1[col] = df1[col].round(4)
                             gr.Dataframe(value=df1, interactive=False)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            _benchmark_table_unavailable("03_holdout_probability_metrics.csv", exc)
                     with gr.Column():
                         gr.Markdown("### 2. Classification Performance (Max F1)")
                         try:
@@ -1899,8 +2162,10 @@ def build_ui() -> gr.Blocks:
                             for col in ["f1", "precision", "recall"]:
                                 df2[col] = df2[col].round(4)
                             gr.Dataframe(value=df2, interactive=False)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            _benchmark_table_unavailable(
+                                "05_holdout_threshold_metrics_max_f1.csv", exc
+                            )
                     with gr.Column():
                         gr.Markdown("### 3. Confusion Matrix Rates")
                         try:
@@ -1916,8 +2181,10 @@ def build_ui() -> gr.Blocks:
                             for col in ["tpr", "fnr", "tnr", "fpr"]:
                                 df3[col] = df3[col].round(4)
                             gr.Dataframe(value=df3, interactive=False)
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            _benchmark_table_unavailable(
+                                "09_confusion_matrix_rates_per_model.csv", exc
+                            )
 
                 with gr.Row():
                     with gr.Column():

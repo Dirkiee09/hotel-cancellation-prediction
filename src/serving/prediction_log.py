@@ -3,7 +3,7 @@
 Power BI integration story:
     FastAPI /predict
         -> log_prediction() appends one row to PREDICTION_LOG_DB (SQLite)
-        -> scripts/export_predictions.py materialises a CSV
+        -> scripts/utils/export_predictions.py materialises a CSV
         -> Power BI Desktop reads the CSV (no ODBC driver setup required)
 
 Design contract:

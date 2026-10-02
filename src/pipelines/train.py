@@ -601,7 +601,7 @@ def _select_model_family(selection_df: pd.DataFrame, feature_cols: list[str]) ->
             # No class weighting for ANY candidate: every family must receive
             # identical imbalance treatment, and the benchmark specs
             # (src/eval/benchmark.py) train unweighted — the champion must be
-            # bit-identical in both paths or `scripts/check.py sync` fails.
+            # bit-identical in both paths or `scripts/utils/check.py sync` fails.
             # Imbalance is handled downstream by isotonic calibration and the
             # threshold policies.
             model = _fit_model_family(

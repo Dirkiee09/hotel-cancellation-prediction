@@ -1,9 +1,9 @@
 """Export the prediction-log SQLite database to a Power BI-friendly CSV.
 
 Usage:
-    python scripts/export_predictions.py                  # default paths
-    python scripts/export_predictions.py --since 2026-05-01  # filter window
-    python scripts/export_predictions.py --reset          # drop the DB (cleanup)
+    python scripts/utils/export_predictions.py                  # default paths
+    python scripts/utils/export_predictions.py --since 2026-05-01  # filter window
+    python scripts/utils/export_predictions.py --reset          # drop the DB (cleanup)
 
 Default paths (both git-ignored, configured in src/config.py):
     DB:  data/predictions/predictions.sqlite (source of truth)
@@ -29,7 +29,7 @@ import argparse
 import sys
 from pathlib import Path
 
-# Allow `python scripts/export_predictions.py` from the repo root without `pip install -e .`
+# Allow `python scripts/utils/export_predictions.py` from the repo root without `pip install -e .`
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.config import PREDICTION_LOG_CSV, PREDICTION_LOG_DB  # noqa: E402

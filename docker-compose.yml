@@ -2,7 +2,7 @@ services:
   train:
     image: hotel-booking-cancellation:latest
     working_dir: /app
-    command: ["python", "scripts/train.py"]
+    command: ["python", "scripts/training/train.py"]
     volumes:
       - ./data:/app/data:ro
       - ./artifacts:/app/artifacts

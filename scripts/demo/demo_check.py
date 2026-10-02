@@ -9,7 +9,7 @@ Runs four progressive checks:
 Exit code 0 when checks 1-3 all pass.  Check 4 is informational only.
 
 Usage:
-    python scripts/demo_check.py
+    python scripts/demo/demo_check.py
     make demo-check
 """
 
@@ -131,7 +131,7 @@ def check_artifacts() -> bool:
             print(f"  {FAIL} {rel}")
             missing.append(rel)
     if missing:
-        print("\n  Fix: run `python scripts/train.py` to regenerate artifacts.")
+        print("\n  Fix: run `python scripts/training/train.py` to regenerate artifacts.")
         return False
     return True
 

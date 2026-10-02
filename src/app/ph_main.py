@@ -54,7 +54,7 @@ app = FastAPI(
     description=(
         "Demonstration server for the Philippine resort sub-study.\n\n"
         f"⚠️ **{DATASET_CAVEAT}**\n\n"
-        "See `CLAUDE.md` the *PH Sub-Study* section and "
+        "See the README *Philippine sub-study* section and "
         "`notebooks/ph/11_transferability.ipynb` for the full context."
     ),
     version="0.2.0",

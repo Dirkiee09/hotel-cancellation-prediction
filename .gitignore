@@ -14,9 +14,6 @@ __pycache__/
 *.swp
 *.swo
 
-# Local AI assistant settings (machine-specific)
-.claude/settings.local.json
-
 # Jupyter
 .ipynb_checkpoints/
 .jupyter_runtime/
@@ -54,11 +51,10 @@ data/predictions/
 .env.*
 !.env.example
 
-# Thesis source manuscripts (kept locally, not in version control)
+# Manuscripts, drafts and presentation material — kept locally, never in the
+# code repository. This repo holds the pipeline; the write-up lives elsewhere.
 /*.pdf
 *.docx
 *.pptx
-/Final A Strategic Business Intelligence*.md
-
-# Local agent/IDE config
-.claude/launch.json
+docs/thesis_drafts/
+docs/defense/

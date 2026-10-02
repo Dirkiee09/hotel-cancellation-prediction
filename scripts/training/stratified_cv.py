@@ -36,9 +36,9 @@ Usage
 -----
 .. code-block:: bash
 
-    python scripts/stratified_cv.py --dataset both
-    python scripts/stratified_cv.py --dataset portugal --max-rows 20000
-    python scripts/stratified_cv.py --dataset philippine --n-splits 5
+    python scripts/training/stratified_cv.py --dataset both
+    python scripts/training/stratified_cv.py --dataset portugal --max-rows 20000
+    python scripts/training/stratified_cv.py --dataset philippine --n-splits 5
 """
 
 from __future__ import annotations

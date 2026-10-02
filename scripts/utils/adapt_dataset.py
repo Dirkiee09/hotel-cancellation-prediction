@@ -7,7 +7,7 @@ booking-time fields with sensible defaults, and writes a project-compatible CSV.
 
 Usage::
 
-    python scripts/adapt_dataset.py \\
+    python scripts/utils/adapt_dataset.py \\
         --input data/Hotel-Reservations-1.csv \\
         --output data/hotel_bookings.csv
 

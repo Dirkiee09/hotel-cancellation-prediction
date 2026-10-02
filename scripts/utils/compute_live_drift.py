@@ -6,8 +6,8 @@ and writes a small CSV that Power BI Page 8 ("Is the model staying healthy?")
 loads.
 
 Usage:
-    python scripts/compute_live_drift.py
-    python scripts/compute_live_drift.py --min-rows 50   # require at least
+    python scripts/utils/compute_live_drift.py
+    python scripts/utils/compute_live_drift.py --min-rows 50   # require at least
                                                          # this many live rows
 
 Output: data/predictions/drift_metrics.csv with columns
@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pandas as pd
 
-# Allow `python scripts/compute_live_drift.py` from the repo root
+# Allow `python scripts/utils/compute_live_drift.py` from the repo root
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.config import PREDICTION_LOG_CSV, PROJECT_ROOT, REPORTS_DIR  # noqa: E402

@@ -2,7 +2,7 @@
 
 This sits parallel to ``src.data.load`` (which loads the Portugal data) and is
 intentionally isolated — the Portugal pipeline does not import this module.
-See CLAUDE.md "PH Sub-Study" for context.
+See README "Philippine sub-study" for context.
 """
 
 from __future__ import annotations

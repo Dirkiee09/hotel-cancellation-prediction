@@ -11,16 +11,21 @@ the dataset and reports the headline test metrics next to the production
 run, giving the thesis a *number* for "how much do duplicates matter"
 instead of a hand-wave.
 
-Writes reports/dedup_sensitivity.json. Run time ~10-20 min (full retrain).
+Writes reports/dedup_sensitivity.json and persists the de-duplicated run's
+metrics.json, thresholds.json, segment_metrics.{csv,json} and
+test_predictions_for_powerbi.csv under reports/dedup/ so downstream analyses
+(calibration diagnostics, extended CIs, cost scenarios) can use the de-dup
+stream directly. Run time ~10-20 min (full retrain).
 
 Usage:
-    python scripts/dedup_sensitivity.py
+    python scripts/training/dedup_sensitivity.py
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,6 +67,26 @@ def main() -> None:
         )
         dedup_metrics = outputs.metrics
 
+        # Persist the de-dup run's key reports before the temp dir is deleted,
+        # so calibration/CI/cost analyses can run on the de-dup stream.
+        persist_dir = REPORTS_DIR / "dedup"
+        persist_dir.mkdir(parents=True, exist_ok=True)
+        to_persist = [
+            tmp_path / "reports" / "metrics.json",
+            tmp_path / "reports" / "segment_metrics.csv",
+            tmp_path / "reports" / "segment_metrics.json",
+            tmp_path / "reports" / "test_predictions_for_powerbi.csv",
+            tmp_path / "artifacts" / "thresholds.json",
+        ]
+        persisted: list[str] = []
+        for src_file in to_persist:
+            if src_file.exists():
+                shutil.copy2(src_file, persist_dir / src_file.name)
+                persisted.append(src_file.name)
+            else:
+                logger.warning("dedup_persist_missing file=%s", src_file)
+        logger.info("dedup_reports_persisted dir=%s files=%s", persist_dir, persisted)
+
     baseline = json.loads((REPORTS_DIR / "metrics.json").read_text(encoding="utf-8"))
 
     def _headline(metrics: dict) -> dict:
@@ -84,13 +109,17 @@ def main() -> None:
             "selected_model_family": dedup_metrics["selected_model_family"],
         },
         "delta_dedup_minus_baseline": {k: round(dedup_h[k] - base_h[k], 4) for k in HEADLINE_KEYS},
+        "persisted_reports": persisted,
+        "persist_dir": "reports/dedup",
         "interpretation": (
             "Metrics at the max_f1 policy on each run's own chronological test split. "
             "Duplicates never cross the train/test boundary (verified separately), so "
-            "deltas here reflect re-weighting of repeated bookings, not leakage. Small "
-            "deltas support reporting the with-duplicates results as primary; the "
-            "remaining caveat is that bootstrap CIs assume independent rows and are "
-            "therefore somewhat narrow under within-split duplication."
+            "deltas here reflect re-weighting of repeated bookings, not leakage. The "
+            "revised manuscript reports the de-duplicated stream as the primary headline "
+            "(panel revision directive) with the per-record stream retained as the "
+            "operational robustness view, since each block-booking row is a real, "
+            "separately-cancellable reservation. Bootstrap CIs assume independent rows "
+            "and are therefore somewhat narrow under within-split duplication."
         ),
     }
 

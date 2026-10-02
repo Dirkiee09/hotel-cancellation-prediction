@@ -17,8 +17,8 @@ on the y-axis, which is uninterpretable in a thesis. This rebuild:
 Output: ``reports/thesis/shap_summary_plot.png`` (+ PDF sibling).
 
 Usage:
-    python scripts/rebuild_shap_summary_plot.py
-    python scripts/rebuild_shap_summary_plot.py --max-display 12 --sample 800
+    python scripts/diagrams/rebuild_shap_summary_plot.py
+    python scripts/diagrams/rebuild_shap_summary_plot.py --max-display 12 --sample 800
 """
 
 from __future__ import annotations

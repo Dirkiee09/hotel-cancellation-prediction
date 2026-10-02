@@ -80,7 +80,8 @@ def main() -> int:
     if not model_path.exists():
         print("ERROR: No trained model found.")
         print(f"  Expected: {model_path}")
-        print("  Fix:      python scripts/train.py")
+        print("  Fix:      python scripts/training/train.py")
+        print("  Fast:     python demo/quick_train.py   (10k-row smoke model)")
         return 1
 
     # 2. Port free?
@@ -132,7 +133,7 @@ def main() -> int:
         print("Server ready.")
         if not args.no_browser:
             webbrowser.open(f"{url}/ui")
-        print("\nPress Ctrl+C to stop.") 
+        print("\nPress Ctrl+C to stop.")
         try:
             proc.wait()
         except KeyboardInterrupt:

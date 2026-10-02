@@ -23,8 +23,16 @@
     "roc_auc": -0.0157
   },
   "duplicate_share": 0.268,
-  "generated_at_utc": "2026-06-26T11:46:36+00:00",
-  "interpretation": "Metrics at the max_f1 policy on each run's own chronological test split. Duplicates never cross the train/test boundary (verified separately), so deltas here reflect re-weighting of repeated bookings, not leakage. Small deltas support reporting the with-duplicates results as primary; the remaining caveat is that bootstrap CIs assume independent rows and are therefore somewhat narrow under within-split duplication.",
+  "generated_at_utc": "2026-07-02T06:14:56+00:00",
+  "interpretation": "Metrics at the max_f1 policy on each run's own chronological test split. Duplicates never cross the train/test boundary (verified separately), so deltas here reflect re-weighting of repeated bookings, not leakage. The revised manuscript reports the de-duplicated stream as the primary headline (panel revision directive) with the per-record stream retained as the operational robustness view, since each block-booking row is a real, separately-cancellable reservation. Bootstrap CIs assume independent rows and are therefore somewhat narrow under within-split duplication.",
+  "persist_dir": "reports/dedup",
+  "persisted_reports": [
+    "metrics.json",
+    "segment_metrics.csv",
+    "segment_metrics.json",
+    "test_predictions_for_powerbi.csv",
+    "thresholds.json"
+  ],
   "rows_after_dedup": 87396,
   "rows_raw": 119390,
   "rows_removed": 31994

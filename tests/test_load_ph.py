@@ -10,8 +10,8 @@ The Punta Villa Resort CSV is a proprietary PMS export and is gitignored
 to remote. CI runners therefore have no file to load. This entire test
 module is skipped when the file is absent so the PH data-layer contract
 is still verified locally (where the file exists) without breaking CI
-(where it does not). See CLAUDE.md "PH Sub-Study" for the parallel
-intent that the PH model is not part of the Portugal CI pipeline.
+(where it does not). The PH model is deliberately not part of the
+Portugal CI pipeline; see README "Philippine sub-study".
 """
 
 from __future__ import annotations

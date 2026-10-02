@@ -72,7 +72,7 @@ MIN_RECALL_FOR_HIGH_PRECISION = 0.20
 FP_INTERVENTION_COST = 15.0  # EUR per false-positive intervention (industry range: 10–20)
 FN_RECOVERY_NIGHTS = 1.0  # nights re-sold after cancellation (conservative: 1 of ~2.5 avg)
 # Risk-tier display bands for the UI / API. Static values, not data-driven from the
-# threshold sweep. When swapping datasets (see "Swapping Datasets" in CLAUDE.md), retune
+# threshold sweep. When swapping datasets (see README "Swapping datasets"), retune
 # these alongside the cost constants — the calibrated probability distribution shifts.
 RISK_TIER_MEDIUM_THRESHOLD = 0.40
 RISK_TIER_HIGH_THRESHOLD = 0.70
@@ -92,14 +92,24 @@ EARLY_STOPPING_ROUNDS = 50
 CALIBRATION_METHOD = "isotonic"
 CALIBRATION_ECE_BINS = 10
 
+# Presentation guard for saturated calibrated probabilities.
+# Isotonic regression is a step function whose end bins collapse to exactly 0.0 and
+# 1.0 when every validation record in that bin shares one outcome. On the held-out
+# test stream ~16% of bookings land on an absolute 0 or 1. The stored probability is
+# left untouched (the API contract is unchanged); the UI reports anything outside
+# these bounds as "<1%" / ">99%", because a calibrated model asserting certainty is
+# an artefact of the calibrator's end bins, not a claim the model can support.
+PROBABILITY_DISPLAY_FLOOR = 0.01
+PROBABILITY_DISPLAY_CEILING = 0.99
+
 # Champion/challenger model selection controls
 ROLLING_SELECTION_CUTOFF_FRACS = [0.60, 0.70, 0.80]
 ROLLING_SELECTION_VAL_RATIO = 0.10
 ROLLING_SELECTION_MIN_TRAIN_ROWS = 1500
 ROLLING_SELECTION_MIN_VAL_ROWS = 500
 
-# Metric quality gates: tightened to (observed - 0.02) per CLAUDE.md
-# guidance after the Portugal champion was confirmed. The 0.02 buffer
+# Metric quality gates: tightened to (observed - 0.02) after the Portugal
+# champion was confirmed, for regression detection. The 0.02 buffer
 # absorbs normal retraining noise while still catching real regressions.
 # Observed values (reports/metrics.json, chronological test set, 2026-06-10):
 #   max_f1: ROC=0.8634, PR=0.7590, F1=0.7356, Recall=0.8946
@@ -168,7 +178,7 @@ LEARNING_CURVE_FRACTIONS = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0]
 # includes deposit_type and total_of_special_requests — two top-10
 # Portugal SHAP features the earlier synthetic dataset deliberately
 # lacked — so the feature set matches Portugal more closely now.
-# See CLAUDE.md "PH Sub-Study" for scope and caveats. These constants
+# See README "Philippine sub-study" for scope and caveats. These constants
 # are NEVER imported by the Portugal pipeline.
 
 PH_DATA_PATH = PROJECT_ROOT / "data" / "Punta_Villa_Resort_PH_Dataset.csv"

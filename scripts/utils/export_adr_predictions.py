@@ -16,7 +16,7 @@ for Power BI Page 5 ("ADR Forecasting"):
         "where does the model struggle" heatmap.
 
 Usage:
-    python scripts/export_adr_predictions.py
+    python scripts/utils/export_adr_predictions.py
     make export-adr
 
 The ADR regressor uses a different chronological split than the cancellation
@@ -34,7 +34,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
-# Allow `python scripts/export_adr_predictions.py` from the repo root
+# Allow `python scripts/utils/export_adr_predictions.py` from the repo root
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.config import ARTIFACTS_DIR, REPORTS_DIR  # noqa: E402

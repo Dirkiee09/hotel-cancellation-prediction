@@ -156,7 +156,7 @@ def validate_raw(df: pd.DataFrame) -> ValidationResult:
 # (add_derived_booking_features) can be reused. The real export ships
 # with deposit_type and total_of_special_requests — both top-10 Portugal
 # SHAP features that the earlier synthetic CSV deliberately lacked.
-# The PH pipeline lives in scripts/train_ph.py; this module just
+# The PH pipeline lives in scripts/training/train_ph.py; this module just
 # provides the data layer.
 
 

@@ -1,12 +1,12 @@
 """Run the end-to-end training pipeline with optional post-train steps.
 
 Usage examples:
-    python scripts/train.py                          # train only
-    python scripts/train.py --verify                 # train + verification report
-    python scripts/train.py --thesis                 # train + thesis analysis
-    python scripts/train.py --thesis --skip-shap     # train + fast thesis
-    python scripts/train.py --verify-only            # verify existing artifacts (no train)
-    python scripts/train.py --repro --max-rows 5000  # reproducibility check (no train)
+    python scripts/training/train.py                          # train only
+    python scripts/training/train.py --verify                 # train + verification report
+    python scripts/training/train.py --thesis                 # train + thesis analysis
+    python scripts/training/train.py --thesis --skip-shap     # train + fast thesis
+    python scripts/training/train.py --verify-only            # verify existing artifacts (no train)
+    python scripts/training/train.py --repro --max-rows 5000  # reproducibility check (no train)
 """
 
 from __future__ import annotations
