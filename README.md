@@ -32,6 +32,22 @@ cross the train/test boundary, so the gap reflects re-weighting, not leakage.
 Cost-sensitive thresholding reduces intervention cost by **31.2%** against
 contacting every guest (€84,045 → €57,815, de-duplicated test set).
 
+## The dataset
+
+`data/hotel_bookings.csv` is the public **hotel booking demand** dataset: 119,390
+bookings across two Portuguese hotels — one city hotel and one resort hotel — arriving
+between July 2015 and August 2017, with 32 columns per booking. Portugal is the largest
+source market (48,590 bookings), followed by the United Kingdom and France.
+
+It is redistributed here unmodified, for reproducibility. Original source:
+
+> Antonio, N., de Almeida, A., & Nunes, L. (2019). Hotel booking demand datasets.
+> *Data in Brief*, 22, 41–49. https://doi.org/10.1016/j.dib.2018.11.126
+
+Cleaning applied by this pipeline (null fills, outlier and zero-guest row drops) reduces
+it to 119,209 rows before splitting; see "How the pipeline works" below. Please cite the
+original authors for any reuse, and check the article for its licensing terms.
+
 ## Repository map
 
 ```
@@ -94,8 +110,29 @@ source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e . -r requirements.txt
 ```
 
-Python 3.11+. The package installs in editable mode, so imports are `from src.x import y`
-with no path manipulation.
+**Use Python 3.11 or 3.12.** Every dependency in `requirements.txt` is pinned to an exact
+version, and those pins are verified on 3.11 (CI) and 3.12 (local). Newer Python releases
+may not have matching wheels for `numpy`, `scikit-learn` or `lightgbm`, which is the most
+common reason setup fails on a fresh machine. Check with `python --version` first.
+
+The package installs in editable mode, so imports are `from src.x import y` with no path
+manipulation.
+
+### Then get a trained model
+
+`artifacts/` and `reports/` are generated and not in the repository, so a fresh clone has
+no model and the server will refuse to start. Either train one:
+
+```bash
+python scripts/training/train.py
+```
+
+…which is deterministic (every seed is fixed at 42) and takes about ten minutes, or copy
+the `artifacts/` and `reports/` folders from someone who already has them.
+
+`python demo/quick_train.py` trains on 10k rows in under a minute if you only want to
+check the interface. Do not present with that model — its calibration differs from the
+reported figures.
 
 ## Commands
 

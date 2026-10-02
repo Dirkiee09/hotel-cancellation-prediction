@@ -25,7 +25,7 @@ test: ## Run pytest suite (coverage gate ≥80%)
 	$(PYTHON) -m pytest
 
 security: ## Scan source for security issues with bandit
-	$(PYTHON) -m bandit -q -r src scripts -s B101 -x tests,scripts/archive
+	$(PYTHON) -m bandit -q -r src scripts -s B101 -x tests
 
 train: ## Train model end-to-end (use DATA_PATH=... to override CSV)
 	$(PYTHON) scripts/training/train.py $(if $(DATA_PATH),--data-path $(DATA_PATH),) $(if $(MAX_ROWS),--max-rows $(MAX_ROWS),)

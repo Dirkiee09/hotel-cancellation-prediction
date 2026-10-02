@@ -50,9 +50,7 @@ include = ["src*"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-# scripts/archive holds retired one-off scripts kept for provenance only; they are
-# excluded from linting/formatting since they are no longer part of the live pipeline.
-exclude = [".venv", "notebooks", "scripts/archive"]
+exclude = [".venv", "notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

@@ -10,7 +10,7 @@
 > dashboard works end-to-end.
 
 **Cross-reference.** The eight-page structure below comes from Section 4.4.3
-of `docs/thesis_drafts/complete_thesis.md`. Every page in this guide answers
+of the project manuscript, which is not part of this repository. Every page here answers
 one of the eight business questions named there.
 
 ---
@@ -663,7 +663,7 @@ right page with the right filters applied.
 
 ### 13.2 Export to PDF for the thesis appendix
 - **File → Export → Export to PDF**
-- Save to `docs/thesis_drafts/paper_figures/08_powerbi_dashboard/dashboard_export.pdf`
+- Save to `reports/figures/powerbi/dashboard_export.pdf`
 - Embed in thesis Appendix as Figure A-1
 
 ### 13.3 Refresh recipe (give this to the IT team)
@@ -718,7 +718,7 @@ Run through this checklist:
    `data/predictions/drift_metrics.csv`.
 8. **Accessibility checker is clean** (View → Show → Accessibility checker
    → no warnings).
-9. **Bookmarks cover the five demo acts** from `demo/DEFENSE_RUNBOOK.md`.
+9. **Bookmarks cover the five demo steps** in `demo/HANDOVER.md`.
 
 If every box ticks, the dashboard is defensible.
 

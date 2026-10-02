@@ -4,6 +4,7 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  workflow_dispatch:
 
 # Opt JavaScript actions into Node.js 24 immediately. GitHub will make this
 # the default in June 2026 and remove Node.js 20 from runners in September
@@ -59,7 +60,7 @@ jobs:
         run: python scripts/utils/check.py fairness
 
       - name: Security scan (bandit)
-        run: bandit -q -r src scripts -s B101 -x tests,scripts/archive
+        run: bandit -q -r src scripts -s B101 -x tests
 
       - name: Dependency vulnerability scan (pip-audit)
         run: pip-audit -r requirements.txt --no-deps --disable-pip
@@ -79,11 +80,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: quality
-    # NOTE: the old hotel-cancellation-thesis repo used "Main" (capital M)
-    # after a default-branch rename. This repo's default branch is "main";
-    # gating on the old ref silently skipped this job for every push, so the
-    # condition covers both spellings to survive either remote.
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/Main')
+    # Runs on the default branch only, plus on demand. The repository has a
+    # single branch, `master`; the earlier condition gated on `main`/`Main`,
+    # which no longer exist, so this job silently never ran.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+      github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v5
