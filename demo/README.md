@@ -17,10 +17,15 @@ python demo/start_server.py
 
 The Gradio UI opens automatically at http://localhost:8000/ui
 
+On Windows you can skip step 3 and **double-click `demo\run_demo.bat`** instead —
+it locates the virtual environment itself, so it cannot start on the wrong
+Python interpreter.
+
 ## Demo Scripts
 
 | Script | Purpose |
 |--------|---------|
+| `run_demo.bat` | Windows one-click launcher — resolves the venv, then runs `start_server.py` |
 | `start_server.py` | Launch the API + Gradio UI, auto-opens browser |
 | `sample_requests.py` | Send 4 contrasting scenarios, print comparison table |
 | `quick_train.py` | Fast 10k-row smoke train (~30s) when you just need artifacts |
@@ -65,7 +70,7 @@ Swagger UI with:
 
 ```bash
 python scripts/utils/check.py all      # artifact integrity + metrics + sync + fairness
-python -m pytest tests/ -q       # 91 tests, 89% coverage
+python -m pytest -q                    # 148 tests, coverage gate >=80%
 ```
 
 ### 5. Notebooks
@@ -82,4 +87,4 @@ Open any notebook in `notebooks/` — all have cached outputs, no need to run ce
 - **Three thresholds**: different cutoffs for different business needs
 - **Calibrated probabilities**: isotonic calibration makes probabilities reliable
 - **Champion selection**: LightGBM wins via rolling-origin cross-validation, not a lucky split
-- **Production-ready**: FastAPI, health checks, thread-safe caching, Docker, 91 tests
+- **Production-ready**: FastAPI, health checks, thread-safe caching, Docker, 148 tests

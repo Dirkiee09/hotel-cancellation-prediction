@@ -47,14 +47,27 @@ has them, into the project root. Faster, no training needed.
 
 ## 2. Run it
 
+**Double-click `demo\run_demo.bat`.** That is the whole thing. It finds the
+virtual environment itself, so there is no way to start it on the wrong Python —
+the most common setup failure.
+
+If you prefer a terminal:
+
 ```bash
 python demo/start_server.py
 ```
 
-A browser opens at <http://localhost:8000/ui>. If it doesn't, open that URL
-yourself.
+Either way a browser opens at <http://localhost:8000/ui>. If it doesn't, open
+that URL yourself.
 
-To stop: `Ctrl+C` in the terminal.
+**To stop: click the server window and press `Ctrl+C`.** Do not just close the
+window — the server keeps running, port 8000 stays occupied, and the next launch
+fails with `Port 8000 is already in use`. If that happens, run this in
+PowerShell:
+
+```bash
+Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'uvicorn' } | Stop-Process -Force
+```
 
 ---
 

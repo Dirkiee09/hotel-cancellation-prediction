@@ -148,6 +148,7 @@ reported figures.
 | `make lint typecheck test` | ruff, mypy, pytest |
 | `make security` | bandit scan |
 | `python demo/start_server.py` | Serve the API + UI at localhost:8000 |
+| `demo\run_demo.bat` | Windows: double-click to do the same, venv resolved automatically |
 
 `make help` lists every target. On Windows without `make`, call the scripts directly:
 `python scripts/training/train.py`, `python scripts/utils/check.py all`.

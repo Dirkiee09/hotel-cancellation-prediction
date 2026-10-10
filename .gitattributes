@@ -13,6 +13,11 @@
 *.txt text eol=lf
 *.ipynb text eol=lf
 
+# Windows batch files must keep CRLF. cmd.exe mis-parses LF-only scripts —
+# multi-line parenthesised blocks and goto labels are the usual casualties.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
 # Binary files
 *.pkl binary
 *.png binary
