@@ -11,6 +11,30 @@ is scored the day it arrives, so no post-booking field (`reservation_status`,
 `assigned_room_type`, `booking_changes`, `days_in_waiting_list`) may enter the model.
 Those columns are dropped explicitly rather than merely unused.
 
+---
+
+## ▶ Just want to run the demo?
+
+> **Do not use the green “Code → Download ZIP” button.** It gives you the source
+> only. The trained model is not stored in git, so the app will refuse to start.
+>
+> **Go to [Releases](../../releases) and download `hotel-demo-COMPLETE.zip`.**
+> That bundle has the code *and* the trained model. Unzip it, read
+> `START_HERE.txt`, then double-click **`START DEMO.bat`**.
+
+## Where to start
+
+| If you are… | Read this |
+|---|---|
+| Presenting the work | [`demo/PRESENTATION_GUIDE.md`](demo/PRESENTATION_GUIDE.md), then [`demo/HANDOVER.md`](demo/HANDOVER.md) |
+| Running the demo | `START_HERE.txt` in the release bundle, or [Setup](#setup) below |
+| Reviewing the method | [Results](#results-at-a-glance) → [How the pipeline works](#how-the-pipeline-works) → [Quality gates](#quality-gates) |
+| Changing the code | [Repository map](#repository-map) → [Key configuration](#key-configuration) |
+| Building the dashboard | [`docs/powerbi_dashboard_guide.md`](docs/powerbi_dashboard_guide.md) |
+| Checking what is reproducible | [`docs/provenance.md`](docs/provenance.md) |
+
+---
+
 ## Results at a glance
 
 Chronological out-of-time test set, champion model (LightGBM), `max_f1` policy:

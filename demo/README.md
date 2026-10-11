@@ -1,8 +1,23 @@
-# Demo Guide
+# `demo/` — running and presenting the predictor
 
-Everything you need to demo the hotel booking cancellation predictor.
+Three documents live here. Pick the one that matches what you are doing.
 
-## Quick Start (3 commands)
+| Document | For | What it covers |
+|---|---|---|
+| [`PRESENTATION_GUIDE.md`](PRESENTATION_GUIDE.md) | **Presenters** | The talk: timing checkpoints, a 10-minute cut list, the two-presenter split, panel questions, and the phrases that would overclaim |
+| [`HANDOVER.md`](HANDOVER.md) | **Presenters** | The live demo: setup, the 90-second script, the questions you will be asked, and a failure runbook |
+| This file | **Anyone running it** | Commands, the walkthrough, and what each script does |
+
+If you are presenting, read **section 4 of `HANDOVER.md`** before anything else.
+It covers the three questions most likely to catch you out.
+
+## Quick start
+
+**Windows:** double-click **`START DEMO.bat`** in the project root. It finds the
+virtual environment itself, so it cannot launch on the wrong Python — the most
+common setup failure. `demo\run_demo.bat` forwards to the same place.
+
+**Any platform:**
 
 ```bash
 # 1. Install (skip if already done)
@@ -15,11 +30,12 @@ python scripts/training/train.py
 python demo/start_server.py
 ```
 
-The Gradio UI opens automatically at http://localhost:8000/ui
+The Gradio UI opens at http://localhost:8000/ui
 
-On Windows you can skip step 3 and **double-click `demo\run_demo.bat`** instead —
-it locates the virtual environment itself, so it cannot start on the wrong
-Python interpreter.
+> **No trained model?** `artifacts/` is not stored in git, so a "Download ZIP"
+> from GitHub will not include it. Either run step 2, or download
+> `hotel-demo-COMPLETE.zip` from the repository's Releases page, which bundles
+> the code and the model together.
 
 ## Demo Scripts
 
