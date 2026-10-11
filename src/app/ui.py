@@ -200,17 +200,28 @@ def _load_banner_context() -> dict[str, str]:
     if primary is not None and "cost_cut_pct" in primary:
         cost_cut = f"{primary['cost_cut_pct']:.1f}%"
 
-    # model_metadata.json carries no training timestamp, so fall back to the
-    # artifact's mtime, which is written by the training run.
+    # Prefer the timestamp the training run recorded. The artifact's mtime is
+    # only a proxy for it, and a wrong one whenever the files were copied or
+    # unzipped rather than trained in place — a distributed bundle would
+    # otherwise display its extraction date as the training date.
     trained = "unknown"
-    try:
-        model_path = ARTIFACTS_DIR / "best_model.pkl"
-        if model_path.exists():
-            trained = datetime.fromtimestamp(model_path.stat().st_mtime, tz=timezone.utc).strftime(
-                "%d %b %Y"
-            )
-    except OSError as exc:  # pragma: no cover - defensive
-        logger.warning("Could not stat model artifact: %s", exc)
+    champion = PROJECT_ROOT / "reports" / "champion_summary.json"
+    if champion.exists():
+        try:
+            selected_at = json.loads(champion.read_text(encoding="utf-8")).get("selected_at")
+            if selected_at:
+                trained = datetime.fromisoformat(selected_at).strftime("%d %b %Y")
+        except (OSError, ValueError, TypeError) as exc:
+            logger.warning("Could not read training date from %s: %s", champion, exc)
+    if trained == "unknown":
+        try:
+            model_path = ARTIFACTS_DIR / "best_model.pkl"
+            if model_path.exists():
+                trained = datetime.fromtimestamp(
+                    model_path.stat().st_mtime, tz=timezone.utc
+                ).strftime("%d %b %Y")
+        except OSError as exc:  # pragma: no cover - defensive
+            logger.warning("Could not stat model artifact: %s", exc)
 
     if primary_is_dedup:
         caption = (
