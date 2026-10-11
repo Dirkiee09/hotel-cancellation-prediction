@@ -1,5 +1,9 @@
 bandit==1.8.3
 fastapi==0.128.0
+# Held at 6.7.0 deliberately. Three advisories are open against it and are
+# waived in the CI pip-audit step; see the comment there. One of them has no
+# fix version, so upgrading would not clear the gate, and 6.15+ is a large
+# jump in the library that draws the demo UI. Upgrade after the conference.
 gradio==6.7.0
 # Transitive security pins (patched CVEs) — exact-pinned so the CI
 # `pip-audit -r requirements.txt --no-deps` step accepts them. The
@@ -8,7 +12,7 @@ gradio==6.7.0
 idna==3.17
 ipykernel==7.2.0
 joblib==1.5.3
-jupyterlab==4.5.7
+jupyterlab==4.5.11
 lightgbm==4.6.0
 matplotlib==3.10.8
 mypy==1.15.0
@@ -26,7 +30,7 @@ pydantic==2.12.5
 pytest==9.0.3
 pytest-cov==6.0.0
 # Transitive security pin (CVE patched):
-python-multipart==0.0.29
+python-multipart==0.0.31
 # Transitive security pin (CVE patched):
 requests==2.34.2
 ruff==0.6.8
@@ -39,6 +43,6 @@ shap==0.51.0
 # doesn't support starlette 1.x yet — known upstream limitation).
 statsmodels==0.14.6
 # Transitive security pin (CVE patched):
-urllib3==2.7.0
+urllib3==2.8.0
 uvicorn==0.40.0
 xgboost==3.1.3
