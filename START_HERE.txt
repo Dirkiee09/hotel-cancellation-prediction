@@ -1,0 +1,103 @@
+===============================================================================
+  HOTEL BOOKING CANCELLATION - DEMO
+  Everything is in this folder. The trained model is already included,
+  so there is nothing to train.
+===============================================================================
+
+BEFORE YOU START
+----------------
+You need Python 3.11 or 3.12.
+
+  Check what you have:   python --version
+
+  If you have 3.13 or newer, the install WILL fail - there are no matching
+  packages for numpy / scikit-learn / lightgbm on that version yet.
+  Install 3.12 from python.org and tick "Add python.exe to PATH".
+
+  If "python" is not recognised at all, Python is not installed or not on
+  PATH. Reinstall from python.org with that same box ticked.
+
+
+SETUP - ONCE ONLY, ABOUT 5 MINUTES
+----------------------------------
+1. Unzip this folder somewhere simple, like C:\hotel-demo
+   Do NOT run it from inside the .zip. Extract it first.
+
+2. Open the folder, click the address bar, type  cmd  and press Enter.
+   A black window opens, already pointed at this folder.
+
+3. Paste these three lines, one at a time, pressing Enter after each:
+
+      python -m venv .venv
+      .venv\Scripts\activate
+      pip install -e . -r requirements.txt
+
+   The third one takes a few minutes and prints a lot of text. That is normal.
+   When it finishes you should see your prompt again with (.venv) in front.
+
+
+RUNNING IT - EVERY TIME AFTER THAT
+----------------------------------
+   Double-click this file in THIS folder:
+
+      START DEMO.bat
+
+   A window opens, then your browser opens at:
+
+      http://localhost:8000/ui
+
+   If the browser does not open by itself, just type that address in.
+
+
+TO STOP IT
+----------
+   Click the black server window and press  Ctrl+C.
+
+   Do NOT just close the window with the X. The server keeps running in the
+   background and the next launch will fail with "Port 8000 is already in
+   use". If that happens, restart your computer, or open PowerShell and run:
+
+      Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'uvicorn' } | Stop-Process -Force
+
+
+USING IT FOR THE PRESENTATION
+-----------------------------
+   Under the form there are three buttons:
+
+      (1) Non-refundable, 120d lead   ->  above 99%, HIGH risk, EUR 900
+      (2) Online agent, 60d lead      ->  around 60%, MEDIUM risk
+      (3) Direct repeat guest         ->  under 1%, LOW risk
+
+   Click one, then click Predict. Do not type the fields in by hand during
+   the talk - that is the easiest way to lose the room.
+
+
+READ THESE TWO BEFORE YOU PRESENT
+---------------------------------
+   demo\PRESENTATION_GUIDE.md   - the talk: timing, what to say, what NOT to say
+   demo\HANDOVER.md             - the demo: the 90-second script and the
+                                  questions you will be asked
+
+   Section 4 of HANDOVER.md matters most. It covers the three questions that
+   could actually catch you out. Read it out loud before you present.
+
+
+IF SOMETHING GOES WRONG
+-----------------------
+   "python is not recognized"
+        Python is not installed or not on PATH. See BEFORE YOU START.
+
+   "No virtual environment found"
+        You skipped the SETUP step, or you are running the .bat from a
+        different folder than the one you set up.
+
+   "ERROR: No trained model found"
+        The artifacts folder did not survive the unzip. Extract the .zip
+        again and make sure the artifacts folder comes with it.
+
+   "Port 8000 is already in use"
+        The server is still running from last time. See TO STOP IT.
+
+   pip install fails with red errors
+        Almost always the Python version. Check  python --version  is
+        3.11 or 3.12.
