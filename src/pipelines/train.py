@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import logging
+import platform
 import subprocess  # nosec B404 – used only for `git rev-parse HEAD` with a hardcoded list
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -371,30 +373,59 @@ def _test_cost_report(
 def _h2_baseline_comparison(
     X_train_t: Any,
     y_train: pd.Series,
+    X_val_t: Any,
+    y_val: pd.Series,
     X_test_t: Any,
     y_test: np.ndarray,
+    champion_test_probs_raw: np.ndarray,
     champion_test_probs: np.ndarray,
 ) -> dict[str, Any]:
     """Champion vs logistic-regression baseline on the test set (paired bootstrap).
 
     H2 claims gradient-boosted trees beat simpler baselines; that requires an
     actual baseline in the comparison, not a vote among GBT families.
+
+    The baseline gets the champion's treatment: fitted on train, isotonic-calibrated
+    on validation. Isotonic calibration is piecewise-constant and costs any model
+    some PR-AUC, so pairing a calibrated champion with an uncalibrated baseline
+    understates the gap. This function used to do exactly that and reported H2 as
+    not supported. The uncalibrated pair is kept alongside as a cross-check.
     """
     baseline = LogisticRegression(max_iter=2000, solver="lbfgs", random_state=RANDOM_STATE)
     baseline.fit(X_train_t, np.asarray(y_train).astype(int))
-    baseline_probs = baseline.predict_proba(X_test_t)[:, 1]
+    baseline_val_raw = baseline.predict_proba(X_val_t)[:, 1]
+    baseline_test_raw = baseline.predict_proba(X_test_t)[:, 1]
+    baseline_calibrator = _fit_probability_calibrator(baseline_val_raw, y_val)
+    baseline_probs = np.clip(baseline_calibrator.predict(baseline_test_raw), 0.0, 1.0)
+
+    def pr_auc(yt: np.ndarray, yp: np.ndarray) -> float:
+        return float(average_precision_score(yt, yp))
+
     comparison = paired_bootstrap_test(
         y_test,
         champion_test_probs,
         baseline_probs,
-        lambda yt, yp: float(average_precision_score(yt, yp)),
+        pr_auc,
+        n_bootstraps=BOOTSTRAP_N_ITERATIONS,
+    )
+    uncalibrated = paired_bootstrap_test(
+        y_test,
+        champion_test_probs_raw,
+        baseline_test_raw,
+        pr_auc,
         n_bootstraps=BOOTSTRAP_N_ITERATIONS,
     )
     return {
         "baseline_model": "logistic_regression",
+        "calibration": f"{CALIBRATION_METHOD} on validation, both models",
         "champion_pr_auc": safe_pr_auc(y_test, champion_test_probs),
         "baseline_pr_auc": safe_pr_auc(y_test, baseline_probs),
         **comparison,
+        "uncalibrated": {
+            "champion_pr_auc": safe_pr_auc(y_test, champion_test_probs_raw),
+            "baseline_pr_auc": safe_pr_auc(y_test, baseline_test_raw),
+            **uncalibrated,
+        },
     }
 
 
@@ -429,6 +460,7 @@ def _hypothesis_summary(
             "status": "supported" if h2_supported else "not_supported",
             "evaluation_dataset": "test",
             "baseline_model": h2_comparison["baseline_model"],
+            "calibration": h2_comparison["calibration"],
             "champion_pr_auc": h2_comparison["champion_pr_auc"],
             "baseline_pr_auc": h2_comparison["baseline_pr_auc"],
             "observed_delta": h2_comparison["observed_delta"],
@@ -454,6 +486,30 @@ def _hypothesis_summary(
                 late_window_report.get("cancel_rate_late_window", 0.0)
             ),
         },
+    }
+
+
+_ENVIRONMENT_PACKAGES = ("numpy", "pandas", "scipy", "scikit-learn", "lightgbm", "xgboost")
+
+
+def _runtime_environment() -> dict[str, Any]:
+    """Interpreter, OS and library versions behind this run.
+
+    A retrain is byte-identical on the same environment, but floating-point results
+    drift slightly across operating systems and Python builds. The reported figures
+    are reproducible only together with this record.
+    """
+    packages: dict[str, str | None] = {}
+    for name in _ENVIRONMENT_PACKAGES:
+        try:
+            packages[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            packages[name] = None
+    return {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "packages": packages,
     }
 
 
@@ -490,6 +546,7 @@ def _artifact_lineage(
             "files": artifact_hashes,
             "bundle_sha256": bundle_hasher.hexdigest(),
         },
+        "environment": _runtime_environment(),
     }
 
 
@@ -913,7 +970,16 @@ def run_training_pipeline(
         compute_fn_cost_vector(test_df, fn_recovery_nights=FN_RECOVERY_NIGHTS),
         selected_threshold=float(cost_sensitive["threshold"]),
     )
-    h2_comparison = _h2_baseline_comparison(X_train_t, y_train, X_test_t, y_test_np, test_probs)
+    h2_comparison = _h2_baseline_comparison(
+        X_train_t,
+        y_train,
+        X_val_t,
+        y_val,
+        X_test_t,
+        y_test_np,
+        test_probs_raw,
+        test_probs,
+    )
     logger.info(
         "h2_baseline_comparison champion_pr_auc=%.4f baseline_pr_auc=%.4f p_value=%.4f",
         h2_comparison["champion_pr_auc"],

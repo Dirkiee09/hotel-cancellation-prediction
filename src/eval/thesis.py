@@ -11,6 +11,7 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import TimeSeriesSplit
 
@@ -163,8 +164,11 @@ def _choose_champion_family(
 def _run_baseline_comparison(
     X_train_t: np.ndarray,
     y_train: pd.Series,
+    X_val_t: np.ndarray,
+    y_val: pd.Series,
     X_test_t: np.ndarray,
     y_test: pd.Series,
+    champion_probs_raw: np.ndarray,
     champion_probs: np.ndarray,
     threshold: float,
     artifacts_dir: Path | None = None,
@@ -177,37 +181,55 @@ def _run_baseline_comparison(
     - Logistic Regression — linear interpretable model
     - Decision Tree (max_depth=5) — interpretable non-linear model
 
+    Each baseline except the constant dummy is isotonic-calibrated on validation,
+    the treatment ``champion_probs`` already had, so the paired tests compare like
+    with like. Calibration is piecewise-constant and lowers PR-AUC, so testing a
+    calibrated champion against uncalibrated baselines understates the gap.
+    Uncalibrated scores are kept per model as ``*_uncalibrated``.
+
     The pruned Decision Tree is also saved to ``artifacts_dir`` if provided
     so that ``plot_thesis_dt()`` in notebook_utils can load and visualise it.
     """
+    y_val_np = y_val.to_numpy().astype(int)
+
+    def _raw_and_calibrated(model: Any) -> tuple[np.ndarray, np.ndarray]:
+        raw_test = model.predict_proba(X_test_t)[:, 1]
+        calibrator = IsotonicRegression(out_of_bounds="clip")
+        calibrator.fit(model.predict_proba(X_val_t)[:, 1], y_val_np)
+        return raw_test, np.clip(calibrator.predict(raw_test), 0.0, 1.0)
+
     dummy = train_dummy(X_train_t, y_train, strategy="most_frequent")
     dummy_probs = dummy.predict_proba(X_test_t)[:, 1]
 
     nb = train_naive_bayes(X_train_t, y_train)
-    nb_probs = nb.predict_proba(X_test_t)[:, 1]
+    nb_raw, nb_probs = _raw_and_calibrated(nb)
 
     lr = train_logistic(X_train_t, y_train)
-    lr_probs = lr.predict_proba(X_test_t)[:, 1]
+    lr_raw, lr_probs = _raw_and_calibrated(lr)
 
     dt = train_decision_tree(X_train_t, y_train)
-    dt_probs = dt.predict_proba(X_test_t)[:, 1]
+    dt_raw, dt_probs = _raw_and_calibrated(dt)
     if artifacts_dir is not None:
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         joblib.dump(dt, artifacts_dir / "thesis_baseline_dt.pkl")
 
     y_test_np = y_test.to_numpy().astype(int)
-    results: dict[str, Any] = {}
+    results: dict[str, Any] = {
+        "calibration": "isotonic on validation for every model except the constant dummy",
+    }
 
-    for name, probs in [
-        ("dummy_most_frequent", dummy_probs),
-        ("naive_bayes", nb_probs),
-        ("logistic_regression", lr_probs),
-        ("decision_tree_depth5", dt_probs),
-        ("champion", champion_probs),
+    for name, raw, probs in [
+        ("dummy_most_frequent", dummy_probs, dummy_probs),
+        ("naive_bayes", nb_raw, nb_probs),
+        ("logistic_regression", lr_raw, lr_probs),
+        ("decision_tree_depth5", dt_raw, dt_probs),
+        ("champion", champion_probs_raw, champion_probs),
     ]:
         results[name] = {
             "roc_auc": safe_roc_auc(y_test_np, probs),
             "pr_auc": safe_pr_auc(y_test_np, probs),
+            "roc_auc_uncalibrated": safe_roc_auc(y_test_np, raw),
+            "pr_auc_uncalibrated": safe_pr_auc(y_test_np, raw),
         }
 
     # Paired bootstrap: champion vs each baseline
@@ -573,8 +595,15 @@ def _run_hypothesis_mapping(
     family_scores: dict[str, dict[str, float]],
     cost_summary: dict[str, Any],
     shap_summary: dict[str, Any] | None,
+    baseline_comparison: dict[str, Any],
 ) -> dict[str, Any]:
-    h2_supported = champion_family in {"xgboost", "lightgbm"}
+    # H2 is judged against an actual baseline on the test set. Which boosted family
+    # won the boosted-only selection says nothing about whether boosting beats a
+    # simpler model, so it cannot decide H2 on its own.
+    h2_test = baseline_comparison.get("champion_vs_lr_pr_auc", {})
+    h2_supported = float(h2_test.get("observed_delta", 0.0)) > 0 and bool(
+        h2_test.get("significant_at_05", False)
+    )
     h4_supported = float(cost_summary.get("savings_vs_050", 0.0)) > 0
 
     h1_h3_status = "deferred"
@@ -593,6 +622,9 @@ def _run_hypothesis_mapping(
         "H2": {
             "statement": "Gradient-boosted trees outperform baseline alternatives.",
             "status": "supported" if h2_supported else "not_supported",
+            "evidence": "baseline_comparison.json champion_vs_lr_pr_auc (test set, paired bootstrap)",
+            "observed_delta_pr_auc": h2_test.get("observed_delta"),
+            "p_value": h2_test.get("p_value"),
             "champion_family": champion_family,
             "validation_scores": family_scores,
         },
@@ -668,7 +700,8 @@ def run_thesis_analysis(
     # produce a different column count (rare one-hot levels absent from the slice), causing
     # a feature-dimension mismatch at predict_proba time.  The raw DataFrames X_test / X_val
     # are always valid inputs to the saved pipeline regardless of slice size.
-    champion_probs = np.clip(_calibrator.predict(_pipeline.predict_proba(X_test)[:, 1]), 0.0, 1.0)
+    champion_probs_raw = _pipeline.predict_proba(X_test)[:, 1]
+    champion_probs = np.clip(_calibrator.predict(champion_probs_raw), 0.0, 1.0)
     val_probs = np.clip(_calibrator.predict(_pipeline.predict_proba(X_val)[:, 1]), 0.0, 1.0)
 
     # Load threshold directly from artifact so model_family_summary matches thresholds.json.
@@ -685,8 +718,11 @@ def run_thesis_analysis(
     baselines = _run_baseline_comparison(
         X_train_t,
         y_train,
+        X_val_t,
+        y_val,
         X_test_t,
         y_test,
+        champion_probs_raw,
         champion_probs,
         threshold,
         artifacts_dir=ARTIFACTS_DIR,
@@ -781,6 +817,7 @@ def run_thesis_analysis(
         family_scores=family_scores,
         cost_summary=cost_summary,
         shap_summary=shap_results,
+        baseline_comparison=baselines,
     )
     path = thesis_dir / "hypothesis_mapping.json"
     _save_json(path, hypotheses)

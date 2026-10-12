@@ -4,11 +4,17 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.config import MODEL_SELECTION_POLICY, TARGET_COL
 from src.models.train import is_lightgbm_available
 from src.pipelines import run_training_pipeline
-from src.pipelines.train import FALLBACK_MODEL_FAMILY, _select_model_family
+from src.pipelines.train import (
+    FALLBACK_MODEL_FAMILY,
+    _h2_baseline_comparison,
+    _runtime_environment,
+    _select_model_family,
+)
 from src.serving.inference import load_artifacts
 
 
@@ -38,6 +44,9 @@ def test_training_pipeline_produces_fitted_artifacts(tmp_path) -> None:
     assert metadata["model_selection"]["winner"] in allowed
     assert "lineage" in metadata
     assert "calibration" in metadata
+    environment = metadata["lineage"]["environment"]
+    assert environment["python"]
+    assert "scikit-learn" in environment["packages"]
 
     selection_path = outputs.reports_dir / "model_selection_summary.json"
     selection = json.loads(selection_path.read_text(encoding="utf-8"))
@@ -161,6 +170,7 @@ def test_hypothesis_summary_is_not_circular(tmp_path) -> None:
     h2 = hyp["H2"]
     assert h2["evaluation_dataset"] == "test"
     assert h2["baseline_model"] == "logistic_regression"
+    assert "both models" in h2["calibration"]
     assert "champion_pr_auc" in h2
     assert "baseline_pr_auc" in h2
     assert "p_value" in h2
@@ -169,6 +179,55 @@ def test_hypothesis_summary_is_not_circular(tmp_path) -> None:
     metrics = json.loads((outputs.reports_dir / "metrics.json").read_text(encoding="utf-8"))
     assert metrics["cost_thresholding"]["dataset"] == "validation"
     assert metrics["cost_thresholding_test"]["dataset"] == "test"
+    assert "p_value" in metrics["h2_baseline_comparison"]["uncalibrated"]
+
+
+def test_h2_baseline_is_calibrated_like_the_champion() -> None:
+    """The H2 baseline must get the champion's isotonic step before the paired test.
+
+    Regression guard: the baseline was compared uncalibrated against the calibrated
+    champion. Calibration lowers PR-AUC for any model, so that pairing understated
+    the gap (per-record stream: +0.005, p = 0.177 instead of +0.019, p < 0.001).
+    """
+    from sklearn.isotonic import IsotonicRegression
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import average_precision_score
+
+    rng = np.random.RandomState(3)
+    X = rng.randn(900, 5)
+    y = (X[:, 0] + 0.8 * rng.randn(900) > 0.3).astype(int)
+    X_tr, X_va, X_te = X[:500], X[500:700], X[700:]
+    y_tr, y_va, y_te = pd.Series(y[:500]), pd.Series(y[500:700]), y[700:]
+    champion_raw = 1.0 / (1.0 + np.exp(-X_te[:, 0]))
+    champion_cal = np.clip(
+        IsotonicRegression(out_of_bounds="clip")
+        .fit(1.0 / (1.0 + np.exp(-X_va[:, 0])), y_va)
+        .predict(champion_raw),
+        0.0,
+        1.0,
+    )
+
+    result = _h2_baseline_comparison(X_tr, y_tr, X_va, y_va, X_te, y_te, champion_raw, champion_cal)
+
+    lr = LogisticRegression(max_iter=2000, solver="lbfgs", random_state=42).fit(X_tr, y_tr)
+    lr_cal = IsotonicRegression(out_of_bounds="clip").fit(lr.predict_proba(X_va)[:, 1], y_va)
+    expected = average_precision_score(
+        y_te, np.clip(lr_cal.predict(lr.predict_proba(X_te)[:, 1]), 0.0, 1.0)
+    )
+    assert result["baseline_pr_auc"] == pytest.approx(expected)
+    assert result["uncalibrated"]["baseline_pr_auc"] == pytest.approx(
+        average_precision_score(y_te, lr.predict_proba(X_te)[:, 1])
+    )
+    assert result["champion_pr_auc"] == pytest.approx(average_precision_score(y_te, champion_cal))
+    for block in (result, result["uncalibrated"]):
+        assert {"observed_delta", "p_value", "significant_at_05"} <= set(block)
+
+
+def test_runtime_environment_names_interpreter_and_libraries() -> None:
+    env = _runtime_environment()
+    assert env["python"].count(".") == 2
+    assert env["platform"]
+    assert env["packages"]["numpy"]
 
 
 def _noisy_split() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
