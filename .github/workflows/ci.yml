@@ -44,6 +44,18 @@ jobs:
       - name: Tests with coverage
         run: pytest
 
+      # The committed artifacts and reports come from one Windows run. Check that
+      # they agree with each other before this job retrains over them: the sync
+      # check needs files from a single run, and after retraining only some of
+      # them are regenerated here.
+      - name: Committed results are mutually consistent
+        run: python scripts/utils/check.py sync
+
+      - name: Snapshot committed results
+        run: |
+          mkdir -p "$RUNNER_TEMP/committed"
+          cp reports/metrics.json artifacts/thresholds.json "$RUNNER_TEMP/committed/"
+
       - name: Train production pipeline
         run: python scripts/training/train.py
 
@@ -53,8 +65,11 @@ jobs:
       - name: Model metric gates
         run: python scripts/utils/check.py metrics
 
-      - name: Artifact threshold sync check
-        run: python scripts/utils/check.py sync
+      # Retraining is byte-identical on the environment recorded in
+      # artifacts/model_metadata.json, not across operating systems. This prints
+      # how far each headline figure moved on Linux and fails beyond tolerance.
+      - name: Retrain reproduces the committed results
+        run: python scripts/utils/check.py reproduce --baseline-dir "$RUNNER_TEMP/committed"
 
       - name: Algorithm fairness check (matched-capacity XGBoost vs LightGBM)
         run: python scripts/utils/check.py fairness
@@ -90,7 +105,9 @@ jobs:
 
   thesis-analysis:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Optuna alone may use its full 10-minute budget, and the benchmark took
+    # 25 minutes single-threaded on a desktop; 60 left no margin.
+    timeout-minutes: 90
     needs: quality
     # Runs on the default branch only, plus on demand. The repository has a
     # single branch, `master`; the earlier condition gated on `main`/`Main`,

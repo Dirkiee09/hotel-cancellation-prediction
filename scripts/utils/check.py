@@ -5,6 +5,7 @@ Subcommands:
     metrics     — Enforce metric quality gates from reports/metrics.json
     sync        — Verify thresholds are consistent across artifacts and reports
     fairness    — Run hyperparameter fairness audit (LightGBM vs XGBoost budget check)
+    reproduce   — Compare a fresh retrain with a snapshot of the committed results
     all         — Run artifacts, metrics, sync, and fairness in sequence
 """
 
@@ -450,6 +451,116 @@ def run_sync(
 
 
 # ---------------------------------------------------------------------------
+# reproduce — a fresh retrain against the committed results
+# ---------------------------------------------------------------------------
+
+# Threshold-free scores barely move across platforms; scores read at a threshold
+# move further because the 0.01 threshold grid can tip one step either way.
+_REPRO_TOL_SCORE = 0.005
+_REPRO_TOL_AT_THRESHOLD = 0.02
+_REPRO_TOL_COST_CUT_POINTS = 2.0
+_REPRO_SCORES = ("roc_auc", "pr_auc")
+_REPRO_AT_THRESHOLD = ("f1", "precision", "recall")
+
+
+def _cost_cut_pct(metrics: dict[str, Any]) -> float | None:
+    cost = metrics.get("cost_thresholding_test", {})
+    blanket, policy = cost.get("intervene_all_cost"), cost.get("total_cost")
+    if not blanket or policy is None:
+        return None
+    return (float(blanket) - float(policy)) / float(blanket) * 100.0
+
+
+def _reproduce_rows(
+    committed_metrics: dict[str, Any],
+    fresh_metrics: dict[str, Any],
+    committed_thresholds: dict[str, Any],
+    fresh_thresholds: dict[str, Any],
+) -> list[tuple[str, float | None, float | None, float]]:
+    """(name, committed, fresh, tolerance) for every headline figure compared."""
+    from src.config import THRESHOLD_STEP
+
+    rows: list[tuple[str, float | None, float | None, float]] = []
+    for policy in ("max_f1", "cost_sensitive"):
+        old, new = committed_metrics.get(policy, {}), fresh_metrics.get(policy, {})
+        for key in _REPRO_SCORES if policy == "max_f1" else ():
+            rows.append((f"{policy}.{key}", old.get(key), new.get(key), _REPRO_TOL_SCORE))
+        for key in _REPRO_AT_THRESHOLD:
+            rows.append((f"{policy}.{key}", old.get(key), new.get(key), _REPRO_TOL_AT_THRESHOLD))
+    old_ece = committed_metrics.get("calibration", {}).get("test", {}).get("ece_calibrated")
+    new_ece = fresh_metrics.get("calibration", {}).get("test", {}).get("ece_calibrated")
+    rows.append(("calibration.test.ece_calibrated", old_ece, new_ece, _REPRO_TOL_SCORE))
+    rows.append(
+        (
+            "cost_cut_vs_contact_everyone_pct",
+            _cost_cut_pct(committed_metrics),
+            _cost_cut_pct(fresh_metrics),
+            _REPRO_TOL_COST_CUT_POINTS,
+        )
+    )
+    for policy in ("max_f1", "high_precision", "cost_sensitive"):
+        old_thr = committed_thresholds.get(policy, {}).get("threshold")
+        new_thr = fresh_thresholds.get(policy, {}).get("threshold")
+        # One grid step, plus float slack so 0.41 vs 0.40 counts as one step.
+        rows.append((f"threshold.{policy}", old_thr, new_thr, THRESHOLD_STEP + 1e-9))
+    return rows
+
+
+def run_reproduce(
+    baseline_dir: Path,
+    artifacts_dir: Path | None = None,
+    reports_dir: Path | None = None,
+) -> list[str]:
+    """Compare a fresh retrain with the committed results it should reproduce.
+
+    Retraining is byte-identical on the environment recorded in
+    ``model_metadata.json``. Floating-point results drift slightly across
+    operating systems and Python builds, so CI snapshots the committed
+    ``metrics.json`` and ``thresholds.json`` into ``baseline_dir``, retrains on
+    Linux, and calls this to show how far each headline figure moved. A figure
+    further than its tolerance from the committed value, or a different selected
+    model family, is returned as a failure.
+    """
+    import os
+
+    from src.config import ARTIFACTS_DIR, REPORTS_DIR
+
+    artifacts_dir = artifacts_dir or ARTIFACTS_DIR
+    reports_dir = reports_dir or REPORTS_DIR
+    committed_metrics = _load_json(baseline_dir / "metrics.json")
+    committed_thresholds = _load_json(baseline_dir / "thresholds.json")
+    fresh_metrics = _load_json(reports_dir / "metrics.json")
+    fresh_thresholds = _load_json(artifacts_dir / "thresholds.json")
+
+    failures: list[str] = []
+    old_family = committed_metrics.get("selected_model_family")
+    new_family = fresh_metrics.get("selected_model_family")
+    if old_family != new_family:
+        failures.append(f"selected_model_family: committed={old_family} fresh={new_family}")
+
+    rows = _reproduce_rows(committed_metrics, fresh_metrics, committed_thresholds, fresh_thresholds)
+    lines = [f"selected_model_family: committed={old_family} fresh={new_family}"]
+    for name, old, new, tol in rows:
+        if old is None or new is None:
+            failures.append(f"{name}: missing (committed={old} fresh={new})")
+            continue
+        delta = abs(float(new) - float(old))
+        mark = "ok" if delta <= tol else "FAIL"
+        lines.append(f"{name}: committed={old:.6f} fresh={new:.6f} |diff|={delta:.6f} [{mark}]")
+        if delta > tol:
+            failures.append(f"{name}: |diff|={delta:.6f} exceeds {tol:g}")
+
+    for line in lines:
+        print(line)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        # Annotations are readable on the public run page without downloading logs.
+        print("::notice title=Retrain vs committed results::" + " ; ".join(lines))
+        for failure in failures:
+            print(f"::error title=Retrain differs from committed results::{failure}")
+    return failures
+
+
+# ---------------------------------------------------------------------------
 # fairness — hyperparameter fairness audit
 # ---------------------------------------------------------------------------
 
@@ -587,6 +698,15 @@ def main() -> None:
     sub.add_parser("metrics", help="Enforce metric quality gates")
     sub.add_parser("sync", help="Verify threshold consistency across files")
     sub.add_parser("fairness", help="Hyperparameter fairness audit (LightGBM vs XGBoost)")
+    reproduce = sub.add_parser(
+        "reproduce", help="Compare a fresh retrain with a snapshot of the committed results"
+    )
+    reproduce.add_argument(
+        "--baseline-dir",
+        type=Path,
+        required=True,
+        help="Folder holding the committed metrics.json and thresholds.json",
+    )
     sub.add_parser("all", help="Run all checks in sequence")
 
     args = parser.parse_args()
@@ -605,6 +725,14 @@ def main() -> None:
         run_sync()
     elif args.command == "fairness":
         run_fairness()
+    elif args.command == "reproduce":
+        failures = run_reproduce(args.baseline_dir)
+        if failures:
+            logger.error("reproduce FAILED — %d figure(s) outside tolerance:", len(failures))
+            for msg in failures:
+                logger.error("  ✗ %s", msg)
+            sys.exit(1)
+        logger.info("reproduce OK — fresh retrain matches the committed results within tolerance")
 
 
 if __name__ == "__main__":
