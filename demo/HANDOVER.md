@@ -233,6 +233,7 @@ cost-sensitive threshold catches 81% of them at 18% precision.
 | A 60-day test window, ~130 high-risk bookings a week | 2 July to 31 August is 61 days: 128 a week, 18 a day. |
 | Random Forest underperforms logistic regression | On PR-AUC and F1. On ROC-AUC Random Forest is higher (0.848 vs 0.841). |
 | Withholding deposit type: 0.703 → 0.702 | Correct; the ablated run re-selected XGBoost. |
+| The demo's ROC/PR chart says PR-AUC 0.760 | That image was drawn from an earlier run; the current per-record value is 0.759. The paper's primary figure is 0.703. |
 
 ---
 
