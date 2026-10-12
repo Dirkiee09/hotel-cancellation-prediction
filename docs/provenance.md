@@ -1,25 +1,48 @@
 # Output provenance
 
-Most of `artifacts/` and `reports/` is generated and git-ignored: `make train`
-rebuilds it from `data/hotel_bookings.csv`. A small number of result files are
-**committed on purpose**, because the code that produced them needs data this
-repository does not contain. This file records where those came from, so the
-results stay reproducible and defensible.
+Every result file in `artifacts/` and `reports/` that is committed to this
+repository is listed here with the script that writes it. If a number in the
+paper or the slides cannot be traced to a row in this table, treat it as
+unverified.
 
 ## Committed results and their producers
 
-| Committed output | Producer | Reproducible here? |
+| Committed output | Producer | Reproducible from this repository? |
 |---|---|---|
-| `reports/cv/portugal_stratified_10fold_*` | `scripts/training/stratified_cv.py` | Yes — runs from `data/hotel_bookings.csv` |
-| `reports/cv/philippine_stratified_10fold_*` | `scripts/training/stratified_cv.py` | No — needs the private PH export |
-| `reports/ph/*.json`, `reports/ph/ph_threshold_sweep.csv` | `scripts/training/train_ph.py` | No — needs the private PH export |
-| `reports/dedup_sensitivity.json` | `scripts/training/dedup_sensitivity.py` | Yes — runs from `data/hotel_bookings.csv` |
+| `artifacts/` (model, calibrator, thresholds, feature list, metadata, hashes) | `scripts/training/train.py` | Yes |
+| `reports/metrics.json`, `champion_summary.json`, `segment_metrics.*`, `hypothesis_summary.json` | `scripts/training/train.py` | Yes |
+| `reports/thesis/` except the files listed separately below | `scripts/training/train.py --thesis` | Yes |
+| `reports/thesis/optuna_tuning.json` | `scripts/training/train.py --thesis` (without `--skip-tuning`) | Yes; Optuna stops at a 10-minute budget, so trial counts can vary with machine speed |
+| `reports/thesis/calibration_diagnostics.json`, `confidence_intervals_extended.json`, `calibration_by_segment.csv`, `cost_scenarios.csv` | `scripts/training/revision_diagnostics.py` | Yes; reads saved test predictions, no retraining |
+| `reports/thesis/deposit_interactions.csv`, `reports/deposit_ablation.json` | `scripts/training/feature_ablation.py` | Yes |
+| `reports/dedup/`, `reports/dedup_sensitivity.json` | `scripts/training/dedup_sensitivity.py` | Yes |
+| `reports/benchmarks/*.csv`, `*.md` | `scripts/training/benchmark.py` | Yes |
+| `reports/cv/portugal_stratified_10fold_*` | `scripts/training/stratified_cv.py` | Yes |
+| `reports/cv/philippine_stratified_10fold_*` | `scripts/training/stratified_cv.py` | No; needs the private PH export |
+| `reports/ph/*.json`, `reports/ph/ph_threshold_sweep.csv` | `scripts/training/train_ph.py` | No; needs the private PH export |
+| `reports/figures/essential/` | `scripts/make_essential_figures.py`, removed in June 2026 (commit `a215fe0`) | Not as committed; recover the script from git history |
+| `artifacts/adr_*` | None; see the open gap below | No |
 
-The Philippine results are committed as **aggregated JSON only** so the PH notebooks
-render for anyone who clones the repository. Row-level prediction files are not
-committed, because they contain real reservation records.
+Run the producers in this order, because later ones read earlier outputs:
+`train.py --thesis`, then `dedup_sensitivity.py`, then `benchmark.py`,
+`revision_diagnostics.py` and `feature_ablation.py`.
 
-### The Philippine dataset is not in this repository
+## How exact the reproduction is
+
+On 12 October 2026 the committed code was extracted to an empty folder and every
+Portugal producer above was run from scratch on the machine that made the
+committed results (Windows 11, Python 3.12.10). The retrained model file had the
+same SHA-256 as the committed one, and all 43 report files matched value for
+value.
+
+That exactness holds for the same environment. `artifacts/model_metadata.json`
+records the Python, operating-system and library versions under
+`lineage.environment`. On a different platform, floating-point results drift
+slightly. CI retrains on Linux with Python 3.11 and `check.py reproduce` reports
+how far each headline figure moved; the comparison appears as an annotation on
+every CI run.
+
+## The Philippine dataset is not in this repository
 
 `data/Punta_Villa_Resort_PH_Dataset.csv` is a real property-management-system export
 and is deliberately untracked. Anything in the PH sub-study that depends on it cannot
@@ -28,6 +51,11 @@ be regenerated from a clone alone. Reproducing it requires:
 - the original CSV placed at that path
 - `src/data/load_ph.py`, the `PH_*` constants in `src/config.py`, and
   `clean_raw_ph` / `validate_raw_ph` in `src/utils/validate_data.py` (all present here)
+
+The Philippine results are committed as **aggregated JSON only** so the PH notebooks
+render for anyone who clones the repository. Row-level prediction files and the
+PH model in `artifacts/ph/` are not committed, because they contain or were fitted
+on real reservation records.
 
 ## Open gap: the ADR regressor has no producer script
 
@@ -43,9 +71,9 @@ artifacts/adr_timeseries_metadata.pkl
 ```
 
 Searching the repository finds only consumers, never a producer. They were trained in
-an unversioned session, and TensorFlow/Keras — needed to load the `.keras` model — is
+an unversioned session, and TensorFlow/Keras, needed to load the `.keras` model, is
 not in `requirements.txt`. The sklearn regressor loads and serves fine; it is the one
-cited in results.
+cited in results. None of the paper's figures depend on it.
 
 This matters because `make train` does not rebuild these files. Deleting them cannot
 be undone by retraining.

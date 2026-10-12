@@ -18,6 +18,7 @@ repo root (e.g. `.venv/Scripts/python.exe scripts/training/train.py`), or use th
 | `make benchmark` | ★ `training/benchmark.py` | Generate the 16 benchmark tables → `reports/benchmarks/` |
 | `make thesis` | ★ `training/train.py --thesis` | Train + thesis analysis (SHAP, bootstrap CIs) |
 | `make check` | ★ `utils/check.py all` | Run all quality gates (artifacts, metrics, sync, fairness) |
+| — | ★ `utils/check.py reproduce --baseline-dir DIR` | Compare a fresh retrain with a snapshot of the committed `metrics.json` and `thresholds.json` (CI runs this) |
 | `make eval` | ★ `training/train.py --verify-only` | Post-train verification on existing artifacts |
 | `make export-predictions` | `utils/export_predictions.py` | Prediction log → Power BI CSV |
 | `make export-adr` | `utils/export_adr_predictions.py` | ADR test predictions → Power BI |
@@ -41,7 +42,7 @@ repo root (e.g. `.venv/Scripts/python.exe scripts/training/train.py`), or use th
 
 | Script | ★ | Purpose |
 |---|---|---|
-| `check.py` | ★ | Unified quality-gate runner: `artifacts`, `metrics`, `sync`, `fairness`, or `all`. |
+| `check.py` | ★ | Unified quality-gate runner: `artifacts`, `metrics`, `sync`, `fairness`, `reproduce`, or `all`. |
 | `notebooks.py` | ★ | Clear / execute / validate the analysis notebooks deterministically. |
 | `export_predictions.py` |  | Export `predictions.sqlite` → `predictions_live.csv` for Power BI. |
 | `export_adr_predictions.py` |  | Export ADR regressor test predictions + segment RMSE for Power BI. |
@@ -53,15 +54,12 @@ repo root (e.g. `.venv/Scripts/python.exe scripts/training/train.py`), or use th
 | Script | Produces |
 |---|---|
 | `create_conceptual_framework_diagram.py` | Figure 1.2 — Sense→Seize→Transform framework |
-| `create_split_timeline_diagram.py` | Figure 3.4 — Chronological 80/10/10 partition timeline, exact date ranges, both streams |
-| `rebuild_ch4_diagnostic_figures.py` | Figures 4.1-4.4, 4.11-4.14 — Ch4 diagnostics re-rendered with corrected titles (no stale baked-in numbers / champion wording); Fig 4.1 reframed to LightGBM-minus-comparison matching Table 4.3 |
 | `create_conceptual_systems_diagram.py` | Figure 4.8 — Conceptual systems positioning |
 | `create_deployment_diagram.py` | Figure 4.9 — Technical serving architecture |
 | `rebuild_shap_summary_plot.py` | SHAP summary plot with raw feature names |
 
 *(The remaining Chapter-4 results figures — calibration reliability, risk-tier overview,
-cost ladder, SHAP beeswarm — are produced by the notebooks; `rebuild_ch4_diagnostic_figures.py`
-covers the eight that needed corrected titles after the post-defense revision.)*
+cost ladder, SHAP beeswarm — are produced by the notebooks.)*
 
 ## `demo/` — local demo helpers
 
@@ -74,15 +72,5 @@ covers the eight that needed corrected titles after the post-defense revision.)*
 
 | Script | Purpose |
 |---|---|
-| `make_cheat_sheet.js` | Generate the one-page defense cheat-sheet Word doc (Node). |
 | `show_benchmark_table.py` | Print the benchmark results table to the terminal. |
 | `show_defense_tables.py` | Print the key defense tables to the terminal. |
-
-## `archive/` — retired, **not** part of the live pipeline
-
-Kept for provenance only; excluded from linting/type-checking/CI.
-
-| Script | Why archived |
-|---|---|
-| `compare_split_strategies.py` | One-off 70/30 vs 80/20 vs 80/10/10 probe. Its comparison evaluates each split on a *different* test window, so it is **not** a fair head-to-head and is **not cited** in the thesis. |
-| `test_inference.py` | Throwaway dev smoke-test with a hard-coded local path; superseded by the `tests/` suite. |

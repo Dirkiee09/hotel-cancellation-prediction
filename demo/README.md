@@ -50,19 +50,23 @@ The Gradio UI opens at http://localhost:8000/ui
 
 ### 1. Gradio UI (http://localhost:8000/ui)
 
-Fill in a booking and click Predict. The result shows:
+Load a booking with one of the three buttons under the form, then click Predict.
+The result shows:
 - **Cancellation probability** (0-100%)
 - **Risk tier** (Low / Medium / High)
 - **Three policy decisions** (max F1, high precision, cost-sensitive)
 - **Top contributing features** (what's driving the prediction)
 
-Try these contrasting bookings:
+| Button | Key fields | Expected |
+|--------|-----------|----------|
+| ① Non-refundable, 120d lead | City Hotel, Online TA, Non Refund deposit | above 99%, High |
+| ② Online agent, 60d lead | City Hotel, Online TA, No Deposit, one special request | 60%, Medium |
+| ③ Direct repeat guest | Resort Hotel, Direct, repeat guest, special requests | under 1%, Low |
 
-| Scenario | Key fields | Expected |
-|----------|-----------|----------|
-| Low risk | Lead time: 2, Deposit: Non Refund, Repeated guest: 1 | ~5%, Low |
-| Medium risk | Lead time: 90, Online TA, No deposit, Family (2+2) | ~40-60%, Medium |
-| High risk | Lead time: 200, Groups, Previous cancellations: 1 | ~70%+, High |
+The arrival date defaults to 30 days from today, so the month feature changes with
+the day you present. The figures above hold for arrivals in November and December.
+In this dataset a non-refundable deposit marks the highest-risk bookings, not the
+lowest; see `HANDOVER.md` §5.
 
 ### 2. API Comparison Table
 
@@ -86,7 +90,7 @@ Swagger UI with:
 
 ```bash
 python scripts/utils/check.py all      # artifact integrity + metrics + sync + fairness
-python -m pytest -q                    # 148 tests, coverage gate >=80%
+python -m pytest -q                    # 153 tests, coverage gate >=80%
 ```
 
 ### 5. Notebooks
@@ -102,5 +106,5 @@ Open any notebook in `notebooks/` — all have cached outputs, no need to run ce
 - **No data leakage**: only booking-time features, no post-booking info
 - **Three thresholds**: different cutoffs for different business needs
 - **Calibrated probabilities**: isotonic calibration makes probabilities reliable
-- **Champion selection**: LightGBM wins via rolling-origin cross-validation, not a lucky split
-- **Production-ready**: FastAPI, health checks, thread-safe caching, Docker, 148 tests
+- **Champion selection**: LightGBM was chosen in advance by rolling-origin validation, before the test set was opened; XGBoost is level with it on the test set
+- **Built like a deployable service, presented as a prototype**: FastAPI, health checks, thread-safe caching, Docker, 153 tests. The paper calls it a prototype, so do not call it production-ready

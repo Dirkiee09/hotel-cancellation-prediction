@@ -8,8 +8,9 @@ evaluation suite.
 
 The design constraint that shapes everything else is the prediction point. A booking
 is scored the day it arrives, so no post-booking field (`reservation_status`,
-`assigned_room_type`, `booking_changes`, `days_in_waiting_list`) may enter the model.
-Those columns are dropped explicitly rather than merely unused.
+`reservation_status_date`, `assigned_room_type`, `booking_changes`,
+`days_in_waiting_list`) may enter the model. Those columns are dropped explicitly
+rather than merely unused.
 
 ---
 
@@ -31,7 +32,7 @@ Those columns are dropped explicitly rather than merely unused.
 | If you are… | Read this |
 |---|---|
 | Presenting the work | [`demo/PRESENTATION_GUIDE.md`](demo/PRESENTATION_GUIDE.md), then [`demo/HANDOVER.md`](demo/HANDOVER.md) |
-| Running the demo | `START_HERE.txt` in the release bundle, or [Setup](#setup) below |
+| Running the demo | `START_HERE.txt` in the project folder, or [Setup](#setup) below |
 | Reviewing the method | [Results](#results-at-a-glance) → [How the pipeline works](#how-the-pipeline-works) → [Quality gates](#quality-gates) |
 | Changing the code | [Repository map](#repository-map) → [Key configuration](#key-configuration) |
 | Building the dashboard | [`docs/powerbi_dashboard_guide.md`](docs/powerbi_dashboard_guide.md) |
@@ -57,8 +58,16 @@ bookings). The de-duplicated stream is the conservative estimate; the per-record
 stream treats every row as a separately cancellable reservation. Duplicates never
 cross the train/test boundary, so the gap reflects re-weighting, not leakage.
 
-Cost-sensitive thresholding reduces intervention cost by **31.2%** against
-contacting every guest (€84,045 → €57,815, de-duplicated test set).
+Cost-sensitive thresholding reduces total modelled cost by **31.2%** against
+contacting every guest (€84,045 → €57,815, de-duplicated test set). That figure
+assumes a contact costs €15 only when the guest would not have cancelled, and that
+contacting a guest who would have cancelled saves the booking. Neither assumption
+is measured; the saving in euros is far less sensitive to them than the percentage.
+
+Every figure above is written by a script listed in
+[`docs/provenance.md`](docs/provenance.md). Retraining the committed code from
+scratch on 12 October 2026 reproduced the model file byte for byte and every
+reported value exactly.
 
 ## The dataset
 
@@ -122,12 +131,12 @@ demo/
   quick_train.py            10k-row smoke train when artifacts are missing
   sample_requests.py        Sends contrasting bookings to a running server
 
-tests/                      148 tests, coverage gate ≥80%
+tests/                      153 tests, coverage gate ≥80%
 notebooks/                  Analysis notebooks (load artifacts, never retrain)
 docs/                       Power BI build guide, output provenance
 
-artifacts/                  Trained model outputs (generated, git-ignored)
-reports/                    Metrics, benchmark tables, figures (generated, git-ignored)
+artifacts/                  Trained model the app serves (committed; rebuilt by make train)
+reports/                    Metrics, benchmark tables, figures (committed subset; see docs/provenance.md)
 ```
 
 ## Setup
@@ -146,17 +155,19 @@ common reason setup fails on a fresh machine. Check with `python --version` firs
 The package installs in editable mode, so imports are `from src.x import y` with no path
 manipulation.
 
-### Then get a trained model
+### The trained model is included
 
-`artifacts/` and `reports/` are generated and not in the repository, so a fresh clone has
-no model and the server will refuse to start. Either train one:
+`artifacts/` and the reports the app reads are committed, so a clone or a Download ZIP
+can serve predictions straight away. To rebuild the model yourself:
 
 ```bash
 python scripts/training/train.py
 ```
 
-…which is deterministic (every seed is fixed at 42) and takes about ten minutes, or copy
-the `artifacts/` and `reports/` folders from someone who already has them.
+…which is deterministic (every seed is fixed at 42) and takes about ten minutes. On the
+same Python and library versions it reproduces the committed model byte for byte; the
+versions are recorded in `artifacts/model_metadata.json`. The committed results were
+produced on Windows with Python 3.12.10.
 
 `python demo/quick_train.py` trains on 10k rows in under a minute if you only want to
 check the interface. Do not present with that model — its calibration differs from the
@@ -176,7 +187,7 @@ reported figures.
 | `make lint typecheck test` | ruff, mypy, pytest |
 | `make security` | bandit scan |
 | `python demo/start_server.py` | Serve the API + UI at localhost:8000 |
-| `demo\run_demo.bat` | Windows: double-click to do the same, venv resolved automatically |
+| `START DEMO.bat` | Windows: double-click to do the same, venv resolved automatically |
 
 `make help` lists every target. On Windows without `make`, call the scripts directly:
 `python scripts/training/train.py`, `python scripts/utils/check.py all`.
@@ -201,7 +212,7 @@ data/hotel_bookings.csv  (119,390 rows, 32 columns)
   │                         33 features → 93 columns
   │
   ├─ rolling-origin selection
-  │     cutoffs at 60/70/80% of train; candidates LightGBM, XGBoost (matched
+  │     cutoffs at 60/70/80% of train+val; candidates LightGBM, XGBoost (matched
   │     capacity: 300 trees, depth 7, lr 0.05) and GradientBoosting; no class
   │     weighting for any candidate; selection metric PR-AUC
   │
@@ -253,7 +264,7 @@ still accepts the field as informational. Seasonality is carried by month one-ho
 
 ## Serving
 
-Train before predicting — the server refuses to start without artifacts.
+The server refuses to start without artifacts; the committed ones are enough.
 
 | Endpoint | Purpose |
 |---|---|
@@ -300,8 +311,11 @@ make check                  # artifacts, metrics, sync, fairness
 - **fairness** — XGBoost is refitted at matched capacity and compared to the champion,
   so the ranking cannot be an artefact of an unequal hyperparameter budget
 
-CI (`.github/workflows/ci.yml`) runs all of the above plus a full training run and a
-dependency vulnerability scan on every push.
+CI (`.github/workflows/ci.yml`) runs lint, types, tests and security scans on every
+push. It checks that the committed results agree with each other, retrains on Linux
+with Python 3.11, and runs `check.py reproduce`, which prints how far each headline
+figure moved from the committed value and fails beyond a stated tolerance. The
+comparison is posted as an annotation on the run page.
 
 Optional pre-commit hooks:
 
@@ -397,13 +411,11 @@ docker compose run --rm train python scripts/training/train.py --max-rows 10000
 
 ## Generated files
 
-Three directories hold generated state and are git-ignored:
+| Directory | In git? | Lifecycle |
+|-----------|---------|-----------|
+| `artifacts/` | Yes, except `artifacts/ph/` | Regenerated by `make train` |
+| `reports/` | The files the app and the paper rely on | Regenerated by `make train`, `make thesis`, `make benchmark` and the scripts in [`docs/provenance.md`](docs/provenance.md) |
+| `data/predictions/` | No | Append-only during serving |
 
-| Directory | Lifecycle |
-|-----------|-----------|
-| `artifacts/` | Fully regenerated by `make train` |
-| `reports/` | Regenerated by `make train`, `make benchmark`, `make thesis` |
-| `data/predictions/` | Append-only during serving |
-
-A fresh clone therefore has no model. Run `make train` (deterministic, ~10 minutes)
-before serving or opening the notebooks.
+Anything under `artifacts/ph/` or a row-level file under `reports/ph/` comes from the
+private Philippine export and is never committed.

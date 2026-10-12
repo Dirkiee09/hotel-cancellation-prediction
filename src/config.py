@@ -70,7 +70,7 @@ MIN_POSITIVE_RATE = 0.05
 MIN_RECALL_FOR_HIGH_PRECISION = 0.20
 # Cost model: FP cost = intervention (SMS + staff review), FN cost = ADR × lost nights.
 FP_INTERVENTION_COST = 15.0  # EUR per false-positive intervention (industry range: 10–20)
-FN_RECOVERY_NIGHTS = 1.0  # nights re-sold after cancellation (conservative: 1 of ~2.5 avg)
+FN_RECOVERY_NIGHTS = 1.0  # nights re-sold after cancellation (conservative: mean stay is 3.4-3.6)
 # Risk-tier display bands for the UI / API. Static values, not data-driven from the
 # threshold sweep. When swapping datasets (see README "Swapping datasets"), retune
 # these alongside the cost constants — the calibrated probability distribution shifts.

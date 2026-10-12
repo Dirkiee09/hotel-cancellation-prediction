@@ -183,9 +183,10 @@ def _load_banner_context() -> dict[str, str]:
             return "\u2014", "\u2014"
         return f"{m['roc_auc']:.3f}", f"{m['pr_auc']:.3f}"
 
-    # reports/dedup/ is produced by a separate de-duplication run and is gitignored,
-    # so a fresh clone has only the per-record metrics. Fall back to those rather
-    # than showing em-dashes, and let the caption say which stream is on screen.
+    # reports/dedup/ is produced by a separate de-duplication run. It is committed, but
+    # a local retrain without that run can leave it missing or out of date. Fall back
+    # to the per-record metrics rather than showing em-dashes, and let the caption say
+    # which stream is on screen.
     primary_is_dedup = primary is not None
     if primary is None:
         primary = per_record
