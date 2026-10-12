@@ -1,0 +1,29 @@
+{
+  "ablated_dedup": {
+    "f1": 0.7083,
+    "pr_auc": 0.7024,
+    "precision": 0.6201,
+    "recall": 0.8257,
+    "roc_auc": 0.849
+  },
+  "ablated_feature": "deposit_type",
+  "baseline_dedup": {
+    "f1": 0.7068,
+    "pr_auc": 0.7031,
+    "precision": 0.6041,
+    "recall": 0.8517,
+    "roc_auc": 0.8477
+  },
+  "delta_ablated_minus_baseline": {
+    "f1": 0.0015,
+    "pr_auc": -0.0007,
+    "precision": 0.016,
+    "recall": -0.026,
+    "roc_auc": 0.0013
+  },
+  "generated_at_utc": "2026-07-02T06:20:06+00:00",
+  "interpretation": "Retraining the identical pipeline on the de-duplicated stream with deposit_type neutralized quantifies how much the headline performance depends on that single (partly artifactual) feature. Small deltas mean the model does not hinge on the recording artifact; the remaining signal is carried by correlated structural features.",
+  "neutralization": "column set to constant 'No Deposit' (zero information)",
+  "selected_model_family_ablated": "xgboost",
+  "stream": "deduplicated"
+}
