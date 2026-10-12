@@ -18,6 +18,9 @@
   },
   "H2": {
     "champion_family": "lightgbm",
+    "evidence": "baseline_comparison.json champion_vs_lr_pr_auc (test set, paired bootstrap)",
+    "observed_delta_pr_auc": 0.019130143413640832,
+    "p_value": 0.0,
     "statement": "Gradient-boosted trees outperform baseline alternatives.",
     "status": "supported",
     "validation_scores": {

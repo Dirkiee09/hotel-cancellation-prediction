@@ -10,5 +10,5 @@
   "primary_metric": "rolling_pr_auc_mean",
   "runner_up": "xgboost",
   "secondary_metric": "rolling_roc_auc_mean",
-  "selected_at": "2026-06-26T12:03:10.576474+00:00"
+  "selected_at": "2026-10-12T03:18:02.024332+00:00"
 }

@@ -70,13 +70,26 @@
       }
     },
     "code": {
-      "git_commit": "93c231d69b9ef766e4e51ab395117c0b9b2fa43e",
+      "git_commit": "3382f382f01b04ceef9c1c32dc7ebf38b61f6737",
       "git_commit_error": null,
-      "source_tree_sha256": "2d8fc4c0e09712b9c1d2f01d46d78ffff6daf08ee82a28ffa5260d755335011f"
+      "source_tree_sha256": "9e7c0d6a6b4c97f3a401c223c5d23dad338060322e8d4fd4596526ca4451891c"
     },
     "data": {
       "sha256": "7c2ae42a7353905ea136e5c2287f17c92c5435826598bfbb8491c6f0c7b1fc06",
       "source_path": "D:\\PythonProject1\\data\\hotel_bookings.csv"
+    },
+    "environment": {
+      "machine": "AMD64",
+      "packages": {
+        "lightgbm": "4.6.0",
+        "numpy": "2.3.5",
+        "pandas": "2.3.3",
+        "scikit-learn": "1.8.0",
+        "scipy": "1.17.0",
+        "xgboost": "3.1.3"
+      },
+      "platform": "Windows-11-10.0.26300-SP0",
+      "python": "3.12.10"
     }
   },
   "model_selection": {

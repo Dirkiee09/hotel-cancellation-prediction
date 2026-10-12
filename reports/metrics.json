@@ -71,12 +71,21 @@
   },
   "h2_baseline_comparison": {
     "baseline_model": "logistic_regression",
-    "baseline_pr_auc": 0.7544159647583399,
+    "baseline_pr_auc": 0.7398355182727144,
+    "calibration": "isotonic on validation, both models",
     "champion_pr_auc": 0.7589656616863553,
     "n_bootstraps": 2000,
-    "observed_delta": 0.004549696928015323,
-    "p_value": 0.177,
-    "significant_at_05": false
+    "observed_delta": 0.019130143413640832,
+    "p_value": 0.0,
+    "significant_at_05": true,
+    "uncalibrated": {
+      "baseline_pr_auc": 0.7544159647583399,
+      "champion_pr_auc": 0.7750070184381938,
+      "n_bootstraps": 2000,
+      "observed_delta": 0.02059105367985381,
+      "p_value": 0.0,
+      "significant_at_05": true
+    }
   },
   "high_precision": {
     "balanced_accuracy": 0.5472703062583222,

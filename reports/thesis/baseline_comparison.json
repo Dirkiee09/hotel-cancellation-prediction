@@ -1,46 +1,57 @@
 {
+  "calibration": "isotonic on validation for every model except the constant dummy",
   "champion": {
     "pr_auc": 0.7589656616863553,
-    "roc_auc": 0.8634270032381611
+    "pr_auc_uncalibrated": 0.7750070184381938,
+    "roc_auc": 0.8634270032381611,
+    "roc_auc_uncalibrated": 0.8642697456968559
   },
   "champion_vs_dt_pr_auc": {
     "n_bootstraps": 2000,
-    "observed_delta": 0.09664457676408866,
+    "observed_delta": 0.11050059833769665,
     "p_value": 0.0,
     "significant_at_05": true
   },
   "champion_vs_dt_roc_auc": {
     "n_bootstraps": 2000,
-    "observed_delta": 0.054018799577310594,
+    "observed_delta": 0.05578029485796465,
     "p_value": 0.0,
     "significant_at_05": true
   },
   "champion_vs_lr_pr_auc": {
     "n_bootstraps": 2000,
-    "observed_delta": 0.004549696928015323,
-    "p_value": 0.177,
-    "significant_at_05": false
+    "observed_delta": 0.019130143413640832,
+    "p_value": 0.0,
+    "significant_at_05": true
   },
   "champion_vs_lr_roc_auc": {
     "n_bootstraps": 2000,
-    "observed_delta": 0.021869019420827418,
+    "observed_delta": 0.02257298311588385,
     "p_value": 0.0,
     "significant_at_05": true
   },
   "decision_tree_depth5": {
-    "pr_auc": 0.6623210849222666,
-    "roc_auc": 0.8094082036608505
+    "pr_auc": 0.6484650633486586,
+    "pr_auc_uncalibrated": 0.6623210849222666,
+    "roc_auc": 0.8076467083801965,
+    "roc_auc_uncalibrated": 0.8094082036608505
   },
   "dummy_most_frequent": {
     "pr_auc": 0.3779567186713639,
-    "roc_auc": 0.5
+    "pr_auc_uncalibrated": 0.3779567186713639,
+    "roc_auc": 0.5,
+    "roc_auc_uncalibrated": 0.5
   },
   "logistic_regression": {
-    "pr_auc": 0.7544159647583399,
-    "roc_auc": 0.8415579838173337
+    "pr_auc": 0.7398355182727144,
+    "pr_auc_uncalibrated": 0.7544159647583399,
+    "roc_auc": 0.8408540201222773,
+    "roc_auc_uncalibrated": 0.8415579838173337
   },
   "naive_bayes": {
-    "pr_auc": 0.6098897021894332,
-    "roc_auc": 0.7082133476831323
+    "pr_auc": 0.5879041737398691,
+    "pr_auc_uncalibrated": 0.6098897021894332,
+    "roc_auc": 0.7050649625262924,
+    "roc_auc_uncalibrated": 0.7082133476831323
   }
 }

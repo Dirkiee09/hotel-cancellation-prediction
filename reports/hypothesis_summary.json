@@ -1,0 +1,47 @@
+{
+  "H1": {
+    "evidence": "Use reports/thesis/shap_analysis.json for feature attribution ranking.",
+    "statement": "Lead time, deposit type, and previous cancellations are significant predictors.",
+    "status": "deferred_to_thesis_shap"
+  },
+  "H2": {
+    "baseline_model": "logistic_regression",
+    "baseline_pr_auc": 0.7398355182727144,
+    "calibration": "isotonic on validation, both models",
+    "champion_pr_auc": 0.7589656616863553,
+    "evaluation_dataset": "test",
+    "observed_delta": 0.019130143413640832,
+    "p_value": 0.0,
+    "rolling_selection_scores": {
+      "gradient_boosting": {
+        "rolling_pr_auc_mean": 0.8669412317037498,
+        "rolling_roc_auc_mean": 0.9108363327626154
+      },
+      "lightgbm": {
+        "rolling_pr_auc_mean": 0.8693191861959756,
+        "rolling_roc_auc_mean": 0.9125670491769134
+      },
+      "xgboost": {
+        "rolling_pr_auc_mean": 0.8684082712418487,
+        "rolling_roc_auc_mean": 0.9114441428992621
+      }
+    },
+    "selected_model_family": "lightgbm",
+    "statement": "Gradient-boosted trees outperform simpler baselines.",
+    "status": "supported"
+  },
+  "H3": {
+    "evidence": "Use reports/thesis/shap_feature_importance.csv for ranking verification.",
+    "statement": "Lead time has highest SHAP importance, then deposit type and previous cancellations.",
+    "status": "deferred_to_thesis_shap"
+  },
+  "H4": {
+    "evaluation_dataset": "test",
+    "late_window_cancel_rate": 0.09737827715355805,
+    "savings_vs_intervene_all": 40104.5,
+    "savings_vs_no_model": 2251658.5,
+    "savings_vs_threshold_050": 598501.79,
+    "statement": "Cost-sensitive thresholding reduces expected revenue loss.",
+    "status": "supported"
+  }
+}
