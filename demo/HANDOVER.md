@@ -206,7 +206,18 @@ bookings are needed before a local study means anything.
 **"The paper says Python 3.11."**
 The pipeline is tested on 3.11 in CI on every push. The committed results were
 produced on Windows with Python 3.12.10, and a retrain there reproduces the model
-byte for byte. CI retrains on Linux with 3.11 and posts how far each figure moves.
+byte for byte; CI checks that on every push. CI also retrains on Linux with 3.11
+and posts how far each figure moves.
+
+**"If I rerun your code, do I get LightGBM?"**
+On the same Windows and Python versions, yes, exactly. On Linux, no: the same code
+selects XGBoost. LightGBM and XGBoost are 0.0009 apart in rolling-origin PR-AUC,
+far inside the 0.032 fold-to-fold spread, so ordinary floating-point differences
+between platforms are enough to swap them. The scores barely move (ROC-AUC 0.864
+against 0.863, PR-AUC 0.762 against 0.759) and the cost cut is 34.3% instead of
+36.1% on the per-record stream. This is the paper's own point made concrete: the
+boosted models are tied, and the contribution is the cost layer, not the choice
+between them. Do not claim the selection is stable across platforms.
 
 **"How well does it handle last-minute bookings?"**
 Weakly, and the paper does not report it. Bookings made 0–3 days ahead are 6.7% of

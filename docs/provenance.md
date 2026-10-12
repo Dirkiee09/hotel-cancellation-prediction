@@ -37,10 +37,24 @@ value.
 
 That exactness holds for the same environment. `artifacts/model_metadata.json`
 records the Python, operating-system and library versions under
-`lineage.environment`. On a different platform, floating-point results drift
-slightly. CI retrains on Linux with Python 3.11 and `check.py reproduce` reports
-how far each headline figure moved; the comparison appears as an annotation on
-every CI run.
+`lineage.environment`, and CI enforces it: a Windows / Python 3.12.10 job retrains
+and requires every headline figure to match (`check.py reproduce --mode exact`).
+
+On a different platform the figures drift. The first Linux / Python 3.11 retrain
+in CI (12 October 2026, per-record stream) gave:
+
+| | Committed (Windows) | Linux CI |
+|---|---|---|
+| Selected model | LightGBM | XGBoost |
+| ROC-AUC | 0.8634 | 0.8645 |
+| PR-AUC | 0.7590 | 0.7623 |
+| Recall at the max-F1 threshold | 0.895 | 0.860 |
+| Cost-sensitive threshold | 0.06 | 0.05 |
+| Cost cut against contacting everyone | 36.1% | 34.3% |
+
+The model family changes because LightGBM and XGBoost are 0.0009 apart in
+rolling-origin PR-AUC, well inside the 0.032 across-fold standard deviation. Every
+CI run posts this comparison as an annotation (`check.py reproduce --mode drift`).
 
 ## The Philippine dataset is not in this repository
 

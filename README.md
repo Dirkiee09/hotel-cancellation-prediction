@@ -312,10 +312,19 @@ make check                  # artifacts, metrics, sync, fairness
   so the ranking cannot be an artefact of an unequal hyperparameter budget
 
 CI (`.github/workflows/ci.yml`) runs lint, types, tests and security scans on every
-push. It checks that the committed results agree with each other, retrains on Linux
-with Python 3.11, and runs `check.py reproduce`, which prints how far each headline
-figure moved from the committed value and fails beyond a stated tolerance. The
-comparison is posted as an annotation on the run page.
+push, and checks that the committed results agree with each other. It then retrains
+twice:
+
+- on **Windows with Python 3.12.10**, the environment that produced the committed
+  results, where `check.py reproduce --mode exact` requires every headline figure to
+  match exactly;
+- on **Linux with Python 3.11**, where `check.py reproduce --mode drift` posts how far
+  each figure moved as an annotation on the run page.
+
+On Linux the same code selects XGBoost instead of LightGBM. The two are 0.0009 apart
+in rolling-origin PR-AUC, so floating-point drift is enough to swap them; ROC-AUC and
+PR-AUC move by 0.001 and 0.003. Neither model is meaningfully better, which is what
+the paper's model-selection section says.
 
 Optional pre-commit hooks:
 
