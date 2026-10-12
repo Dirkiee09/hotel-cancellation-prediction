@@ -52,16 +52,15 @@ if not exist "artifacts\best_model.pkl" (
     echo.
     echo   Expected: %CD%\artifacts\best_model.pkl
     echo.
-    echo   MOST LIKELY CAUSE: you used the green "Code - Download ZIP" button
-    echo   on GitHub. That gives you the source code only. The trained model
-    echo   is too large for git and is NOT in that download.
+    echo   MOST LIKELY CAUSE: the artifacts folder did not survive the unzip,
+    echo   or you are running this from a partly-extracted copy.
     echo.
-    echo   FIX: download the bundle from the Releases page instead:
-    echo       https://github.com/Dirkiee09/hotel-cancellation-prediction/releases
-    echo   Get hotel-demo-COMPLETE.zip - it has the code AND the model.
+    echo   FIX: extract the whole .zip again, then run this from the extracted
+    echo   folder - not from inside the .zip itself.
     echo.
-    echo   If you already used that bundle, the artifacts folder did not
-    echo   survive the unzip. Extract the .zip again, all of it.
+    echo   The model IS included in the download. If artifacts\ is genuinely
+    echo   absent, re-download from:
+    echo       https://github.com/Dirkiee09/hotel-cancellation-prediction
     echo.
     echo   Or build the model yourself ^(about 10 minutes^):
     echo       .venv\Scripts\activate

@@ -32,10 +32,10 @@ python demo/start_server.py
 
 The Gradio UI opens at http://localhost:8000/ui
 
-> **No trained model?** `artifacts/` is not stored in git, so a "Download ZIP"
-> from GitHub will not include it. Either run step 2, or download
-> `hotel-demo-COMPLETE.zip` from the repository's Releases page, which bundles
-> the code and the model together.
+> **No trained model?** `artifacts/` is committed, so a clone or a "Download
+> ZIP" from GitHub already has one — step 2 is only needed if you want to
+> rebuild it yourself, or you deleted `artifacts/`. If the app says the model
+> is missing after a ZIP download, the archive was only partly extracted.
 
 ## Demo Scripts
 

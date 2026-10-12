@@ -15,12 +15,16 @@ Those columns are dropped explicitly rather than merely unused.
 
 ## ▶ Just want to run the demo?
 
-> **Do not use the green “Code → Download ZIP” button.** It gives you the source
-> only. The trained model is not stored in git, so the app will refuse to start.
+> **Click the green “Code → Download ZIP” button.** The trained model is
+> committed, so that download is a working demo — nothing to train.
 >
-> **Go to [Releases](../../releases) and download `hotel-demo-COMPLETE.zip`.**
-> That bundle has the code *and* the trained model. Unzip it, read
-> `START_HERE.txt`, then double-click **`START DEMO.bat`**.
+> Unzip it somewhere simple like `C:\hotel-demo`, read **`START_HERE.txt`**,
+> then double-click **`START DEMO.bat`**.
+>
+> You need **Python 3.11 or 3.12**. Newer versions have no matching wheels for
+> `numpy` / `scikit-learn` / `lightgbm` and the install will fail — check with
+> `python --version` first. Setup is three commands and takes about five
+> minutes; `START_HERE.txt` walks through them.
 
 ## Where to start
 
