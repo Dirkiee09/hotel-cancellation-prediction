@@ -15,7 +15,9 @@ env:
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    # Pinned rather than ubuntu-latest so the cross-platform drift reported below
+    # stays comparable from run to run.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -65,11 +67,16 @@ jobs:
       - name: Model metric gates
         run: python scripts/utils/check.py metrics
 
-      # Retraining is byte-identical on the environment recorded in
-      # artifacts/model_metadata.json, not across operating systems. This prints
-      # how far each headline figure moved on Linux and fails beyond tolerance.
-      - name: Retrain reproduces the committed results
-        run: python scripts/utils/check.py reproduce --baseline-dir "$RUNNER_TEMP/committed"
+      # Retraining is byte-identical only on the environment recorded in
+      # artifacts/model_metadata.json (see the reproduce-exact job). On Linux the
+      # figures drift slightly, and LightGBM and XGBoost are close enough in
+      # rolling-origin PR-AUC that the drift can change which one is selected.
+      # Drift mode posts every difference as a run annotation and fails only if a
+      # threshold-free score moves by more than 0.01, which would mean breakage.
+      - name: Cross-platform drift from the committed results
+        run: >-
+          python scripts/utils/check.py reproduce --mode drift
+          --baseline-dir "$RUNNER_TEMP/committed"
 
       - name: Algorithm fairness check (matched-capacity XGBoost vs LightGBM)
         run: python scripts/utils/check.py fairness
@@ -103,8 +110,43 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # The committed results were produced on Windows with Python 3.12.10 and the
+  # library versions in requirements.txt. On that environment a retrain must
+  # reproduce every committed headline figure exactly.
+  reproduce-exact:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . -r requirements.txt
+
+      - name: Snapshot committed results
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/committed"
+          cp reports/metrics.json artifacts/thresholds.json "$RUNNER_TEMP/committed/"
+
+      - name: Train production pipeline
+        run: python scripts/training/train.py
+
+      - name: Retrain reproduces the committed results exactly
+        shell: bash
+        run: >-
+          python scripts/utils/check.py reproduce --mode exact
+          --baseline-dir "$RUNNER_TEMP/committed"
+
   thesis-analysis:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Optuna alone may use its full 10-minute budget, and the benchmark took
     # 25 minutes single-threaded on a desktop; 60 left no margin.
     timeout-minutes: 90

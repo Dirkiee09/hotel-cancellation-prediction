@@ -454,11 +454,14 @@ def run_sync(
 # reproduce — a fresh retrain against the committed results
 # ---------------------------------------------------------------------------
 
-# Threshold-free scores barely move across platforms; scores read at a threshold
-# move further because the 0.01 threshold grid can tip one step either way.
-_REPRO_TOL_SCORE = 0.005
-_REPRO_TOL_AT_THRESHOLD = 0.02
-_REPRO_TOL_COST_CUT_POINTS = 2.0
+# Two modes. "exact" is for the environment recorded in model_metadata.json, where a
+# retrain is byte-identical: every figure must match. "drift" is for any other
+# platform: every difference is reported, and only a threshold-free score moving
+# further than _DRIFT_TOL_SCORE fails, because that means the pipeline itself broke.
+# Scores read at a threshold are reported but never fail in drift mode: the 0.01
+# threshold grid can tip a step, and the selected family can change (see below).
+_EXACT_TOL = 1e-9
+_DRIFT_TOL_SCORE = 0.01
 _REPRO_SCORES = ("roc_auc", "pr_auc")
 _REPRO_AT_THRESHOLD = ("f1", "precision", "recall")
 
@@ -476,55 +479,71 @@ def _reproduce_rows(
     fresh_metrics: dict[str, Any],
     committed_thresholds: dict[str, Any],
     fresh_thresholds: dict[str, Any],
-) -> list[tuple[str, float | None, float | None, float]]:
-    """(name, committed, fresh, tolerance) for every headline figure compared."""
-    from src.config import THRESHOLD_STEP
-
-    rows: list[tuple[str, float | None, float | None, float]] = []
+) -> list[tuple[str, float | None, float | None, bool]]:
+    """(name, committed, fresh, threshold_free) for every headline figure compared."""
+    rows: list[tuple[str, float | None, float | None, bool]] = []
     for policy in ("max_f1", "cost_sensitive"):
         old, new = committed_metrics.get(policy, {}), fresh_metrics.get(policy, {})
         for key in _REPRO_SCORES if policy == "max_f1" else ():
-            rows.append((f"{policy}.{key}", old.get(key), new.get(key), _REPRO_TOL_SCORE))
+            rows.append((f"{policy}.{key}", old.get(key), new.get(key), True))
         for key in _REPRO_AT_THRESHOLD:
-            rows.append((f"{policy}.{key}", old.get(key), new.get(key), _REPRO_TOL_AT_THRESHOLD))
+            rows.append((f"{policy}.{key}", old.get(key), new.get(key), False))
     old_ece = committed_metrics.get("calibration", {}).get("test", {}).get("ece_calibrated")
     new_ece = fresh_metrics.get("calibration", {}).get("test", {}).get("ece_calibrated")
-    rows.append(("calibration.test.ece_calibrated", old_ece, new_ece, _REPRO_TOL_SCORE))
+    rows.append(("calibration.test.ece_calibrated", old_ece, new_ece, True))
     rows.append(
         (
             "cost_cut_vs_contact_everyone_pct",
             _cost_cut_pct(committed_metrics),
             _cost_cut_pct(fresh_metrics),
-            _REPRO_TOL_COST_CUT_POINTS,
+            False,
         )
     )
     for policy in ("max_f1", "high_precision", "cost_sensitive"):
         old_thr = committed_thresholds.get(policy, {}).get("threshold")
         new_thr = fresh_thresholds.get(policy, {}).get("threshold")
-        # One grid step, plus float slack so 0.41 vs 0.40 counts as one step.
-        rows.append((f"threshold.{policy}", old_thr, new_thr, THRESHOLD_STEP + 1e-9))
+        rows.append((f"threshold.{policy}", old_thr, new_thr, False))
     return rows
+
+
+def _selection_gap(metrics: dict[str, Any]) -> float | None:
+    """Rolling-origin PR-AUC gap between the selected family and the runner-up."""
+    scores = sorted(
+        (
+            float(c["rolling_pr_auc_mean"])
+            for c in metrics.get("model_selection", {}).get("candidates", [])
+            if c.get("rolling_pr_auc_mean") is not None
+        ),
+        reverse=True,
+    )
+    return scores[0] - scores[1] if len(scores) >= 2 else None
 
 
 def run_reproduce(
     baseline_dir: Path,
     artifacts_dir: Path | None = None,
     reports_dir: Path | None = None,
+    *,
+    mode: str = "drift",
 ) -> list[str]:
     """Compare a fresh retrain with the committed results it should reproduce.
 
-    Retraining is byte-identical on the environment recorded in
-    ``model_metadata.json``. Floating-point results drift slightly across
-    operating systems and Python builds, so CI snapshots the committed
-    ``metrics.json`` and ``thresholds.json`` into ``baseline_dir``, retrains on
-    Linux, and calls this to show how far each headline figure moved. A figure
-    further than its tolerance from the committed value, or a different selected
-    model family, is returned as a failure.
+    CI snapshots the committed ``metrics.json`` and ``thresholds.json`` into
+    ``baseline_dir`` before retraining, then calls this. In ``exact`` mode (the
+    environment recorded in ``model_metadata.json``) any difference at all, or a
+    different selected model family, is a failure. In ``drift`` mode (any other
+    platform) every difference is printed and posted as a run annotation; a
+    changed model family is a warning, because LightGBM and XGBoost are separated
+    by less than 0.001 of rolling-origin PR-AUC and floating-point drift can tip
+    the selection. Only a threshold-free score moving beyond ``_DRIFT_TOL_SCORE``
+    fails. Returns the failures.
     """
     import os
 
     from src.config import ARTIFACTS_DIR, REPORTS_DIR
 
+    if mode not in {"exact", "drift"}:
+        raise ValueError(f"Unknown reproduce mode: {mode}")
     artifacts_dir = artifacts_dir or ARTIFACTS_DIR
     reports_dir = reports_dir or REPORTS_DIR
     committed_metrics = _load_json(baseline_dir / "metrics.json")
@@ -533,28 +552,45 @@ def run_reproduce(
     fresh_thresholds = _load_json(artifacts_dir / "thresholds.json")
 
     failures: list[str] = []
+    family_warnings: list[str] = []
     old_family = committed_metrics.get("selected_model_family")
     new_family = fresh_metrics.get("selected_model_family")
     if old_family != new_family:
-        failures.append(f"selected_model_family: committed={old_family} fresh={new_family}")
+        gap = _selection_gap(committed_metrics)
+        gap_text = f"{gap:.4f}" if gap is not None else "unknown"
+        message = (
+            f"selected_model_family: committed={old_family} fresh={new_family} "
+            f"(committed rolling-origin PR-AUC gap to the runner-up: {gap_text})"
+        )
+        (failures if mode == "exact" else family_warnings).append(message)
 
     rows = _reproduce_rows(committed_metrics, fresh_metrics, committed_thresholds, fresh_thresholds)
-    lines = [f"selected_model_family: committed={old_family} fresh={new_family}"]
-    for name, old, new, tol in rows:
+    lines = [f"mode={mode}", f"selected_model_family: committed={old_family} fresh={new_family}"]
+    for name, old, new, threshold_free in rows:
         if old is None or new is None:
             failures.append(f"{name}: missing (committed={old} fresh={new})")
             continue
         delta = abs(float(new) - float(old))
-        mark = "ok" if delta <= tol else "FAIL"
+        tol: float | None
+        if mode == "exact":
+            tol = _EXACT_TOL
+        else:
+            tol = _DRIFT_TOL_SCORE if threshold_free else None
+        mark = "info" if tol is None else ("ok" if delta <= tol else "FAIL")
         lines.append(f"{name}: committed={old:.6f} fresh={new:.6f} |diff|={delta:.6f} [{mark}]")
-        if delta > tol:
+        if tol is not None and delta > tol:
             failures.append(f"{name}: |diff|={delta:.6f} exceeds {tol:g}")
 
     for line in lines:
         print(line)
+    for message in family_warnings:
+        print(f"WARNING {message}")
     if os.environ.get("GITHUB_ACTIONS") == "true":
         # Annotations are readable on the public run page without downloading logs.
-        print("::notice title=Retrain vs committed results::" + " ; ".join(lines))
+        title = "Exact retrain vs committed" if mode == "exact" else "Cross-platform drift"
+        print(f"::notice title={title}::" + " ; ".join(lines))
+        for message in family_warnings:
+            print(f"::warning title=Selected model changed on this platform::{message}")
         for failure in failures:
             print(f"::error title=Retrain differs from committed results::{failure}")
     return failures
@@ -707,6 +743,13 @@ def main() -> None:
         required=True,
         help="Folder holding the committed metrics.json and thresholds.json",
     )
+    reproduce.add_argument(
+        "--mode",
+        choices=("exact", "drift"),
+        default="drift",
+        help="exact: the recorded environment, every figure must match; "
+        "drift: another platform, report differences and fail only on broken scores",
+    )
     sub.add_parser("all", help="Run all checks in sequence")
 
     args = parser.parse_args()
@@ -726,13 +769,13 @@ def main() -> None:
     elif args.command == "fairness":
         run_fairness()
     elif args.command == "reproduce":
-        failures = run_reproduce(args.baseline_dir)
+        failures = run_reproduce(args.baseline_dir, mode=args.mode)
         if failures:
             logger.error("reproduce FAILED — %d figure(s) outside tolerance:", len(failures))
             for msg in failures:
                 logger.error("  ✗ %s", msg)
             sys.exit(1)
-        logger.info("reproduce OK — fresh retrain matches the committed results within tolerance")
+        logger.info("reproduce OK (%s) — no figure outside its tolerance", args.mode)
 
 
 if __name__ == "__main__":

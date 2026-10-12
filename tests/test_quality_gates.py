@@ -54,23 +54,40 @@ def _baseline(root: Path) -> Path:
     return baseline
 
 
-def test_reproduce_passes_when_the_retrain_matches(tmp_path) -> None:
+def test_reproduce_exact_passes_only_on_identical_results(tmp_path) -> None:
     check = _load_check()
-    artifacts, reports = _write_run(tmp_path / "fresh", _metrics(roc=0.8631), _thresholds(0.40))
-    failures = check.run_reproduce(_baseline(tmp_path), artifacts, reports)
-    assert failures == []
+    baseline = _baseline(tmp_path)
+    artifacts, reports = _write_run(tmp_path / "same", _metrics(), _thresholds())
+    assert check.run_reproduce(baseline, artifacts, reports, mode="exact") == []
+
+    artifacts, reports = _write_run(tmp_path / "tiny", _metrics(roc=0.8601), _thresholds())
+    failures = check.run_reproduce(baseline, artifacts, reports, mode="exact")
+    assert any("max_f1.roc_auc" in f for f in failures)
 
 
-def test_reproduce_flags_drift_beyond_tolerance(tmp_path) -> None:
+def test_reproduce_drift_reports_a_family_flip_without_failing(tmp_path) -> None:
+    """Cross-platform drift can tip LightGBM vs XGBoost; that is reported, not failed.
+
+    This is what CI saw on Linux / Python 3.11: XGBoost selected, ROC-AUC +0.001,
+    PR-AUC +0.003, recall at the max-F1 threshold -0.035.
+    """
     check = _load_check()
     artifacts, reports = _write_run(
-        tmp_path / "fresh", _metrics(roc=0.85, family="xgboost"), _thresholds(0.38)
+        tmp_path / "linux", _metrics(roc=0.8610, family="xgboost"), _thresholds(0.38)
     )
-    failures = check.run_reproduce(_baseline(tmp_path), artifacts, reports)
+    baseline = _baseline(tmp_path)
+    assert check.run_reproduce(baseline, artifacts, reports, mode="drift") == []
+    failures = check.run_reproduce(baseline, artifacts, reports, mode="exact")
     joined = " ".join(failures)
     assert "selected_model_family" in joined
-    assert "max_f1.roc_auc" in joined
     assert "threshold.max_f1" in joined
+
+
+def test_reproduce_drift_fails_when_scores_break(tmp_path) -> None:
+    check = _load_check()
+    artifacts, reports = _write_run(tmp_path / "broken", _metrics(roc=0.84), _thresholds())
+    failures = check.run_reproduce(_baseline(tmp_path), artifacts, reports, mode="drift")
+    assert any("max_f1.roc_auc" in f for f in failures)
 
 
 def _mapping(delta: float, significant: bool, family: str = "lightgbm") -> dict:
