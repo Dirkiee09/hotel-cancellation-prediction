@@ -1,0 +1,19 @@
+{
+  "champion_family": "lightgbm",
+  "cost_sensitive_threshold": 0.06,
+  "family_validation_scores": {
+    "gradient_boosting": {
+      "pr_auc": 0.8963804570823045,
+      "roc_auc": 0.9145120615449842
+    },
+    "lightgbm": {
+      "pr_auc": 0.9019286473798596,
+      "roc_auc": 0.916925725095691
+    },
+    "xgboost": {
+      "pr_auc": 0.9006740924902582,
+      "roc_auc": 0.9156157514726272
+    }
+  },
+  "max_f1_threshold": 0.41
+}

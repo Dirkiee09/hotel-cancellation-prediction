@@ -1,0 +1,126 @@
+{
+  "calibration": {
+    "artifact": "probability_calibrator.pkl",
+    "method": "isotonic",
+    "validation_brier_calibrated": 0.11469222321094497,
+    "validation_brier_raw": 0.12160509381304196
+  },
+  "cleaning_issues": {
+    "agent_filled_as_direct": 16340,
+    "children_null_filled_zero": 4,
+    "country_unknown_rows": 488,
+    "rows_dropped_adr_outlier": 0,
+    "rows_dropped_negative_adr": 1,
+    "rows_dropped_null_guests": 0,
+    "rows_dropped_total": 181,
+    "rows_dropped_zero_guests": 180
+  },
+  "feature_columns": [
+    "hotel",
+    "lead_time",
+    "arrival_date_year",
+    "arrival_date_month",
+    "arrival_date_day_of_month",
+    "stays_in_weekend_nights",
+    "stays_in_week_nights",
+    "adults",
+    "children",
+    "babies",
+    "meal",
+    "country",
+    "market_segment",
+    "distribution_channel",
+    "is_repeated_guest",
+    "previous_cancellations",
+    "previous_bookings_not_canceled",
+    "reserved_room_type",
+    "deposit_type",
+    "agent",
+    "customer_type",
+    "adr",
+    "required_car_parking_spaces",
+    "total_of_special_requests",
+    "had_company",
+    "total_stay",
+    "total_guests",
+    "adr_per_person",
+    "is_weekend_heavy",
+    "revenue_at_risk",
+    "month_sin",
+    "month_cos",
+    "is_late_window"
+  ],
+  "leakage_columns_excluded": [
+    "reservation_status",
+    "reservation_status_date",
+    "assigned_room_type",
+    "booking_changes",
+    "days_in_waiting_list"
+  ],
+  "lineage": {
+    "artifacts": {
+      "bundle_sha256": "48bfc5b3d8a3b7b9e7c68c5796fcd6963b6f85cc8ef285e14f96b1f57ddbcfb6",
+      "files": {
+        "best_model.pkl": "f57c538d077c9da456901a1cf33df425218fa10e9b84d1c231a5baec423ff447",
+        "cost_threshold_sweep.csv": "f0c0353b1a07b54160c1fbcd3756c6a21a1b3be4be6ab295e84c82bacffd2cb0",
+        "feature_columns.json": "88ea6c503d5e547630d91d91583b3a942466580b3cef4f5a0d285f6dbefb1307",
+        "probability_calibrator.pkl": "a6bf46ad8ab4661bd251e4a43f2465d23f6bcb5cf9c73745cd44ddc50f9fd2e7",
+        "threshold_sweep.csv": "dafbb4c96a8fd51d5cae062cbd641d35e941829c0d5fc2111b88f94eb4a9578e",
+        "thresholds.json": "8378bcf38a529d44a564bd3e48da68e1833dba00500b5ad8af99d15907e77874"
+      }
+    },
+    "code": {
+      "git_commit": "93c231d69b9ef766e4e51ab395117c0b9b2fa43e",
+      "git_commit_error": null,
+      "source_tree_sha256": "2d8fc4c0e09712b9c1d2f01d46d78ffff6daf08ee82a28ffa5260d755335011f"
+    },
+    "data": {
+      "sha256": "7c2ae42a7353905ea136e5c2287f17c92c5435826598bfbb8491c6f0c7b1fc06",
+      "source_path": "D:\\PythonProject1\\data\\hotel_bookings.csv"
+    }
+  },
+  "model_selection": {
+    "candidates": [
+      {
+        "folds_evaluated": 3,
+        "model_family": "gradient_boosting",
+        "rolling_pr_auc_mean": 0.8669412317037498,
+        "rolling_roc_auc_mean": 0.9108363327626154
+      },
+      {
+        "folds_evaluated": 3,
+        "model_family": "xgboost",
+        "rolling_pr_auc_mean": 0.8684082712418487,
+        "rolling_roc_auc_mean": 0.9114441428992621
+      },
+      {
+        "folds_evaluated": 3,
+        "model_family": "lightgbm",
+        "rolling_pr_auc_mean": 0.8693191861959756,
+        "rolling_roc_auc_mean": 0.9125670491769134
+      }
+    ],
+    "fallback_reason": null,
+    "policy": "champion_challenger_rolling_pr_auc_v1",
+    "primary_metric": "rolling_pr_auc_mean",
+    "secondary_metric": "rolling_roc_auc_mean",
+    "winner": "lightgbm"
+  },
+  "model_selection_policy": "champion_challenger_rolling_pr_auc_v1",
+  "model_type": "lightgbm",
+  "seed": 42,
+  "split": {
+    "strategy": "time_aware",
+    "test_ratio": 0.09999999999999995,
+    "train_ratio": 0.8,
+    "val_ratio": 0.1
+  },
+  "target_column": "is_canceled",
+  "training": {
+    "class_imbalance_ratio": 1.7674695298897272,
+    "rows_test": 11922,
+    "rows_train": 95367,
+    "rows_val": 11920,
+    "scale_pos_weight": null
+  }
+}

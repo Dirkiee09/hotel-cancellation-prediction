@@ -1,0 +1,23 @@
+{
+  "f1": {
+    "alpha": 0.05,
+    "ci_lower": 0.7263213734300777,
+    "ci_upper": 0.7449611777862232,
+    "n_bootstraps": 2000,
+    "point_estimate": 0.7355839416058394
+  },
+  "pr_auc": {
+    "alpha": 0.05,
+    "ci_lower": 0.7466835676771917,
+    "ci_upper": 0.7713021496541841,
+    "n_bootstraps": 2000,
+    "point_estimate": 0.7589656616863553
+  },
+  "roc_auc": {
+    "alpha": 0.05,
+    "ci_lower": 0.856958029582416,
+    "ci_upper": 0.8698425910155526,
+    "n_bootstraps": 2000,
+    "point_estimate": 0.8634270032381611
+  }
+}

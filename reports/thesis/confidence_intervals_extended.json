@@ -1,0 +1,112 @@
+{
+  "deduplicated": {
+    "cost_savings_vs_050": {
+      "alpha": 0.05,
+      "ci_lower": 291454.3,
+      "ci_upper": 360153.46,
+      "n_bootstraps": 2000,
+      "point_estimate": 325630.93
+    },
+    "ece": {
+      "alpha": 0.05,
+      "ci_lower": 0.012403,
+      "ci_upper": 0.026977,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.017629
+    },
+    "f1": {
+      "alpha": 0.05,
+      "ci_lower": 0.694754,
+      "ci_upper": 0.718143,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.706821
+    },
+    "pr_auc": {
+      "alpha": 0.05,
+      "ci_lower": 0.686256,
+      "ci_upper": 0.719835,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.703051
+    },
+    "precision": {
+      "alpha": 0.05,
+      "ci_lower": 0.58935,
+      "ci_upper": 0.61829,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.604091
+    },
+    "recall": {
+      "alpha": 0.05,
+      "ci_lower": 0.839102,
+      "ci_upper": 0.863942,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.85165
+    },
+    "roc_auc": {
+      "alpha": 0.05,
+      "ci_lower": 0.839896,
+      "ci_upper": 0.855304,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.847664
+    },
+    "threshold_cost_sensitive": 0.03,
+    "threshold_max_f1": 0.34
+  },
+  "generated_at_utc": "2026-07-02T06:17:13+00:00",
+  "method": "percentile bootstrap, resampling test rows with replacement",
+  "n_bootstraps": 2000,
+  "note": "Model-comparison p-values reported elsewhere are exploratory and not corrected for multiple comparisons; these intervals quantify sampling uncertainty of single-model metrics.",
+  "per_record": {
+    "cost_savings_vs_050": {
+      "alpha": 0.05,
+      "ci_lower": 551899.23,
+      "ci_upper": 645098.21,
+      "n_bootstraps": 2000,
+      "point_estimate": 598501.79
+    },
+    "ece": {
+      "alpha": 0.05,
+      "ci_lower": 0.025441,
+      "ci_upper": 0.03788,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.030635
+    },
+    "f1": {
+      "alpha": 0.05,
+      "ci_lower": 0.726321,
+      "ci_upper": 0.744961,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.735584
+    },
+    "pr_auc": {
+      "alpha": 0.05,
+      "ci_lower": 0.746684,
+      "ci_upper": 0.771302,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.758966
+    },
+    "precision": {
+      "alpha": 0.05,
+      "ci_lower": 0.61281,
+      "ci_upper": 0.63686,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.624574
+    },
+    "recall": {
+      "alpha": 0.05,
+      "ci_lower": 0.885637,
+      "ci_upper": 0.903439,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.894585
+    },
+    "roc_auc": {
+      "alpha": 0.05,
+      "ci_lower": 0.856958,
+      "ci_upper": 0.869843,
+      "n_bootstraps": 2000,
+      "point_estimate": 0.863427
+    },
+    "threshold_cost_sensitive": 0.06,
+    "threshold_max_f1": 0.41
+  }
+}

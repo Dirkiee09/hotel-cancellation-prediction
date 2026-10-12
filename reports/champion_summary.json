@@ -1,0 +1,14 @@
+{
+  "champion_family": "lightgbm",
+  "fallback_reason": null,
+  "n_candidates": 3,
+  "n_eligible": 3,
+  "policy": "champion_challenger_rolling_pr_auc_v1",
+  "pr_auc_gap": 0.0009109149541268735,
+  "pr_auc_rolling_mean": 0.8693191861959756,
+  "pr_auc_runner_up": 0.8684082712418487,
+  "primary_metric": "rolling_pr_auc_mean",
+  "runner_up": "xgboost",
+  "secondary_metric": "rolling_roc_auc_mean",
+  "selected_at": "2026-06-26T12:03:10.576474+00:00"
+}

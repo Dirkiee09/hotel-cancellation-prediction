@@ -1,0 +1,22 @@
+{
+  "deduplicated": {
+    "brier_score": 0.151761,
+    "calibration_intercept": -0.0222,
+    "calibration_slope": 0.9803,
+    "ece": 0.017629,
+    "ece_bins": 10,
+    "log_loss": 0.448076,
+    "n_test": 8724
+  },
+  "ece_bins": 10,
+  "generated_at_utc": "2026-07-02T06:17:13+00:00",
+  "per_record": {
+    "brier_score": 0.146749,
+    "calibration_intercept": -0.1844,
+    "calibration_slope": 0.9255,
+    "ece": 0.030635,
+    "ece_bins": 10,
+    "log_loss": 0.433519,
+    "n_test": 11922
+  }
+}

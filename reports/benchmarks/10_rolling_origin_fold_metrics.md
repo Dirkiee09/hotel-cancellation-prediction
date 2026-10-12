@@ -1,0 +1,19 @@
+              model  fold  cutoff_frac  n_train  n_val  roc_auc   pr_auc
+logistic_regression     1          0.6    64372  10728 0.905776 0.875302
+logistic_regression     2          0.7    75100  10728 0.865457 0.790660
+logistic_regression     3          0.8    85829  10728 0.901397 0.861429
+      decision_tree     1          0.6    64372  10728 0.755272 0.610771
+      decision_tree     2          0.7    75100  10728 0.723629 0.532405
+      decision_tree     3          0.8    85829  10728 0.753655 0.604389
+      random_forest     1          0.6    64372  10728 0.906222 0.877706
+      random_forest     2          0.7    75100  10728 0.880813 0.814293
+      random_forest     3          0.8    85829  10728 0.906892 0.840207
+  gradient_boosting     1          0.6    64372  10728 0.919204 0.892459
+  gradient_boosting     2          0.7    75100  10728 0.897629 0.832216
+  gradient_boosting     3          0.8    85829  10728 0.915676 0.876149
+            xgboost     1          0.6    64372  10728 0.922304 0.896861
+            xgboost     2          0.7    75100  10728 0.895342 0.831460
+            xgboost     3          0.8    85829  10728 0.916687 0.876903
+           lightgbm     1          0.6    64372  10728 0.921390 0.895709
+           lightgbm     2          0.7    75100  10728 0.897510 0.833238
+           lightgbm     3          0.8    85829  10728 0.918801 0.879010

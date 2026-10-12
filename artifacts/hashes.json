@@ -1,0 +1,11 @@
+{
+  "bundle_sha256": "48bfc5b3d8a3b7b9e7c68c5796fcd6963b6f85cc8ef285e14f96b1f57ddbcfb6",
+  "files": {
+    "best_model.pkl": "f57c538d077c9da456901a1cf33df425218fa10e9b84d1c231a5baec423ff447",
+    "cost_threshold_sweep.csv": "f0c0353b1a07b54160c1fbcd3756c6a21a1b3be4be6ab295e84c82bacffd2cb0",
+    "feature_columns.json": "88ea6c503d5e547630d91d91583b3a942466580b3cef4f5a0d285f6dbefb1307",
+    "probability_calibrator.pkl": "a6bf46ad8ab4661bd251e4a43f2465d23f6bcb5cf9c73745cd44ddc50f9fd2e7",
+    "threshold_sweep.csv": "dafbb4c96a8fd51d5cae062cbd641d35e941829c0d5fc2111b88f94eb4a9578e",
+    "thresholds.json": "8378bcf38a529d44a564bd3e48da68e1833dba00500b5ad8af99d15907e77874"
+  }
+}

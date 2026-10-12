@@ -1,0 +1,25 @@
+2026-03-01 23:36:20,855 INFO src.eval.benchmark event=benchmark_start output_dir=D:\PythonProject1\reports\benchmarks
+2026-03-01 23:36:21,804 INFO src.eval.benchmark event=benchmark_fit model=logistic_regression
+2026-03-01 23:36:24,697 INFO src.eval.benchmark event=benchmark_fit model=decision_tree
+2026-03-01 23:36:25,241 INFO src.eval.benchmark event=benchmark_fit model=random_forest
+2026-03-01 23:36:28,340 INFO src.eval.benchmark event=benchmark_fit model=gradient_boosting
+2026-03-01 23:36:32,249 INFO src.eval.benchmark event=benchmark_fit model=xgboost
+2026-03-01 23:36:32,961 INFO src.eval.benchmark event=benchmark_fit model=lightgbm
+2026-03-01 23:36:58,898 INFO src.eval.benchmark event=benchmark_complete output_dir=D:\PythonProject1\reports\benchmarks champion_model=logistic_regression tables=16
+2026-03-01 23:36:58,909 INFO __main__ event=benchmark_finished reports_dir=D:\PythonProject1\reports\benchmarks champion_model=logistic_regression tables=16
+2026-03-01 23:36:58,909 INFO __main__ event=  table=01_dataset_split_summary path=D:\PythonProject1\reports\benchmarks\01_dataset_split_summary.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=02_model_specs path=D:\PythonProject1\reports\benchmarks\02_model_specs.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=03_holdout_probability_metrics path=D:\PythonProject1\reports\benchmarks\03_holdout_probability_metrics.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=04_holdout_threshold_metrics_050 path=D:\PythonProject1\reports\benchmarks\04_holdout_threshold_metrics_050.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=05_holdout_threshold_metrics_max_f1 path=D:\PythonProject1\reports\benchmarks\05_holdout_threshold_metrics_max_f1.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=06_holdout_threshold_metrics_high_precision path=D:\PythonProject1\reports\benchmarks\06_holdout_threshold_metrics_high_precision.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=07_thresholds_per_model path=D:\PythonProject1\reports\benchmarks\07_thresholds_per_model.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=08_confusion_matrix_counts_per_model path=D:\PythonProject1\reports\benchmarks\08_confusion_matrix_counts_per_model.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=09_confusion_matrix_rates_per_model path=D:\PythonProject1\reports\benchmarks\09_confusion_matrix_rates_per_model.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=10_rolling_origin_fold_metrics path=D:\PythonProject1\reports\benchmarks\10_rolling_origin_fold_metrics.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=11_rolling_origin_summary path=D:\PythonProject1\reports\benchmarks\11_rolling_origin_summary.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=12_temporal_stability_by_bucket path=D:\PythonProject1\reports\benchmarks\12_temporal_stability_by_bucket.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=13_bootstrap_confidence_intervals path=D:\PythonProject1\reports\benchmarks\13_bootstrap_confidence_intervals.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=14_paired_significance_vs_champion path=D:\PythonProject1\reports\benchmarks\14_paired_significance_vs_champion.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=15_training_inference_cost path=D:\PythonProject1\reports\benchmarks\15_training_inference_cost.csv
+2026-03-01 23:36:58,909 INFO __main__ event=  table=16_rankings path=D:\PythonProject1\reports\benchmarks\16_rankings.csv

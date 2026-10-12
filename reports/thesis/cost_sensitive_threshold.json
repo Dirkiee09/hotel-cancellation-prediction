@@ -1,0 +1,25 @@
+{
+  "baseline_050_cost": 416421.01,
+  "fn_cost_total": 9776.630000000001,
+  "fn_count": 51,
+  "fp_cost_assumption": 15.0,
+  "fp_cost_total": 49875.0,
+  "fp_count": 3325,
+  "intervene_all_cost": 100305.0,
+  "no_model_cost": 1606669.92,
+  "risk_tier_counts": {
+    "high": 3354,
+    "low": 5462,
+    "medium": 3106
+  },
+  "risk_tier_high_threshold": 0.7,
+  "risk_tier_medium_threshold": 0.4,
+  "savings_vs_050": 356769.38,
+  "savings_vs_intervene_all": 40653.369999999995,
+  "savings_vs_no_model": 1547018.29,
+  "test_fn_cost_total": 8885.5,
+  "test_fp_cost_total": 62250.0,
+  "test_total_cost": 71135.5,
+  "threshold": 0.06,
+  "total_cost": 59651.630000000005
+}

@@ -1,0 +1,24 @@
+{
+  "cancel_rate_late_window": 0.09737827715355805,
+  "cancel_rate_overall_test": 0.3779567186713639,
+  "late_window_share": 0.06718671363865124,
+  "lead_time_days_max": 3,
+  "metrics_cost_sensitive": {
+    "balanced_accuracy": 0.7039844664325992,
+    "f1": 0.2930232558139535,
+    "pr_auc": 0.2828787353440117,
+    "precision": 0.17897727272727273,
+    "recall": 0.8076923076923077,
+    "roc_auc": 0.768415079618399
+  },
+  "metrics_max_f1": {
+    "balanced_accuracy": 0.5927492286413448,
+    "f1": 0.2733812949640288,
+    "pr_auc": 0.2828787353440117,
+    "precision": 0.3114754098360656,
+    "recall": 0.24358974358974358,
+    "roc_auc": 0.768415079618399
+  },
+  "n_rows_late_window": 801,
+  "n_rows_test_total": 11922
+}

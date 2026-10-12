@@ -1,0 +1,7 @@
+              model   tn   fp   fn   tp policy
+      decision_tree 5580 1836 1767 2739 max_f1
+  gradient_boosting 5376 2040  714 3792 max_f1
+           lightgbm 4993 2423  475 4031 max_f1
+logistic_regression 5439 1977  940 3566 max_f1
+      random_forest 5620 1796 1125 3381 max_f1
+            xgboost 5532 1884  858 3648 max_f1

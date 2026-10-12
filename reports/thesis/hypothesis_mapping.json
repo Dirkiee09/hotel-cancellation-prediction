@@ -1,0 +1,61 @@
+{
+  "H1": {
+    "statement": "Lead time, deposit type, and previous cancellations are significant predictors.",
+    "status": "evaluated",
+    "supporting_artifact": "shap_feature_importance.csv",
+    "top_shap_feature_indices": [
+      50,
+      86,
+      29,
+      91,
+      64,
+      81,
+      36,
+      74,
+      85,
+      55
+    ]
+  },
+  "H2": {
+    "champion_family": "lightgbm",
+    "statement": "Gradient-boosted trees outperform baseline alternatives.",
+    "status": "supported",
+    "validation_scores": {
+      "gradient_boosting": {
+        "pr_auc": 0.8963804570823045,
+        "roc_auc": 0.9145120615449842
+      },
+      "lightgbm": {
+        "pr_auc": 0.9019286473798596,
+        "roc_auc": 0.916925725095691
+      },
+      "xgboost": {
+        "pr_auc": 0.9006740924902582,
+        "roc_auc": 0.9156157514726272
+      }
+    }
+  },
+  "H3": {
+    "statement": "Lead time has greatest SHAP importance.",
+    "status": "evaluated",
+    "supporting_artifact": "shap_feature_importance.csv",
+    "top_shap_feature_indices": [
+      50,
+      86,
+      29,
+      91,
+      64,
+      81,
+      36,
+      74,
+      85,
+      55
+    ]
+  },
+  "H4": {
+    "savings_vs_050": 356769.38,
+    "savings_vs_no_model": 1547018.29,
+    "statement": "Cost-sensitive thresholding lowers expected revenue loss.",
+    "status": "supported"
+  }
+}

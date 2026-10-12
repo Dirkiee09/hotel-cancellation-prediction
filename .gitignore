@@ -32,15 +32,55 @@ htmlcov/
 # Temp
 .tmp/
 
-# Generated outputs (recreated by `make train` / `make benchmark`)
-artifacts/*
-!artifacts/.gitkeep
+# Generated outputs (recreated by `make train` / `make benchmark`).
+#
+# Most stay out of git. The exceptions below are committed on purpose: they are
+# what the served app reads at runtime, so a plain "Download ZIP" from GitHub
+# produces a working demo instead of one that refuses to start. Roughly 11 MB
+# raw, ~7.5 MB packed — small enough to be worth the convenience, and this is a
+# thesis artefact rather than a repository that retrains on a schedule.
+#
+# artifacts/ is committed (4 MB): the model, calibrator, thresholds, feature
+# list, metadata and the ADR regressor the /predict path uses.
+#
+# artifacts/ph/ is NOT. It is fitted on the Punta Villa PMS export — real
+# reservations that are deliberately absent from this repository — and the
+# Portugal demo never loads it. Regenerate it with scripts/training/train_ph.py
+# if you hold that CSV.
+artifacts/ph/
+
 reports/*
 !reports/.gitkeep
+
+# Reports the app reads: hero banner, benchmarks tab, SHAP table, training date.
+!reports/metrics.json
+!reports/champion_summary.json
+!reports/segment_metrics.json
+!reports/segment_metrics.csv
+!reports/dedup_sensitivity.json
+!reports/benchmarks/
+!reports/dedup/
+!reports/thesis/
+!reports/cv/
+!reports/ph/
+
+# ...but never the Philippine row-level output. Each row is one real Punta
+# Villa reservation, and the per-record SHAP plot draws one point per booking.
+# Aggregate JSONs are committed so the PH notebooks render; the rows are not.
+# This is the rule docs/provenance.md states.
+reports/ph/*predictions*.csv
+reports/ph/shap_summary_plot.png
+
+# Figures: only the curated publication set the UI embeds, not all 190.
+# The directory has to be re-included before anything inside it can be.
+!reports/figures/
 reports/figures/*
 !reports/figures/.gitkeep
+!reports/figures/essential/
+
 data/*.csv
 !data/.gitkeep
+!data/hotel_bookings.csv
 # Live prediction stores (sqlite/CSV written at serving time by the UI and
 # FastAPI /predict, read by Power BI — never tracked)
 data/predictions/

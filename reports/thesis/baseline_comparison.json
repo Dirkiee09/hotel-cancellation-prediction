@@ -1,0 +1,46 @@
+{
+  "champion": {
+    "pr_auc": 0.7589656616863553,
+    "roc_auc": 0.8634270032381611
+  },
+  "champion_vs_dt_pr_auc": {
+    "n_bootstraps": 2000,
+    "observed_delta": 0.09664457676408866,
+    "p_value": 0.0,
+    "significant_at_05": true
+  },
+  "champion_vs_dt_roc_auc": {
+    "n_bootstraps": 2000,
+    "observed_delta": 0.054018799577310594,
+    "p_value": 0.0,
+    "significant_at_05": true
+  },
+  "champion_vs_lr_pr_auc": {
+    "n_bootstraps": 2000,
+    "observed_delta": 0.004549696928015323,
+    "p_value": 0.177,
+    "significant_at_05": false
+  },
+  "champion_vs_lr_roc_auc": {
+    "n_bootstraps": 2000,
+    "observed_delta": 0.021869019420827418,
+    "p_value": 0.0,
+    "significant_at_05": true
+  },
+  "decision_tree_depth5": {
+    "pr_auc": 0.6623210849222666,
+    "roc_auc": 0.8094082036608505
+  },
+  "dummy_most_frequent": {
+    "pr_auc": 0.3779567186713639,
+    "roc_auc": 0.5
+  },
+  "logistic_regression": {
+    "pr_auc": 0.7544159647583399,
+    "roc_auc": 0.8415579838173337
+  },
+  "naive_bayes": {
+    "pr_auc": 0.6098897021894332,
+    "roc_auc": 0.7082133476831323
+  }
+}

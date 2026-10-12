@@ -1,0 +1,29 @@
+{
+  "cost_sensitive": {
+    "fn_recovery_nights": 1.0,
+    "fp_cost_assumption": 15.0,
+    "threshold": 0.06,
+    "validation_savings_vs_050": 356769.38,
+    "validation_savings_vs_no_model": 1547018.29,
+    "validation_total_cost": 59651.630000000005
+  },
+  "high_precision": {
+    "constraint_met": true,
+    "f1": 0.5261230812561611,
+    "min_positive_rate": 0.05,
+    "min_recall": 0.2,
+    "positive_rate": 0.15671140939597317,
+    "positive_rate_constraint_met": true,
+    "precision": 1.0,
+    "recall": 0.3569654118096694,
+    "recall_constraint_met": true,
+    "threshold": 0.98
+  },
+  "max_f1": {
+    "f1": 0.8066414829131161,
+    "positive_rate": 0.5159395973154363,
+    "precision": 0.7465040650406504,
+    "recall": 0.8773170265622015,
+    "threshold": 0.41
+  }
+}

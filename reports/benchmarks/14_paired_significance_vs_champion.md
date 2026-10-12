@@ -1,0 +1,16 @@
+champion_model    challenger_model              metric  observed_delta  delta_ci_lower  delta_ci_upper  p_value_two_sided  significant_at_05  n_bootstraps
+       xgboost       decision_tree f1_max_f1_threshold        0.123600        0.112267        0.135105              0.000               True          2000
+       xgboost       decision_tree              pr_auc        0.249159        0.238553        0.260655              0.000               True          2000
+       xgboost       decision_tree             roc_auc        0.181700        0.173621        0.190042              0.000               True          2000
+       xgboost   gradient_boosting f1_max_f1_threshold       -0.006766       -0.012160       -0.001486              0.014               True          2000
+       xgboost   gradient_boosting              pr_auc        0.006034        0.002978        0.009127              0.000               True          2000
+       xgboost   gradient_boosting             roc_auc       -0.000112       -0.001895        0.001573              0.912              False          2000
+       xgboost            lightgbm f1_max_f1_threshold       -0.008746       -0.014560       -0.003034              0.002               True          2000
+       xgboost            lightgbm              pr_auc        0.003596        0.001220        0.006147              0.010               True          2000
+       xgboost            lightgbm             roc_auc       -0.000933       -0.002333        0.000450              0.183              False          2000
+       xgboost logistic_regression f1_max_f1_threshold        0.017116        0.010478        0.024043              0.000               True          2000
+       xgboost logistic_regression              pr_auc        0.022726        0.016760        0.029657              0.000               True          2000
+       xgboost logistic_regression             roc_auc        0.021640        0.018091        0.025856              0.000               True          2000
+       xgboost       random_forest f1_max_f1_threshold        0.028501        0.021763        0.035528              0.000               True          2000
+       xgboost       random_forest              pr_auc        0.035474        0.030855        0.040747              0.000               True          2000
+       xgboost       random_forest             roc_auc        0.014185        0.011504        0.017033              0.000               True          2000

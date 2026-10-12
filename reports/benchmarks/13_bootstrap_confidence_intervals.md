@@ -1,0 +1,19 @@
+              model              metric  point_estimate  ci_lower  ci_upper  n_bootstraps  alpha
+      decision_tree f1_max_f1_threshold        0.603238  0.591306  0.614798          2000   0.05
+      decision_tree              pr_auc        0.513402  0.501660  0.525565          2000   0.05
+      decision_tree             roc_auc        0.680795  0.672165  0.689178          2000   0.05
+  gradient_boosting f1_max_f1_threshold        0.733604  0.723578  0.743126          2000   0.05
+  gradient_boosting              pr_auc        0.756528  0.744466  0.768151          2000   0.05
+  gradient_boosting             roc_auc        0.862606  0.856382  0.869014          2000   0.05
+           lightgbm f1_max_f1_threshold        0.735584  0.725783  0.744708          2000   0.05
+           lightgbm              pr_auc        0.758966  0.746633  0.770864          2000   0.05
+           lightgbm             roc_auc        0.863427  0.856958  0.869843          2000   0.05
+logistic_regression f1_max_f1_threshold        0.709722  0.699175  0.720024          2000   0.05
+logistic_regression              pr_auc        0.739836  0.727139  0.752385          2000   0.05
+logistic_regression             roc_auc        0.840854  0.833704  0.847793          2000   0.05
+      random_forest f1_max_f1_threshold        0.698337  0.687375  0.708009          2000   0.05
+      random_forest              pr_auc        0.727087  0.714844  0.739585          2000   0.05
+      random_forest             roc_auc        0.848310  0.841690  0.855117          2000   0.05
+            xgboost f1_max_f1_threshold        0.726838  0.716606  0.736917          2000   0.05
+            xgboost              pr_auc        0.762562  0.750647  0.774385          2000   0.05
+            xgboost             roc_auc        0.862494  0.856109  0.868951          2000   0.05

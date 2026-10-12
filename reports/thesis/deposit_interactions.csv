@@ -1,0 +1,30 @@
+Dimension,Deposit Type,Segment,N Bookings,Cancellation Rate,Small Sample Flag
+market_segment,No Deposit,Aviation,227,0.1982,False
+market_segment,No Deposit,Complementary,702,0.1254,False
+market_segment,No Deposit,Corporate,4145,0.1119,False
+market_segment,No Deposit,Direct,11788,0.1466,False
+market_segment,No Deposit,Groups,4203,0.1656,False
+market_segment,No Deposit,Offline TA/TO,13598,0.1307,False
+market_segment,No Deposit,Online TA,51586,0.3531,False
+market_segment,No Deposit,Undefined,2,1.0,True
+market_segment,Non Refund,Corporate,64,0.7031,True
+market_segment,Non Refund,Direct,10,0.7,True
+market_segment,Non Refund,Groups,659,0.959,False
+market_segment,Non Refund,Offline TA/TO,287,0.9895,False
+market_segment,Non Refund,Online TA,18,0.8333,True
+market_segment,Refundable,Corporate,3,0.3333,True
+market_segment,Refundable,Direct,6,0.3333,True
+market_segment,Refundable,Groups,80,0.0875,True
+market_segment,Refundable,Offline TA/TO,4,0.5,True
+market_segment,Refundable,Online TA,14,1.0,True
+distribution_channel,No Deposit,Corporate,4988,0.1167,False
+distribution_channel,No Deposit,Direct,12874,0.1459,False
+distribution_channel,No Deposit,GDS,181,0.1989,False
+distribution_channel,No Deposit,TA/TO,68203,0.3008,False
+distribution_channel,No Deposit,Undefined,5,0.8,True
+distribution_channel,Non Refund,Corporate,90,0.7222,True
+distribution_channel,Non Refund,Direct,53,0.8113,True
+distribution_channel,Non Refund,TA/TO,895,0.9777,False
+distribution_channel,Refundable,Corporate,3,0.3333,True
+distribution_channel,Refundable,Direct,61,0.0656,True
+distribution_channel,Refundable,TA/TO,43,0.4884,True
