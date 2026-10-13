@@ -43,6 +43,7 @@ python scripts/training/stratified_cv.py                  # reports/cv/  (shuffl
 | Week number disagrees with ISO for about half the dates | Recomputed | 53.7% | |
 | Primary split: train to 2 May, validation to 2 Jul, test to 31 Aug 2017 | `reports/dedup/test_predictions_for_powerbi.csv` | Arrival dates of the test rows | |
 | Cancellation rate 0.371 per-record, 0.275 primary | Recomputed | Mean of `is_canceled` after cleaning | |
+| Primary test set: 8,724 bookings, 3,121 cancelled | `preds` | Row count; sum of `is_canceled` | 0.358 is what random guessing scores on PR area |
 | Mean stay 3.6 nights | Recomputed | 3.63 on the primary stream | |
 | Rolling-origin cutoffs 0.60 / 0.70 / 0.80 | `reports/model_selection_summary.json` | `window.cutoff_fracs`; fractions of train + validation | |
 | XGBoost and LightGBM at 300 trees, depth 7, rate 0.05 | `reports/benchmarks/02_model_specs.csv` | `params_json` | LightGBM's row subsampling is inactive and its trees stop at 31 leaves |
@@ -73,6 +74,7 @@ python scripts/training/stratified_cv.py                  # reports/cv/  (shuffl
 | The 31.2% under stricter pricing of a contact | `reports/thesis/cost_conventions.csv` | `saving_pct`: 20.2 if every contact costs €15; 2.7 if a contact saves half of would-be cancellations | Euro saving stays €26,000–30,000 |
 | Ordering holds across 150 scenarios | `reports/thesis/cost_scenarios.csv` | 150 rows, all with positive `Savings Vs Intervene All` | None varies the two conventions above |
 | 12.8% high tier, 31.1% medium | `preds` | Share with probability ≥ 0.70 and 0.40–0.70 | |
+| The tiers read as a contact rule: contact only from 0.40 | `preds` | Rows with `cancel_probability` ≥ 0.40, priced as in `src/utils/business.py`: 3,832 contacted, 683 missed, €317,718 | Not in the paper. The 3% rule decides whether to contact; the tiers decide who acts. See `demo/HANDOVER.md` §5 |
 | About 130 high-risk bookings a week, 19 a day | `preds` | 1,115 high-tier rows over the test window | The window is 61 days, not 60: 128 a week, 18 a day |
 | Corporate and Groups left unscored | `reports/dedup/segment_metrics.json` | `skip_reason` = insufficient_rows | |
 

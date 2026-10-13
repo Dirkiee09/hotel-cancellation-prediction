@@ -175,6 +175,16 @@ to alter the model's output to make a demo look better.
 The paper is final, so these are handled out loud. Each answer below is checked
 against the committed files.
 
+**"Slide 10 contacts everyone above 3%, but slide 11 gives the low tier no contact. Which is it?"**
+The likeliest question of all, because the two slides sit side by side. They are
+two layers: the 3% threshold decides whether a contact is worth its price, and the
+tiers (0.40 and 0.70) decide who makes the contact and how hard. Read literally,
+"no contact below 0.40" contacts 3,832 bookings instead of 6,639, lets 683
+low-tier cancellations through and costs €317,718 in the same cost model, against
+€57,815 for the 3% rule and €84,045 for contacting everyone. Say: "Fair catch. The
+rule we stand behind is the cost rule; the tiers route the work." Do not defend the
+low tier as "never contact".
+
 **"Is `required_car_parking_spaces` known when the booking is made?"**
 We cannot tell from the data. Every one of the 7,416 bookings that requested
 parking arrived, a 0.0% cancellation rate, which suggests the field may be filled
