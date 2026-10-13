@@ -15,6 +15,8 @@ unverified.
 | `reports/thesis/optuna_tuning.json` | `scripts/training/train.py --thesis` (without `--skip-tuning`) | Yes; Optuna stops at a 10-minute budget, so trial counts can vary with machine speed |
 | `reports/thesis/calibration_diagnostics.json`, `confidence_intervals_extended.json`, `calibration_by_segment.csv`, `cost_scenarios.csv` | `scripts/training/revision_diagnostics.py` | Yes; reads saved test predictions, no retraining |
 | `reports/thesis/deposit_interactions.csv`, `reports/deposit_ablation.json` | `scripts/training/feature_ablation.py` | Yes |
+| `reports/field_ablation.json` (without parking, without parking or special requests, without country) | `scripts/training/field_ablation.py` | Yes |
+| `reports/thesis/cost_conventions.csv` (the 31.2% under stricter pricing of a contact) | `scripts/training/cost_conventions.py` | Yes; reads saved test predictions, no retraining |
 | `reports/dedup/`, `reports/dedup_sensitivity.json` | `scripts/training/dedup_sensitivity.py` | Yes |
 | `reports/benchmarks/*.csv`, `*.md` | `scripts/training/benchmark.py` | Yes |
 | `reports/cv/portugal_stratified_10fold_*` | `scripts/training/stratified_cv.py` | Yes |
@@ -25,7 +27,8 @@ unverified.
 
 Run the producers in this order, because later ones read earlier outputs:
 `train.py --thesis`, then `dedup_sensitivity.py`, then `benchmark.py`,
-`revision_diagnostics.py` and `feature_ablation.py`.
+`revision_diagnostics.py`, `feature_ablation.py`, `field_ablation.py` and
+`cost_conventions.py`.
 
 ## How exact the reproduction is
 

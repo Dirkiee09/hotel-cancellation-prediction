@@ -65,8 +65,9 @@ reports/*
 !reports/ph/
 
 # Evidence for figures in the paper that no other committed file carries: the
-# deposit-type ablation, and the pipeline's own verdict on each hypothesis.
+# deposit-type and field ablations, and the pipeline's own verdict on each hypothesis.
 !reports/deposit_ablation.json
+!reports/field_ablation.json
 !reports/hypothesis_summary.json
 
 # ...but never the Philippine row-level output. Each row is one real Punta

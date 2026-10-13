@@ -1,0 +1,5 @@
+convention,description,threshold,contact_everyone_cost_eur,cost_sensitive_cost_eur,saving_eur,saving_pct
+paper,EUR 15 per wasted contact; a contacted canceller is saved for free,0.03,84045.0,57815.2,26229.8,31.21
+charge_all,"EUR 15 for every contact, including real cancellers",0.03,130860.0,104375.2,26484.8,20.24
+charge_all_e50,EUR 15 for every contact; a contact saves half of would-be cancellations,0.03,1056512.79,1027632.9,28879.9,2.73
+charge_all_e25,EUR 15 for every contact; a contact saves a quarter of would-be cancellations,0.03,1519339.19,1489261.74,30077.45,1.98

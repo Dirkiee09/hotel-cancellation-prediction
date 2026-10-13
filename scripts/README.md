@@ -36,6 +36,8 @@ repo root (e.g. `.venv/Scripts/python.exe scripts/training/train.py`), or use th
 | `dedup_sensitivity.py` | ★ | Duplicate-row sensitivity retrain → `reports/dedup_sensitivity.json` + persists the de-dup run's metrics/thresholds/predictions/segments under `reports/dedup/` (the manuscript's PRIMARY evaluation stream). |
 | `feature_ablation.py` |  | Deposit-type robustness ablation (retrain on de-dup stream with `deposit_type` neutralized) → `reports/deposit_ablation.json` + `reports/thesis/deposit_interactions.csv` (panel revision point 11). |
 | `revision_diagnostics.py` |  | Extended bootstrap CIs, calibration diagnostics (Brier/log-loss/slope/intercept, by-segment) and 150-scenario cost grid for both streams → `reports/thesis/confidence_intervals_extended.json`, `calibration_diagnostics.json`, `calibration_by_segment.csv`, `cost_scenarios.csv` (panel points 5-7). |
+| `field_ablation.py` |  | Retrains the de-dup stream without parking, without parking and special requests, and without country → `reports/field_ablation.json`. |
+| `cost_conventions.py` |  | Re-prices the cost-sensitive saving when every contact costs €15 or contacts only partly work → `reports/thesis/cost_conventions.csv`. No retraining. |
 | `train_ph.py` |  | Philippine transferability sub-study (Punta Villa Resort). NOT part of CI or the Portugal pipeline. |
 
 ## `utils/` — quality, exports & operations
