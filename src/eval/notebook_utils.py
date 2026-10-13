@@ -121,7 +121,11 @@ def _prepare_df() -> pd.DataFrame:
     if not validation.passed:
         raise ValueError(f"Data validation failed: {validation.messages}")
     df["arrival_date"] = add_arrival_date(df)
-    df = df.sort_values("arrival_date").reset_index(drop=True)
+    # Stable sort, as split_time_aware uses. The default quicksort reordered
+    # bookings that share an arrival date, so the rows either side of each split
+    # boundary differed from the pipeline's and the notebooks evaluated a
+    # slightly different validation and test set than the reported one.
+    df = df.sort_values("arrival_date", kind="mergesort").reset_index(drop=True)
     df = df.drop(columns=[c for c in LEAKAGE_COLS if c in df.columns])
     keep_cols = BOOKING_TIME_FEATURES + [TARGET_COL, "arrival_date"]
     if "company" in df.columns and "company" not in keep_cols:
@@ -2121,7 +2125,15 @@ def plot_tree_depth_analysis(
         model_dump = booster.dump_model()
         tree_info = model_dump.get("tree_info", [])
         n_trees = len(tree_info)
-        depths = [t.get("max_depth", 0) for t in tree_info]
+
+        # tree_info carries no depth field, so reading t["max_depth"] silently gave
+        # 0 for every tree. Walk each tree's structure instead.
+        def _node_depth(node: dict[str, Any]) -> int:
+            if "leaf_index" in node or "left_child" not in node:
+                return 0
+            return 1 + max(_node_depth(node["left_child"]), _node_depth(node["right_child"]))
+
+        depths = [_node_depth(t.get("tree_structure", {})) for t in tree_info]
         leaves_per_tree = [t.get("num_leaves", 0) for t in tree_info]
         summary = {
             "n_trees": n_trees,
@@ -2625,10 +2637,16 @@ def cost_sensitivity_sweep(
     val_probs = np.array(_vp)
     val_labels = np.array(ctx.get("val_labels", []))
 
-    # Compute per-sample FN cost (revenue at risk)
+    # Per-booking cost of a missed cancellation, priced exactly as the pipeline
+    # prices it: ADR x (nights - FN_RECOVERY_NIGHTS). This used the full revenue at
+    # risk (every night lost), so at EUR 15 it chose 0.04 where the pipeline and the
+    # paper's equation (7) give 0.06.
+    from src.config import FN_RECOVERY_NIGHTS
+    from src.utils.business import compute_fn_cost_vector
+
     val_df = ctx.get("val_df")
-    if val_df is not None and "revenue_at_risk" in val_df.columns:
-        fn_cost = val_df["revenue_at_risk"].values
+    if val_df is not None:
+        fn_cost = compute_fn_cost_vector(val_df, fn_recovery_nights=FN_RECOVERY_NIGHTS)
     else:
         fn_cost = np.full(len(val_labels), 100.0)
 
