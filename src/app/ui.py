@@ -1846,7 +1846,10 @@ def build_ui() -> gr.Blocks:
                         is_repeated_guest: True,
                         previous_cancellations: 0,
                         previous_bookings_not_canceled: 3,
-                        required_car_parking_spaces: 1,
+                        # Not 1: every booking that requested parking arrived, which
+                        # suggests the field is filled in at check-in. The low-risk
+                        # example should not rest on it. Scores about 4%, Low tier.
+                        required_car_parking_spaces: 0,
                         total_of_special_requests: 2,
                     },
                 }

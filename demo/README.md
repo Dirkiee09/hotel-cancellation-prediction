@@ -61,7 +61,7 @@ The result shows:
 |--------|-----------|----------|
 | ① Non-refundable, 120d lead | City Hotel, Online TA, Non Refund deposit | above 99%, High |
 | ② Online agent, 60d lead | City Hotel, Online TA, No Deposit, one special request | 60%, Medium |
-| ③ Direct repeat guest | Resort Hotel, Direct, repeat guest, special requests | under 1%, Low |
+| ③ Direct repeat guest | Resort Hotel, Direct, repeat guest, special requests, no parking request | about 4%, Low |
 
 The arrival date defaults to 30 days from today, so the month feature changes with
 the day you present. The figures above hold for arrivals in November and December.

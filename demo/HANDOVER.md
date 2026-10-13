@@ -75,7 +75,7 @@ during the talk.**
 | 1 | Click **① Non-refundable, 120d lead** → **Predict** | "Same hotel, same rate. Non-refundable deposit, booked four months out. The model puts this above 99 percent and flags it High. In this dataset non-refundable bookings almost all cancel, which looks backwards; it partly reflects how group bookings were recorded, and the paper says so." |
 | 2 | Point at the risk meter | "The green/amber/red bands are the 0.40 and 0.70 tier boundaries from the paper. The marker is where this booking sits." |
 | 3 | Point at **Revenue at risk** | "€900 of exposure on this one booking. That's ADR times nights — Equation 1." |
-| 4 | Click **③ Direct repeat guest** → **Predict** | "Direct channel, repeat guest, special requests. Under 1 percent — the other end of the same calibrator, so you see the matching note. No contact needed; we save the staff effort." |
+| 4 | Click **③ Direct repeat guest** → **Predict** | "Direct channel, repeat guest, special requests. About 4 percent, Low tier — below the 6 percent threshold where a contact pays for itself, so no call. That is where the saving comes from: not contacting the safest bookings." |
 | 5 | Open **Model Capabilities & Benchmarks** tab | "The full model ladder with bootstrap confidence intervals, and the SHAP attribution." |
 
 ---
@@ -179,9 +179,17 @@ against the committed files.
 We cannot tell from the data. Every one of the 7,416 bookings that requested
 parking arrived, a 0.0% cancellation rate, which suggests the field may be filled
 in at check-in. We retrained the primary stream without it: ROC-AUC 0.848 → 0.828,
-PR-AUC 0.703 → 0.674, and the cost cut 31.2% → 25.4%. The method's conclusion
+PR-AUC 0.703 → 0.674, and the cost cut 31.2% → 25.4% (`reports/field_ablation.json`). The method's conclusion
 holds; the headline accuracy partly depends on that field. Say this plainly if
 asked; do not defend the field as booking-time.
+
+**"How much does the model rely on guests' nationality?"**
+A lot, and the paper says so. Country is the second-strongest driver, and retrained
+without it the model scores PR-AUC 0.648 instead of 0.703, with a cost cut of 13.6%
+instead of 31.2% (`reports/field_ablation.json`). That is why the paper calls a
+nationality-level audit a precondition for deployment: a hotel acting on these scores
+must first show the errors do not differ systematically by guest origin. We have not
+done that audit; say so.
 
 **"Your deck says deposit terms are a lever. Should hotels drop non-refundable rates?"**
 No. Non-refundable bookings cancel 99.4% of the time in this data, which partly

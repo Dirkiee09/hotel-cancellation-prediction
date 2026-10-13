@@ -36,6 +36,7 @@ rather than merely unused.
 | Reviewing the method | [Results](#results-at-a-glance) → [How the pipeline works](#how-the-pipeline-works) → [Quality gates](#quality-gates) |
 | Changing the code | [Repository map](#repository-map) → [Key configuration](#key-configuration) |
 | Building the dashboard | [`docs/powerbi_dashboard_guide.md`](docs/powerbi_dashboard_guide.md) |
+| Checking a number in the paper | [`docs/claims_ledger.md`](docs/claims_ledger.md) |
 | Checking what is reproducible | [`docs/provenance.md`](docs/provenance.md) |
 
 ---
@@ -133,7 +134,7 @@ demo/
 
 tests/                      153 tests, coverage gate ≥80%
 notebooks/                  Analysis notebooks (load artifacts, never retrain)
-docs/                       Power BI build guide, output provenance
+docs/                       Claims ledger, output provenance, Power BI build guide
 
 artifacts/                  Trained model the app serves (committed; rebuilt by make train)
 reports/                    Metrics, benchmark tables, figures (committed subset; see docs/provenance.md)
